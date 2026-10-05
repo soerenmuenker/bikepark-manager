@@ -117,9 +117,29 @@ Rules:
   regression checks (compare `stateHash`), and CI.
 - Godot is only needed to work on presentation.
 
+## 10. Terrain
+
+- `TerrainSettings` (in the scenario and in `WorldState.Terrain`) fully determine the terrain; a null seed is
+  resolved to the scenario seed when the world is created. The `TerrainGrid` is **derived data**: generated on
+  first access to `Simulation.Terrain`, cached by settings, never saved.
+- Grid: 1 m spacing, (Size+1)² samples, +X east, +Z south. Layers per sample: height (int cm), slope (grade ‰),
+  tree density, rock, roots (0..255) and water depth (cm; reserved, currently always empty).
+- Generation (integer-only, see §6): main peak (radial falloff) + radiating meandering ridges + fractal value
+  noise, rescaled to exactly the configured relief; then rock (steep / summit / outcrop noise), forest patches
+  (coverage by histogram quantile) below a jittered tree line, roots under trees on slopes.
+- Queries take cm coordinates and clamp to the map: `HeightAt`/`SlopeAt` interpolate bilinearly,
+  `SurfaceAt` uses the nearest sample with priority Water > Rock > Roots > Forest > Grass.
+- `TerrainScatter` places trees and rocks with a jittered global grid and hashing, so results are independent of
+  how the view splits the map into chunks (tested).
+- Tooling: `SimRunner terrain` renders relief / slope / surface maps as PNG (pure C#). This is the primary way to
+  inspect generator changes; the Godot view uses the same overlay palettes.
+- Godot view: 64 m chunks, each with a full-detail and a 4 m mesh switched by visibility range, skirts against
+  LOD cracks, one MultiMesh per chunk for trees and rocks, `terrain.gdshader` for layer blending and overlays.
+
 ## Open questions / next steps
 
-- Trail building model (grid vs. spline), terrain representation.
+- Trail building model (grid vs. spline) on top of the terrain; terrain edits as saved changes.
+- Water features (ponds, streams) using the reserved water layer, if gameplay needs them.
 - Guest pathfinding and needs model; keep allocation-free and integer-based.
 - Export pipeline for `/data`; possibly embed content as resources.
 - Command-stream recording in `SimHost` for replays and bug reports.

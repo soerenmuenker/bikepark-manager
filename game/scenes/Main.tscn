@@ -1,12 +1,46 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/SimHost.cs" id="1_simhost"]
 [ext_resource type="Script" path="res://scripts/Hud.cs" id="2_hud"]
+[ext_resource type="Script" path="res://scripts/terrain/TerrainView.cs" id="3_terrain"]
+[ext_resource type="Script" path="res://scripts/camera/RtsCamera.cs" id="4_camera"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_material"]
+sky_horizon_color = Color(0.68, 0.76, 0.86, 1)
+ground_horizon_color = Color(0.68, 0.76, 0.86, 1)
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_material")
+
+[sub_resource type="Environment" id="environment"]
+background_mode = 2
+sky = SubResource("sky")
+ambient_light_source = 3
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.7, 0.77, 0.86, 1)
+fog_density = 0.00035
+fog_sky_affect = 0.0
 
 [node name="Main" type="Node"]
 
 [node name="SimHost" type="Node" parent="."]
 script = ExtResource("1_simhost")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.819152, 0.439385, -0.368688, 0, 0.642788, 0.766044, 0.573576, -0.627507, 0.526541, 0, 0, 0)
+light_energy = 1.1
+shadow_enabled = true
+directional_shadow_max_distance = 900.0
+
+[node name="TerrainView" type="Node3D" parent="."]
+script = ExtResource("3_terrain")
+
+[node name="RtsCamera" type="Node3D" parent="."]
+script = ExtResource("4_camera")
 
 [node name="Hud" type="CanvasLayer" parent="."]
 script = ExtResource("2_hud")

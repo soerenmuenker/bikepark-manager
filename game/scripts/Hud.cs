@@ -1,3 +1,5 @@
+using Bikepark.Game.Camera;
+using Bikepark.Game.Terrain;
 using Bikepark.Sim;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
@@ -8,7 +10,8 @@ using Godot;
 namespace Bikepark.Game;
 
 /// <summary>
-/// Placeholder debug HUD: shows KPIs, a short event log, and issues commands. Pure view; never writes to WorldState.
+/// Placeholder debug HUD: shows KPIs, terrain info under the cursor, the overlay mode, a short event log, and
+/// issues commands. Pure view; never writes to WorldState.
 /// </summary>
 public partial class Hud : CanvasLayer
 {
@@ -16,16 +19,23 @@ public partial class Hud : CanvasLayer
     private const int MaxLogLines = 8;
 
     [Export] public NodePath SimHostPath { get; set; } = "../SimHost";
+    [Export] public NodePath TerrainPath { get; set; } = "../TerrainView";
+    [Export] public NodePath CameraPath { get; set; } = "../RtsCamera";
 
     private readonly Queue<string> _log = new();
     private readonly List<IDisposable> _subscriptions = [];
     private SimHost _host = null!;
+    private TerrainView _terrain = null!;
+    private RtsCamera _camera = null!;
     private Label _stats = null!;
+    private Label _terrainInfo = null!;
     private Label _logLabel = null!;
 
     public override void _Ready()
     {
         _host = GetNode<SimHost>(SimHostPath);
+        _terrain = GetNode<TerrainView>(TerrainPath);
+        _camera = GetNode<RtsCamera>(CameraPath);
         BuildUi();
         _host.SimulationReplaced += Subscribe;
         Subscribe(_host.Sim);
@@ -47,6 +57,24 @@ public partial class Hud : CanvasLayer
             $"Guests in park {kpi.GuestsInPark}   happiness {kpi.AverageHappiness / 10}%   " +
             $"(exit avg {kpi.AverageExitHappiness / 10}%)\n" +
             $"Visitors {kpi.TotalVisitors}   turned away {kpi.TotalTurnedAway}   left unhappy {kpi.TotalLeftUnhappy}";
+        _terrainInfo.Text = TerrainInfo();
+    }
+
+    private string TerrainInfo()
+    {
+        string overlay = $"[F1] overlay: {_terrain.Overlay}";
+        var grid = _terrain.Grid;
+        var mouse = GetViewport().GetMousePosition();
+        var camera = _camera.Camera;
+        if (grid is null || !_terrain.TryRaycast(camera.ProjectRayOrigin(mouse), camera.ProjectRayNormal(mouse), 4000f, out var hit))
+            return overlay;
+
+        var sample = grid.Sample((long)MathF.Round(hit.X * 100), (long)MathF.Round(hit.Z * 100));
+        float degrees = Mathf.RadToDeg(MathF.Atan(sample.SlopePermille / 1000f));
+        return $"{overlay}\n" +
+               $"Cursor {hit.X:F1}, {hit.Z:F1} m   elevation {sample.HeightCm / 100f:F1} m   " +
+               $"slope {sample.SlopePermille}‰ ({degrees:F1}°)   {sample.Surface}\n" +
+               $"trees {sample.TreeDensity}  rock {sample.Rock}  roots {sample.Roots}  water {sample.WaterDepthCm} cm";
     }
 
     private void Subscribe(Simulation sim)
@@ -77,11 +105,21 @@ public partial class Hud : CanvasLayer
 
     private void BuildUi()
     {
-        var root = new VBoxContainer { Position = new Vector2(16, 16) };
-        AddChild(root);
+        var panel = new PanelContainer { Position = new Vector2(12, 12) };
+        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(0, 0, 0, 0.55f),
+            ContentMarginLeft = 10, ContentMarginRight = 10, ContentMarginTop = 8, ContentMarginBottom = 8,
+            CornerRadiusTopLeft = 6, CornerRadiusTopRight = 6, CornerRadiusBottomLeft = 6, CornerRadiusBottomRight = 6,
+        });
+        AddChild(panel);
+        var root = new VBoxContainer();
+        panel.AddChild(root);
 
         _stats = new Label();
         root.AddChild(_stats);
+        _terrainInfo = new Label();
+        root.AddChild(_terrainInfo);
 
         var speedRow = new HBoxContainer();
         root.AddChild(speedRow);

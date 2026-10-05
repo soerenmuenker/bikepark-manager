@@ -16,5 +16,19 @@
     "dailyUpkeepCents": 25000,
     "snackPriceCents": 400
   },
+  // Terrain is regenerated from these settings; "seed" defaults to the scenario seed.
+  "terrain": {
+    "sizeMeters": 1000,
+    "baseElevationCm": 80000,
+    "reliefCm": 35000,
+    "peakXMeters": 600,
+    "peakZMeters": 400,
+    "peakRadiusMeters": 750,
+    "ridgeCount": 3,
+    "ridgeStrengthPermille": 300,
+    "roughnessPermille": 90,
+    "treeLineCm": 108000,
+    "forestCoveragePermille": 650
+  },
   "commands": []
 }

@@ -5,27 +5,34 @@ using Bikepark.Sim.Events;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Reporting;
 using Bikepark.Sim.Scenarios;
+using Bikepark.SimRunner.Terrain;
 
 namespace Bikepark.SimRunner;
 
 /// <summary>
-/// Headless runner: loads a scenario, runs N days, prints KPIs as JSON to stdout.
-/// Usage: --scenario &lt;path&gt; [--days N] [--seed S] [--commands &lt;path&gt;] [--daily] [--save &lt;path&gt;]
+/// Headless runner.
+/// <list type="bullet">
+///   <item>default: load a scenario, run N days, print KPIs as JSON (see <see cref="RunnerOptions.Usage"/>);</item>
+///   <item><c>terrain</c>: generate the scenario's terrain, write top-down PNG maps, print terrain stats.</item>
+/// </list>
 /// </summary>
 public static class Program
 {
     public static int Main(string[] args)
     {
+        bool terrain = args.Length > 0 && args[0] == "terrain";
         try
         {
-            var options = RunnerOptions.Parse(args);
-            Run(options);
+            if (terrain)
+                TerrainCommand.Run(args[1..]);
+            else
+                Run(RunnerOptions.Parse(args));
             return 0;
         }
         catch (ArgumentException ex)
         {
             Console.Error.WriteLine($"error: {ex.Message}");
-            Console.Error.WriteLine(RunnerOptions.Usage);
+            Console.Error.WriteLine(terrain ? TerrainCommand.Usage : RunnerOptions.Usage);
             return 2;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException)

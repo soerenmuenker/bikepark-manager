@@ -1,5 +1,6 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Terrain;
 
 namespace Bikepark.Sim.State;
 
@@ -23,6 +24,12 @@ public sealed class WorldState
     public ParkState Park { get; set; } = new();
 
     public ParkRules Rules { get; set; } = new();
+
+    /// <summary>
+    /// Terrain generation parameters. The terrain itself is derived from these (see <see cref="Simulation.Terrain"/>)
+    /// and is not saved.
+    /// </summary>
+    public TerrainSettings Terrain { get; set; } = new();
 
     public FinanceState Finance { get; set; } = new();
 

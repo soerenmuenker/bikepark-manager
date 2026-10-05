@@ -19,3 +19,8 @@ One file per scenario (`ScenarioDefinition`): `id`, `name`, `description`, `seed
 ```
 
 The same `{tick, command}` list format is accepted by `Bikepark.SimRunner --commands <file>`.
+
+`terrain` (`TerrainSettings`, all optional): `seed` (defaults to the scenario seed), `sizeMeters`,
+`baseElevationCm`, `reliefCm`, `peakXMeters`, `peakZMeters`, `peakRadiusMeters`, `ridgeCount`,
+`ridgeStrengthPermille`, `roughnessPermille`, `treeLineCm`, `forestCoveragePermille`.
+Preview with `dotnet run --project src/Bikepark.SimRunner -- terrain --scenario <file> --out out/map.png --mode all`.

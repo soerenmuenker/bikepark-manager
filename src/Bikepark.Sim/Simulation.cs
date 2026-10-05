@@ -3,6 +3,7 @@ using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Systems;
+using Bikepark.Sim.Terrain;
 
 namespace Bikepark.Sim;
 
@@ -19,6 +20,7 @@ public sealed class Simulation
 {
     private readonly SimContext _context;
     private readonly IReadOnlyList<ISimSystem> _systems;
+    private readonly Lazy<TerrainGrid> _terrain;
 
     public Simulation(WorldState state)
     {
@@ -26,7 +28,8 @@ public sealed class Simulation
         State = state;
         Events = new EventBus();
         Commands = new CommandQueue(state);
-        _context = new SimContext(state, Events);
+        _terrain = new Lazy<TerrainGrid>(() => TerrainCache.Get(state.Terrain, state.Seed));
+        _context = new SimContext(state, Events, _terrain);
 
         // Order matters for determinism and gameplay. Append new systems deliberately.
         _systems =
@@ -43,6 +46,11 @@ public sealed class Simulation
     public EventBus Events { get; }
 
     public CommandQueue Commands { get; }
+
+    /// <summary>
+    /// The terrain, derived from <see cref="WorldState.Terrain"/> (and the world seed). Generated on first access.
+    /// </summary>
+    public TerrainGrid Terrain => _terrain.Value;
 
     public void Step()
     {

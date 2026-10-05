@@ -3,6 +3,7 @@ using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.State;
+using Bikepark.Sim.Terrain;
 
 namespace Bikepark.Sim.Scenarios;
 
@@ -17,6 +18,9 @@ public sealed class ScenarioDefinition
     public long StartingMoneyCents { get; set; }
     public long EntryFeeCents { get; set; }
     public ParkRules Rules { get; set; } = new();
+
+    /// <summary>Terrain parameters. A null terrain seed follows the scenario seed (and --seed overrides).</summary>
+    public TerrainSettings Terrain { get; set; } = new();
 
     /// <summary>Optional scripted commands (e.g. tutorial events), queued when the scenario starts.</summary>
     public List<TimedCommand> Commands { get; set; } = [];
@@ -43,6 +47,7 @@ public static class ScenarioLoader
             Rng = SimRandom.FromSeed(seed),
             Park = new ParkState { Name = scenario.ParkName, EntryFeeCents = scenario.EntryFeeCents },
             Rules = scenario.Rules,
+            Terrain = scenario.Terrain with { Seed = scenario.Terrain.Seed ?? seed },
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
         };
 
@@ -64,6 +69,8 @@ public static class ScenarioLoader
         if (r.ReferenceEntryFeeCents <= 0) errors.Add("rules.referenceEntryFeeCents must be > 0");
         if (r.Capacity <= 0) errors.Add("rules.capacity must be > 0");
         if (s.EntryFeeCents < 0 || s.EntryFeeCents > r.MaxEntryFeeCents) errors.Add("entryFeeCents out of range");
+
+        errors.AddRange(s.Terrain.Validate());
 
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid scenario '{s.Id}': {string.Join("; ", errors)}");

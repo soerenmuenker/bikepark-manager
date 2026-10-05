@@ -6,9 +6,11 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 ## Layout
 
 - `src/Bikepark.Sim/` – simulation library (WorldState, Simulation tick loop, SimRandom, commands, events, save/load, scenarios, KPIs)
-- `src/Bikepark.SimRunner/` – headless console runner, prints KPIs as JSON
-- `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG)
-- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/Hud.cs` debug HUD)
+  - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks)
+- `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
+- `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
+- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/Hud.cs` debug HUD,
+  `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `shaders/terrain.gdshader`)
 - `data/` – JSON content (scenarios)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
@@ -20,6 +22,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 dotnet build Bikepark.sln
 dotnet test Bikepark.sln
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json] [--daily] [--save out.json]
+# Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
+dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter]
 # Godot (from game/): compile, then run headless for ~2 game days
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --build-solutions --quit
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --fixed-fps 60 --quit-after 18000
@@ -49,6 +53,16 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
    `SaveGame.CurrentVersion` and add a migration.
 8. **Content** lives in `/data` as JSON, is validated on load, and is copied into `WorldState` so saves are
    self-contained. Unknown JSON fields are errors.
+9. **Derived data is never saved.** The terrain is regenerated from `WorldState.Terrain` (settings + seed) via
+   `Simulation.Terrain` (lazy, cached in `TerrainCache`). Anything derived must be a pure function of `WorldState`;
+   future terrain edits must be stored as changes in `WorldState`, not by mutating the grid.
+10. **Terrain generation is integer-only** (Q16 fixed point in `FixedMath`/`IntNoise`, heights in cm, slopes as
+    grade permille). Changing the generator changes every map: check the 2D maps before and after.
+
+## Game controls (debug build)
+
+WASD/arrows/screen edge/middle-drag pan · wheel or +/- zoom · Q/E or right-drag orbit · F1 cycles terrain overlay
+(natural / slope / surface) · HUD shows terrain data under the cursor.
 
 ## Conventions
 
