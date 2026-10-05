@@ -1,0 +1,20 @@
+{
+  "id": "starter_valley",
+  "name": "Starter Valley",
+  "description": "A small hillside with a handful of flow trails. Keep the books balanced and the riders happy.",
+  "seed": 1337,
+  "parkName": "Starter Valley Bikepark",
+  "startingMoneyCents": 5000000,
+  "entryFeeCents": 1500,
+  "rules": {
+    "openMinute": 480,
+    "closeMinute": 1200,
+    "baseArrivalPermille": 400,
+    "referenceEntryFeeCents": 1500,
+    "maxEntryFeeCents": 10000,
+    "capacity": 150,
+    "dailyUpkeepCents": 25000,
+    "snackPriceCents": 400
+  },
+  "commands": []
+}

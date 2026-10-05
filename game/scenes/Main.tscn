@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/SimHost.cs" id="1_simhost"]
+[ext_resource type="Script" path="res://scripts/Hud.cs" id="2_hud"]
+
+[node name="Main" type="Node"]
+
+[node name="SimHost" type="Node" parent="."]
+script = ExtResource("1_simhost")
+
+[node name="Hud" type="CanvasLayer" parent="."]
+script = ExtResource("2_hud")

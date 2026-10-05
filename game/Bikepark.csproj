@@ -1,0 +1,15 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+
+  <!-- Godot client (view layer). Reads WorldState, renders it, and turns input into Sim commands. -->
+  <PropertyGroup>
+    <!-- Godot.NET.Sdk defaults to net8.0; must match Bikepark.Sim (see Directory.Build.props). -->
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Bikepark.Game</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../src/Bikepark.Sim/Bikepark.Sim.csproj" />
+  </ItemGroup>
+
+</Project>

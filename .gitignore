@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+TestResults/
+*.trx
+
+# Godot
+.godot/
+/game/android/
+/game/.mono/
+/game/export_presets.cfg
+/game/builds/
+
+# OS
+.DS_Store
+
+# Local saves / runner output
+*.save.json
+/out/
+/game/*.csproj.old

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pure simulation library. MUST NOT reference Godot or any engine/UI package. -->
+  <PropertyGroup>
+    <RootNamespace>Bikepark.Sim</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bikepark.Sim.Tests" />
+  </ItemGroup>
+
+</Project>
