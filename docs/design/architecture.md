@@ -136,9 +136,30 @@ Rules:
 - Godot view: 64 m chunks, each with a full-detail and a 4 m mesh switched by visibility range, skirts against
   LOD cracks, one MultiMesh per chunk for trees and rocks, `terrain.gdshader` for layer blending and overlays.
 
+## 11. Ways and riders (Phase 2)
+
+- **Ways** are what the player builds: gravel **access paths** (two-way, ≤ 15 % per 10 m segment, graded: their
+  height is the terrain smoothed over ±10 m, ends on the ground) and downhill **trails** (one-way, ≤ 70 % down,
+  ≤ 8 % up, follow the ground). The first path's low end is the park **base** where guests arrive; a trail needs
+  a path first and both of its ends must snap (12 m) onto existing ways. Validation guarantees every point of the
+  network is reachable from the base and can get back to it.
+- `WorldState.Ways` stores only player input (oriented, snapped control points and joins `(wayId, distanceCm)`).
+  `WayGeometry` (integer Catmull-Rom, ~1 m samples, 10 m segments with grade, turn, surface, difficulty; rating
+  from the 90th-percentile difficulty) and `WayNetwork` (junction graph, deterministic Dijkstra, spatial index for
+  snapping and tree clearing) are derived and rebuilt when `WaysRevision` changes.
+- `WayPlanner` is the single validator; the build command and the live preview both call it.
+- **Riders** (guests): skill, style, energy, mood. Each lap: pick a trail (skill vs difficulty, style, variety,
+  seeded RNG), route up the paths to its start, ride it, score fun per segment, update mood and trail stats.
+  Each tick moves riders 60 s along their legs at an integer speed from skill, grade, roughness, turns and
+  difficulty. Climbing costs energy; tired riders go home. Riders only leave between laps (or at closing).
+- Time scale in the client: 1x = one game minute per real second; the view interpolates rider progress between
+  ticks (`SimHost.BeforeStep` + `InterpolationAlpha`).
+- Building is instant and free in Phase 2; trees and rocks in a way's corridor disappear (derived, not saved).
+  Phase 3 replaces climbing-only access with lifts and queues, Phase 4 adds crews, cutting and build time.
+
 ## Open questions / next steps
 
-- Trail building model (grid vs. spline) on top of the terrain; terrain edits as saved changes.
+- Terrain edits (cut/fill, cleared trees as wood) as saved changes.
 - Water features (ponds, streams) using the reserved water layer, if gameplay needs them.
 - Guest pathfinding and needs model; keep allocation-free and integer-based.
 - Export pipeline for `/data`; possibly embed content as resources.

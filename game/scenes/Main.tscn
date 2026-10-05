@@ -1,9 +1,12 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/SimHost.cs" id="1_simhost"]
 [ext_resource type="Script" path="res://scripts/Hud.cs" id="2_hud"]
 [ext_resource type="Script" path="res://scripts/terrain/TerrainView.cs" id="3_terrain"]
 [ext_resource type="Script" path="res://scripts/camera/RtsCamera.cs" id="4_camera"]
+[ext_resource type="Script" path="res://scripts/ways/WayView.cs" id="5_wayview"]
+[ext_resource type="Script" path="res://scripts/ways/WayTool.cs" id="6_waytool"]
+[ext_resource type="Script" path="res://scripts/riders/RiderView.cs" id="7_riders"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_material"]
 sky_horizon_color = Color(0.68, 0.76, 0.86, 1)
@@ -41,6 +44,15 @@ script = ExtResource("3_terrain")
 
 [node name="RtsCamera" type="Node3D" parent="."]
 script = ExtResource("4_camera")
+
+[node name="WayView" type="Node3D" parent="."]
+script = ExtResource("5_wayview")
+
+[node name="WayTool" type="Node3D" parent="."]
+script = ExtResource("6_waytool")
+
+[node name="RiderView" type="Node3D" parent="."]
+script = ExtResource("7_riders")
 
 [node name="Hud" type="CanvasLayer" parent="."]
 script = ExtResource("2_hud")

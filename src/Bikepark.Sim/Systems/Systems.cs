@@ -80,6 +80,11 @@ internal sealed class GuestArrivalSystem : ISimSystem
             Happiness = Math.Clamp(ctx.Rng.Range(550, 801) - feePenalty, 0, 1000),
             ArrivedTick = ctx.Tick,
             PlannedStayMinutes = ctx.Rng.Range(60, 361),
+            // Skill is triangular around 500: most riders are intermediate.
+            Skill = (ctx.Rng.Range(0, 1001) + ctx.Rng.Range(0, 1001)) / 2,
+            Style = (RiderStyle)ctx.Rng.NextInt(3),
+            Energy = ctx.Rng.Range(650, 1001),
+            Activity = RiderActivity.Wandering,
         };
 
         state.Finance.Earn(fee);
@@ -90,7 +95,10 @@ internal sealed class GuestArrivalSystem : ISimSystem
     }
 }
 
-/// <summary>Updates guests in the park: mood, spending, and leaving.</summary>
+/// <summary>
+/// Updates guests in the park: mood, spending, and leaving. Riders only leave between laps (or at closing time);
+/// tired riders go home.
+/// </summary>
 internal sealed class GuestSystem : ISimSystem
 {
     private const int SnackChancePermille = 8;
@@ -134,12 +142,13 @@ internal sealed class GuestSystem : ISimSystem
     private static GuestLeaveReason? UpdateGuest(SimContext ctx, Guest guest, bool crowded)
     {
         var rules = ctx.State.Rules;
+        bool onTheWay = guest.Activity is RiderActivity.Climbing or RiderActivity.Descending;
 
         guest.Happiness += ctx.Rng.Range(-1, 2);
         if (crowded)
             guest.Happiness -= CrowdingPenalty;
 
-        if (guest.CashCents >= rules.SnackPriceCents && ctx.Rng.ChancePermille(SnackChancePermille))
+        if (!onTheWay && guest.CashCents >= rules.SnackPriceCents && ctx.Rng.ChancePermille(SnackChancePermille))
         {
             guest.CashCents -= rules.SnackPriceCents;
             ctx.State.Finance.Earn(rules.SnackPriceCents);
@@ -148,6 +157,10 @@ internal sealed class GuestSystem : ISimSystem
 
         guest.Happiness = Math.Clamp(guest.Happiness, 0, 1000);
 
+        if (onTheWay)
+            return null;
+        if (guest.Activity == RiderActivity.Idle && guest.Energy < ctx.State.TrailRules.TiredEnergy)
+            return GuestLeaveReason.Tired;
         if (guest.Happiness < UnhappyThreshold)
             return GuestLeaveReason.Unhappy;
         if (ctx.Tick - guest.ArrivedTick >= guest.PlannedStayMinutes)
@@ -176,6 +189,8 @@ internal sealed class FinanceSystem : ISimSystem
             MoneyCents: state.Finance.MoneyCents);
         ctx.Publish(new DayEnded(ctx.Tick, report));
 
+        foreach (var way in state.Ways)
+            way.Stats.RunsToday = 0;
         state.Stats.VisitorsToday = 0;
         state.Stats.TurnedAwayToday = 0;
         state.Finance.RevenueTodayCents = 0;

@@ -41,6 +41,9 @@ public partial class RtsCamera : Node3D
 
     public Camera3D Camera { get; private set; } = null!;
 
+    /// <summary>When set, the focus tracks this position every frame; returning null (or any manual pan) stops it.</summary>
+    public Func<Vector3?>? Follow { get; set; }
+
     public override void _Ready()
     {
         _terrain = GetNode<TerrainView>(TerrainPath);
@@ -110,6 +113,14 @@ public partial class RtsCamera : Node3D
         if (input != Vector2.Zero)
             Pan(input.Normalized() * PanSpeed * _targetDistance * dt);
 
+        if (Follow is not null)
+        {
+            if (Follow() is { } target)
+                _targetFocus = ClampToMap(new Vector2(target.X, target.Z));
+            else
+                Follow = null;
+        }
+
         if (Input.IsPhysicalKeyPressed(Key.Q)) _targetYaw += OrbitSpeed * dt;
         if (Input.IsPhysicalKeyPressed(Key.E)) _targetYaw -= OrbitSpeed * dt;
 
@@ -138,6 +149,7 @@ public partial class RtsCamera : Node3D
     /// <summary>Pans in screen-relative directions: X = right, Y = towards the viewer.</summary>
     private void Pan(Vector2 screenDelta)
     {
+        Follow = null;
         var forward = new Vector2(-MathF.Sin(_targetYaw), -MathF.Cos(_targetYaw));
         var right = new Vector2(MathF.Cos(_targetYaw), -MathF.Sin(_targetYaw));
         _targetFocus = ClampToMap(_targetFocus + right * screenDelta.X - forward * screenDelta.Y);

@@ -19,6 +19,8 @@ public sealed class ScenarioDefinition
     public long EntryFeeCents { get; set; }
     public ParkRules Rules { get; set; } = new();
 
+    public Trails.TrailRules TrailRules { get; set; } = new();
+
     /// <summary>Terrain parameters. A null terrain seed follows the scenario seed (and --seed overrides).</summary>
     public TerrainSettings Terrain { get; set; } = new();
 
@@ -48,6 +50,7 @@ public static class ScenarioLoader
             Park = new ParkState { Name = scenario.ParkName, EntryFeeCents = scenario.EntryFeeCents },
             Rules = scenario.Rules,
             Terrain = scenario.Terrain with { Seed = scenario.Terrain.Seed ?? seed },
+            TrailRules = scenario.TrailRules,
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
         };
 
@@ -71,6 +74,7 @@ public static class ScenarioLoader
         if (s.EntryFeeCents < 0 || s.EntryFeeCents > r.MaxEntryFeeCents) errors.Add("entryFeeCents out of range");
 
         errors.AddRange(s.Terrain.Validate());
+        errors.AddRange(s.TrailRules.Validate());
 
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid scenario '{s.Id}': {string.Join("; ", errors)}");

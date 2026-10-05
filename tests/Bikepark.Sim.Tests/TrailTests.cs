@@ -1,0 +1,360 @@
+using Bikepark.Sim.Commands;
+using Bikepark.Sim.Events;
+using Bikepark.Sim.Persistence;
+using Bikepark.Sim.State;
+using Bikepark.Sim.Systems;
+using Bikepark.Sim.Terrain;
+using Bikepark.Sim.Trails;
+
+namespace Bikepark.Sim.Tests;
+
+public class TrailGeometryAndPlannerTests
+{
+    // A 128 m plane falling 10 % towards +X (east).
+    private static readonly TerrainGrid Plane = TestTerrain.Plane(100);
+    private static readonly TrailRules Rules = new();
+
+    private static PointCm P(int xM, int zM) => new(xM * 100, zM * 100);
+
+    // ---------------------------------------------------------------- geometry
+
+    [Fact]
+    public void Spline_PassesThroughControlPoints_AndFollowsTheGround()
+    {
+        var points = new List<PointCm> { P(10, 20), P(40, 30), P(70, 20), P(100, 40) };
+        var geometry = WayGeometry.Build(Plane, WayKind.Trail, points, 1000);
+
+        for (int i = 0; i < geometry.SampleCount; i++)
+            Assert.Equal(Plane.HeightAt(geometry.Xs[i], geometry.Zs[i]), geometry.Ys[i]);
+        foreach (var p in points)
+            Assert.Contains(Enumerable.Range(0, geometry.SampleCount), i => geometry.Xs[i] == p.X && geometry.Zs[i] == p.Z);
+    }
+
+    [Fact]
+    public void StraightLine_HasExpectedLengthGradeAndSegments()
+    {
+        var geometry = WayGeometry.Build(Plane, WayKind.Trail, [P(10, 50), P(90, 50)], 1000);
+
+        // 80 m horizontal at 10 % grade: 80 * sqrt(1.01) = 80.40 m (samples rounded to whole cm).
+        Assert.InRange(geometry.LengthCm, 8_030, 8_050);
+        Assert.Equal(8, geometry.Segments.Count);
+        Assert.All(geometry.Segments, s => Assert.InRange(s.GradePermille, -101, -99));
+        Assert.All(geometry.Segments.Skip(1), s => Assert.Equal(0, s.TurnPermille));
+        Assert.Equal(TrailRating.Green, geometry.Rating);
+        Assert.Equal(geometry.LengthCm, geometry.Segments[^1].EndCm);
+    }
+
+    [Fact]
+    public void PositionAt_InterpolatesAndClamps()
+    {
+        var geometry = WayGeometry.Build(Plane, WayKind.Trail, [P(10, 50), P(90, 50)], 1000);
+        var start = geometry.PositionAt(-100);
+        var end = geometry.PositionAt(long.MaxValue);
+        var middle = geometry.PositionAt(geometry.LengthCm / 2);
+
+        Assert.Equal((1000, 5000), (start.X, start.Z));
+        Assert.Equal((9000, 5000), (end.X, end.Z));
+        Assert.InRange(middle.X, 4_990, 5_010);
+        Assert.True(middle.DirX > 0 && middle.DirZ == 0);
+    }
+
+    [Fact]
+    public void AccessPath_IsGraded_ButKeepsEndsOnTheGround()
+    {
+        // Bumpy ground: ±1 m ridges every 4 m along X.
+        var bumpy = TestTerrain.Grid((x, _) => 100_000 + (x % 4 < 2 ? 100 : -100), size: 64);
+        var path = WayGeometry.Build(bumpy, WayKind.AccessPath, [P(5, 10), P(55, 10)], 1000);
+        var trail = WayGeometry.Build(bumpy, WayKind.Trail, [P(5, 10), P(55, 10)], 1000);
+
+        Assert.Equal(bumpy.HeightAt(500, 1000), path.StartHeightCm);
+        Assert.Equal(bumpy.HeightAt(5500, 1000), path.EndHeightCm);
+        int pathRange = path.Ys[15..^15].ToArray().Max() - path.Ys[15..^15].ToArray().Min();
+        int trailRange = trail.Ys.ToArray().Max() - trail.Ys.ToArray().Min();
+        Assert.True(pathRange < trailRange / 4, $"graded range {pathRange} cm vs ground {trailRange} cm");
+    }
+
+    // ---------------------------------------------------------------- planner
+
+    [Fact]
+    public void Path_ThatIsTooSteep_IsRejected_AlongTheContourItIsFine()
+    {
+        var steep = TestTerrain.Plane(250);
+        var down = WayPlanner.Plan(steep, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 50), P(90, 50)]);
+        var across = WayPlanner.Plan(steep, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(50, 10), P(50, 90)]);
+
+        Assert.Contains(down.Issues, i => i.Code == "pathTooSteep");
+        Assert.True(across.IsValid, across.FirstError);
+    }
+
+    [Fact]
+    public void Path_DrawnDownhill_IsReversedToStartLow()
+    {
+        var plan = WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 50), P(90, 50)]);
+
+        Assert.True(plan.IsValid, plan.FirstError);
+        Assert.True(plan.Reversed);
+        Assert.Equal(P(90, 50), plan.Points[0]);
+        Assert.True(plan.Geometry!.StartHeightCm < plan.Geometry.EndHeightCm);
+    }
+
+    [Fact]
+    public void Trail_NeedsAnAccessPathFirst()
+    {
+        var plan = WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.Trail, [P(10, 20), P(90, 20)]);
+        Assert.Equal("needsAccessPath", Assert.Single(plan.Issues).Code);
+    }
+
+    [Fact]
+    public void Trail_SnapsBothEndsOntoThePath_AndIsReversedToStartHigh()
+    {
+        var network = NetworkWithPath();
+        var plan = WayPlanner.Plan(Plane, network, Rules, WayKind.Trail, [P(88, 25), P(50, 40), P(12, 25)]);
+
+        Assert.True(plan.IsValid, plan.FirstError);
+        Assert.True(plan.Reversed);
+        Assert.NotNull(plan.StartJoin);
+        Assert.NotNull(plan.EndJoin);
+        Assert.Equal(20 * 100, plan.Points[0].Z); // moved onto the path at z = 20 m
+        Assert.Equal(20 * 100, plan.Points[^1].Z);
+        Assert.True(plan.DropCm > 0);
+    }
+
+    [Fact]
+    public void Trail_WithAnUnconnectedEnd_IsRejected()
+    {
+        var plan = WayPlanner.Plan(Plane, NetworkWithPath(), Rules, WayKind.Trail, [P(12, 25), P(60, 80)]);
+        Assert.Contains(plan.Issues, i => i.Code == "endNotConnected");
+    }
+
+    [Fact]
+    public void Trail_ThatClimbs_IsRejected()
+    {
+        // Snapped at both ends, but drawn so that the middle climbs back up 20 %.
+        var plan = WayPlanner.Plan(Plane, NetworkWithPath(), Rules, WayKind.Trail, [P(15, 25), P(70, 30), P(40, 32), P(85, 25)]);
+        Assert.Contains(plan.Issues, i => i.Code == "trailUphill");
+    }
+
+    [Fact]
+    public void Planner_RejectsBadInput()
+    {
+        Assert.Equal("tooFewPoints", Code(WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 10)])));
+        Assert.Equal("outsideMap", Code(WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 10), new PointCm(-5, 10)])));
+        Assert.Contains(WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(50, 10), P(50, 20)]).Issues,
+            i => i.Code == "tooShort");
+
+        static string Code(WayPlan plan) => plan.Issues[0].Code;
+    }
+
+    [Fact]
+    public void Planner_CountsTreesInTheCorridor()
+    {
+        var forest = TestTerrain.Grid((x, _) => 100_000 - x * 10, trees: (_, _) => 255, size: 128);
+        var plan = WayPlanner.Plan(forest, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 60), P(110, 60)]);
+
+        var corridor = TerrainScatter.CollectAll(forest).Count(t =>
+            t.Kind == ScatterKind.Tree && Math.Abs(t.ZCm - 6000) <= Rules.PathCorridorCm / 2 && t.XCm is >= 1000 and <= 11000);
+        Assert.True(plan.TreesToClear > 0);
+        Assert.InRange(plan.TreesToClear, corridor - 2, corridor + 2);
+        Assert.Contains(plan.Issues, i => i.Code == "clearing" && i.Severity == IssueSeverity.Warning);
+    }
+
+    // ---------------------------------------------------------------- network
+
+    [Fact]
+    public void Routes_ClimbOnPaths_AndNeverGoUpATrail()
+    {
+        var network = NetworkWith(trail: true);
+        var path = network.BaseWay!;
+        var trail = network.Trails.Single();
+
+        var toTrail = network.Route(network.BaseNode, network.StartNode(trail))!;
+        var leg = Assert.Single(toTrail);
+        Assert.Equal(path.Id, leg.WayId);
+        Assert.True(leg.ToCm > leg.FromCm); // up the path
+
+        var back = network.Route(network.EndNode(trail), network.StartNode(trail))!;
+        Assert.DoesNotContain(back, l => l.WayId == trail.Id);
+        Assert.Empty(network.Route(network.BaseNode, network.BaseNode)!);
+    }
+
+    [Fact]
+    public void Corridor_ContainsPointsOnTheWay()
+    {
+        var network = NetworkWithPath();
+        Assert.True(network.IsInCorridor(5000, 2000));
+        Assert.True(network.IsInCorridor(5000, 2000 + Rules.PathCorridorCm / 2 - 20));
+        Assert.False(network.IsInCorridor(5000, 2000 + Rules.PathCorridorCm));
+    }
+
+    private static WayNetwork NetworkWithPath() => NetworkWith(trail: false);
+
+    private static WayNetwork NetworkWith(bool trail)
+    {
+        var path = WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(5, 20), P(95, 20)]);
+        var ways = new List<Way> { new() { Id = 1, Kind = WayKind.AccessPath, Points = path.Points } };
+        var network = WayNetwork.Build(ways, Plane, Rules);
+        if (!trail) return network;
+
+        var t = WayPlanner.Plan(Plane, network, Rules, WayKind.Trail, [P(15, 25), P(50, 40), P(85, 25)]);
+        Assert.True(t.IsValid, t.FirstError);
+        ways.Add(new Way { Id = 2, Kind = WayKind.Trail, Points = t.Points, StartJoin = t.StartJoin, EndJoin = t.EndJoin });
+        return WayNetwork.Build(ways, Plane, Rules);
+    }
+}
+
+public class RiderTests
+{
+    [Fact]
+    public void DemoNetwork_IsBuilt_AndRidersDoLaps()
+    {
+        var sim = DemoWorld(out _);
+        var started = new List<RunStarted>();
+        var finished = new List<RunFinished>();
+        sim.Events.Subscribe<RunStarted>(started.Add);
+        sim.Events.Subscribe<RunFinished>(finished.Add);
+
+        sim.RunDays(1);
+        sim.Events.Dispatch();
+
+        Assert.Equal(3, sim.State.Ways.Count);
+        Assert.True(finished.Count > 100, $"only {finished.Count} runs in a day");
+        Assert.All(finished, f => Assert.Contains(sim.State.Ways, w => w.Id == f.TrailId && w.Kind == WayKind.Trail));
+        Assert.All(sim.State.Ways.Where(w => w.Kind == WayKind.Trail), w => Assert.True(w.Stats.Runs > 0, $"{w.Name} never ridden"));
+        // Every finished run was started first, by the same rider on the same trail.
+        foreach (var f in finished)
+            Assert.Contains(started, s => s.GuestId == f.GuestId && s.TrailId == f.TrailId && s.Tick <= f.Tick);
+    }
+
+    [Fact]
+    public void ALap_IsClimbOnThePath_ThenTheTrail_ThenIdleAtTheTrailEnd()
+    {
+        var sim = DemoWorld(out var network);
+        var guest = AddRider(sim, skill: 600);
+        var seen = new List<RiderActivity>();
+        int energyAtStart = guest.Energy;
+
+        for (int i = 0; i < 120 && guest.RunsCompleted == 0; i++)
+        {
+            sim.Step();
+            if (seen.Count == 0 || seen[^1] != guest.Activity) seen.Add(guest.Activity);
+        }
+
+        Assert.Equal(1, guest.RunsCompleted);
+        Assert.Equal([RiderActivity.Climbing, RiderActivity.Descending], seen.Take(2));
+        Assert.Equal(RiderActivity.Idle, seen[^1]);
+        Assert.True(guest.Energy < energyAtStart);
+        Assert.Contains(sim.State.Ways, w => w.Id == guest.LastTrailId && w.Kind == WayKind.Trail);
+    }
+
+    [Fact]
+    public void SkilledRiders_AreFaster_AndTooHardSegmentsSlowEveryoneDown()
+    {
+        var rules = new TrailRules();
+        var segment = new WaySegment(0, 0, 1000, -250, 50, 40, 40, 100, TerrainSurface.Forest, 400);
+        var hard = segment with { Difficulty = 900 };
+        var novice = new Guest { Skill = 200 };
+        var expert = new Guest { Skill = 900 };
+
+        Assert.True(RiderSystem.Speed(expert, rules, WayKind.Trail, segment, -250) > RiderSystem.Speed(novice, rules, WayKind.Trail, segment, -250));
+        Assert.True(RiderSystem.Speed(novice, rules, WayKind.Trail, hard, -250) < RiderSystem.Speed(novice, rules, WayKind.Trail, segment, -250));
+        // Climbing is slower than descending.
+        Assert.True(RiderSystem.Speed(expert, rules, WayKind.AccessPath, segment, 100) < RiderSystem.Speed(expert, rules, WayKind.Trail, segment, -250));
+    }
+
+    [Fact]
+    public void TiredRiders_GoHome()
+    {
+        var sim = DemoWorld(out _);
+        var guest = AddRider(sim, skill: 500);
+        guest.Energy = sim.State.TrailRules.TiredEnergy - 1;
+        var left = new List<GuestLeft>();
+        sim.Events.Subscribe<GuestLeft>(left.Add);
+
+        sim.Step();
+        sim.Events.Dispatch();
+
+        Assert.Contains(left, l => l.GuestId == guest.Id && l.Reason == GuestLeaveReason.Tired);
+    }
+
+    [Fact]
+    public void DeletingATrail_SendsItsRidersBackToTheBase()
+    {
+        var sim = DemoWorld(out var network);
+        sim.RunTicks(30);
+        var red = sim.State.Ways.Single(w => w.Name == "Red Rocket");
+        var path = sim.State.Ways.Single(w => w.Kind == WayKind.AccessPath);
+
+        Assert.Contains("attached", Reject(sim, new DeleteWayCommand(path.Id)));
+        sim.Commands.Enqueue(new DeleteWayCommand(red.Id));
+        sim.Step();
+
+        Assert.DoesNotContain(sim.State.Ways, w => w.Id == red.Id);
+        Assert.All(sim.State.Guests, g =>
+        {
+            Assert.NotEqual(red.Id, g.LocationWayId);
+            Assert.DoesNotContain(g.Route, l => l.WayId == red.Id);
+        });
+    }
+
+    [Fact]
+    public void WithoutAnAccessPath_GuestsWander_AsBefore()
+    {
+        var sim = new Simulation(TestWorlds.Create());
+        sim.RunTicks(9 * 60);
+        Assert.NotEmpty(sim.State.Guests);
+        Assert.All(sim.State.Guests, g => Assert.Equal(RiderActivity.Wandering, g.Activity));
+    }
+
+    [Fact]
+    public void SaveLoad_WithRidersMidRun_ContinuesIdentically()
+    {
+        var uninterrupted = DemoWorld(out _);
+        uninterrupted.RunTicks(400);
+        var first = DemoWorld(out _);
+        first.RunTicks(200);
+        Assert.Contains(first.State.Guests, g => g.Activity == RiderActivity.Descending);
+
+        var resumed = new Simulation(SaveGame.Deserialize(SaveGame.Serialize(first.State)));
+        resumed.RunTicks(200);
+
+        Assert.Equal(StateHash.Compute(uninterrupted.State), StateHash.Compute(resumed.State));
+    }
+
+    /// <summary>A test world at 08:00 on day 0 with the demo network built.</summary>
+    private static Simulation DemoWorld(out WayNetwork network)
+    {
+        var sim = new Simulation(TestWorlds.Create());
+        foreach (var c in TestWorlds.DemoNetwork())
+            sim.Commands.Enqueue(c.Command, 8 * 60);
+        sim.RunTicks(8 * 60 + 1);
+        sim.Events.Clear();
+        Assert.Equal(3, sim.State.Ways.Count);
+        network = sim.Network;
+        return sim;
+    }
+
+    private static Guest AddRider(Simulation sim, int skill)
+    {
+        var guest = new Guest
+        {
+            Id = sim.State.AllocateEntityId(),
+            Skill = skill,
+            Energy = 1000,
+            Happiness = 700,
+            ArrivedTick = sim.State.Tick,
+            PlannedStayMinutes = 600,
+            Activity = RiderActivity.Wandering,
+        };
+        sim.State.Guests.Add(guest);
+        return guest;
+    }
+
+    private static string Reject(Simulation sim, ICommand command)
+    {
+        sim.Commands.Enqueue(command);
+        sim.Step();
+        var rejected = sim.Events.Pending.OfType<CommandRejected>().Single(r => ReferenceEquals(r.Command, command));
+        sim.Events.Clear();
+        return rejected.Reason;
+    }
+}

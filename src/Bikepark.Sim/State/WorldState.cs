@@ -1,6 +1,7 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Terrain;
+using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.State;
 
@@ -30,6 +31,14 @@ public sealed class WorldState
     /// and is not saved.
     /// </summary>
     public TerrainSettings Terrain { get; set; } = new();
+
+    public TrailRules TrailRules { get; set; } = new();
+
+    /// <summary>Access paths and trails, in build order. Only player input; geometry is derived.</summary>
+    public List<Way> Ways { get; set; } = [];
+
+    /// <summary>Incremented whenever <see cref="Ways"/> changes; invalidates the derived network.</summary>
+    public int WaysRevision { get; set; }
 
     public FinanceState Finance { get; set; } = new();
 
@@ -106,14 +115,70 @@ public sealed class ParkStats
     public long SumExitHappiness { get; set; }
 }
 
+public enum RiderStyle : byte
+{
+    Flow = 0,
+    Technical = 1,
+    Casual = 2,
+}
+
+public enum RiderActivity : byte
+{
+    /// <summary>No access path yet: the guest just hangs around (pre-trail behaviour).</summary>
+    Wandering = 0,
+
+    /// <summary>Between laps, at <see cref="Guest.LocationWayId"/>/<see cref="Guest.LocationCm"/>.</summary>
+    Idle = 1,
+
+    /// <summary>On an access path (usually climbing).</summary>
+    Climbing = 2,
+
+    /// <summary>On a trail.</summary>
+    Descending = 3,
+}
+
 public sealed class Guest
 {
     public int Id { get; set; }
     public long CashCents { get; set; }
 
-    /// <summary>0..1000.</summary>
+    /// <summary>Mood, 0..1000.</summary>
     public int Happiness { get; set; }
 
     public long ArrivedTick { get; set; }
     public int PlannedStayMinutes { get; set; }
+
+    // ---- Rider ----
+
+    /// <summary>Riding skill, 0..1000 (compare with trail difficulty).</summary>
+    public int Skill { get; set; }
+
+    public RiderStyle Style { get; set; }
+
+    /// <summary>0..1000; climbing drains it, tired riders go home.</summary>
+    public int Energy { get; set; } = 1000;
+
+    public RiderActivity Activity { get; set; }
+
+    /// <summary>Where an idle rider is: a way and distance along it (a network node).</summary>
+    public int LocationWayId { get; set; }
+    public long LocationCm { get; set; }
+
+    /// <summary>Current lap: legs to the chosen trail's start, then the trail itself (last leg).</summary>
+    public List<RouteLeg> Route { get; set; } = [];
+
+    /// <summary>Distance covered along the whole <see cref="Route"/>.</summary>
+    public long RouteProgressCm { get; set; }
+
+    /// <summary>Index of the leg the rider is on.</summary>
+    public int LegIndex { get; set; }
+
+    /// <summary>The trail this lap is for (0 = none).</summary>
+    public int TrailId { get; set; }
+
+    public int LastTrailId { get; set; }
+    public long RunStartTick { get; set; }
+    public long RunFun { get; set; }
+    public int RunSegments { get; set; }
+    public int RunsCompleted { get; set; }
 }

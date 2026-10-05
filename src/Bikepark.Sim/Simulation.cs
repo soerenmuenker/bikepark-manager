@@ -4,6 +4,7 @@ using Bikepark.Sim.Events;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Systems;
 using Bikepark.Sim.Terrain;
+using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim;
 
@@ -21,6 +22,8 @@ public sealed class Simulation
     private readonly SimContext _context;
     private readonly IReadOnlyList<ISimSystem> _systems;
     private readonly Lazy<TerrainGrid> _terrain;
+    private WayNetwork? _network;
+    private int _networkRevision = -1;
 
     public Simulation(WorldState state)
     {
@@ -29,13 +32,14 @@ public sealed class Simulation
         Events = new EventBus();
         Commands = new CommandQueue(state);
         _terrain = new Lazy<TerrainGrid>(() => TerrainCache.Get(state.Terrain, state.Seed));
-        _context = new SimContext(state, Events, _terrain);
+        _context = new SimContext(this, Events);
 
         // Order matters for determinism and gameplay. Append new systems deliberately.
         _systems =
         [
             new ParkHoursSystem(),
             new GuestArrivalSystem(),
+            new RiderSystem(),
             new GuestSystem(),
             new FinanceSystem(),
         ];
@@ -52,11 +56,28 @@ public sealed class Simulation
     /// </summary>
     public TerrainGrid Terrain => _terrain.Value;
 
+    /// <summary>
+    /// The way network derived from <see cref="WorldState.Ways"/>, rebuilt when <see cref="WorldState.WaysRevision"/>
+    /// changes. With no ways it is empty and does not generate the terrain.
+    /// </summary>
+    public WayNetwork Network
+    {
+        get
+        {
+            if (_network is null || _networkRevision != State.WaysRevision)
+            {
+                _network = State.Ways.Count == 0 ? WayNetwork.Empty : WayNetwork.Build(State.Ways, Terrain, State.TrailRules);
+                _networkRevision = State.WaysRevision;
+            }
+            return _network;
+        }
+    }
+
     public void Step()
     {
         foreach (var scheduled in Commands.TakeDue(State.Tick))
         {
-            string? rejection = scheduled.Command.Validate(State);
+            string? rejection = scheduled.Command.Validate(_context);
             if (rejection is null)
             {
                 scheduled.Command.Apply(_context);

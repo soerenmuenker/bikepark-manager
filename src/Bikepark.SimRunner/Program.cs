@@ -5,6 +5,7 @@ using Bikepark.Sim.Events;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Reporting;
 using Bikepark.Sim.Scenarios;
+using Bikepark.Sim.Trails;
 using Bikepark.SimRunner.Terrain;
 
 namespace Bikepark.SimRunner;
@@ -59,6 +60,8 @@ public static class Program
         var rejections = new List<CommandRejected>();
         sim.Events.Subscribe<DayEnded>(e => dailyReports.Add(e.Report));
         sim.Events.Subscribe<CommandRejected>(rejections.Add);
+        var leftReasons = new List<GuestLeaveReason>();
+        sim.Events.Subscribe<GuestLeft>(e => leftReasons.Add(e.Reason));
 
         for (int day = 0; day < options.Days; day++)
         {
@@ -69,21 +72,54 @@ public static class Program
         if (options.SavePath is { } savePath)
             SaveGame.Save(state, savePath);
 
+        var leaveReasons = leftReasons.GroupBy(r => r).OrderBy(g => g.Key)
+            .ToDictionary(g => g.Key.ToString(), g => g.Count());
         var output = new RunnerOutput(
             Days: options.Days,
             Kpis: KpiReport.From(state),
+            Ways: WayReports(sim),
+            GuestsLeft: leaveReasons,
             RejectedCommands: rejections.Select(r => new RejectedCommand(r.Tick, r.Command, r.Reason)).ToList(),
             Daily: options.IncludeDaily ? dailyReports : null);
 
         Console.WriteLine(JsonSerializer.Serialize(output, RunnerJson.Options));
     }
+
+    private static List<WayReport> WayReports(Simulation sim) => sim.State.Ways.Select(w =>
+    {
+        var geometry = sim.Network.Geometry(w.Id);
+        bool trail = w.Kind == WayKind.Trail;
+        return new WayReport(
+            w.Id, w.Name, w.Kind,
+            trail ? geometry.Rating : null,
+            trail ? geometry.DifficultyScore : null,
+            geometry.LengthCm / 100,
+            Math.Abs(geometry.StartHeightCm - geometry.EndHeightCm) / 100,
+            w.Stats.Runs,
+            w.Stats.Runs == 0 ? null : Math.Round((double)w.Stats.SumRunMinutes / w.Stats.Runs, 1),
+            w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs));
+    }).ToList();
 }
 
 internal sealed record RejectedCommand(long Tick, ICommand Command, string Reason);
 
+internal sealed record WayReport(
+    int Id,
+    string Name,
+    WayKind Kind,
+    TrailRating? Rating,
+    int? Difficulty,
+    long LengthMeters,
+    long DropMeters,
+    long Runs,
+    double? AverageRunMinutes,
+    int? AverageFun);
+
 internal sealed record RunnerOutput(
     int Days,
     KpiReport Kpis,
+    List<WayReport> Ways,
+    Dictionary<string, int> GuestsLeft,
     List<RejectedCommand> RejectedCommands,
     List<DayReport>? Daily);
 

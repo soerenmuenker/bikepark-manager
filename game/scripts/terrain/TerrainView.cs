@@ -34,10 +34,33 @@ public partial class TerrainView : Node3D
     private ArrayMesh _rockMesh = null!;
     private StandardMaterial3D _scatterMaterial = null!;
     private Node3D? _chunks;
+    private readonly List<(Node3D Node, int X0, int Z0, int SizeX, int SizeZ)> _chunkInfo = [];
+    private Func<int, int, bool>? _cleared;
 
     public TerrainGrid? Grid { get; private set; }
 
     public OverlayMode Overlay { get; private set; } = OverlayMode.Natural;
+
+    /// <summary>
+    /// Hides trees and rocks for which <paramref name="cleared"/>(xCm, zCm) is true (way corridors) and rebuilds the
+    /// instance meshes.
+    /// </summary>
+    public void SetScatterFilter(Func<int, int, bool>? cleared)
+    {
+        _cleared = cleared;
+        if (Grid is null) return;
+        var scatter = new List<ScatterInstance>();
+        _treeCount = _rockCount = 0;
+        foreach (var (node, x0, z0, sizeX, sizeZ) in _chunkInfo)
+        {
+            foreach (var child in node.GetChildren().OfType<MultiMeshInstance3D>().ToList())
+            {
+                node.RemoveChild(child);
+                child.QueueFree();
+            }
+            AddScatter(Grid, node, x0, z0, sizeX, sizeZ, node.Position, scatter);
+        }
+    }
 
     /// <summary>Raised after the meshes were (re)built for a new terrain.</summary>
     public event Action<TerrainGrid>? TerrainBuilt;
@@ -113,26 +136,30 @@ public partial class TerrainView : Node3D
         var stopwatch = Stopwatch.StartNew();
         Grid = grid;
         _chunks?.QueueFree();
+        _chunkInfo.Clear();
+        _treeCount = _rockCount = 0;
         _chunks = new Node3D { Name = "Chunks" };
         AddChild(_chunks);
         _terrainMaterial.SetShaderParameter("tree_line_m", grid.Settings.TreeLineCm / 100f);
 
         var scatter = new List<ScatterInstance>();
-        int chunkCount = 0, treeCount = 0, rockCount = 0;
+        int chunkCount = 0;
         for (int z0 = 0; z0 < grid.SizeMeters; z0 += ChunkSizeMeters)
         {
             for (int x0 = 0; x0 < grid.SizeMeters; x0 += ChunkSizeMeters)
             {
-                _chunks.AddChild(BuildChunk(grid, x0, z0, scatter, ref treeCount, ref rockCount));
+                _chunks.AddChild(BuildChunk(grid, x0, z0, scatter));
                 chunkCount++;
             }
         }
 
-        GD.Print($"Terrain: {chunkCount} chunks, {treeCount} trees, {rockCount} rocks built in {stopwatch.ElapsedMilliseconds} ms");
+        GD.Print($"Terrain: {chunkCount} chunks, {_treeCount} trees, {_rockCount} rocks built in {stopwatch.ElapsedMilliseconds} ms");
         TerrainBuilt?.Invoke(grid);
     }
 
-    private Node3D BuildChunk(TerrainGrid grid, int x0, int z0, List<ScatterInstance> scatter, ref int trees, ref int rocks)
+    private int _treeCount, _rockCount;
+
+    private Node3D BuildChunk(TerrainGrid grid, int x0, int z0, List<ScatterInstance> scatter)
     {
         int sizeX = Math.Min(ChunkSizeMeters, grid.SizeMeters - x0);
         int sizeZ = Math.Min(ChunkSizeMeters, grid.SizeMeters - z0);
@@ -159,19 +186,26 @@ public partial class TerrainView : Node3D
         };
         chunk.AddChild(near);
         chunk.AddChild(far);
+        _chunkInfo.Add((chunk, x0, z0, sizeX, sizeZ));
+        AddScatter(grid, chunk, x0, z0, sizeX, sizeZ, center, scatter);
+        return chunk;
+    }
 
+    private void AddScatter(TerrainGrid grid, Node3D chunk, int x0, int z0, int sizeX, int sizeZ, Vector3 center, List<ScatterInstance> scatter)
+    {
         // Scatter cells are owned by the chunk containing their origin; the last row/column also owns the map edge.
         int maxX = x0 + sizeX >= grid.SizeMeters ? grid.SizeMeters + 1 : x0 + sizeX;
         int maxZ = z0 + sizeZ >= grid.SizeMeters ? grid.SizeMeters + 1 : z0 + sizeZ;
         scatter.Clear();
         TerrainScatter.Collect(grid, x0, z0, maxX, maxZ, scatter);
+        if (_cleared is { } cleared)
+            scatter.RemoveAll(s => cleared(s.XCm, s.ZCm));
         var treeItems = scatter.Where(s => s.Kind == ScatterKind.Tree).ToList();
         var rockItems = scatter.Where(s => s.Kind == ScatterKind.Rock).ToList();
         if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
         if (rockItems.Count > 0) chunk.AddChild(BuildInstances("Rocks", _rockMesh, rockItems, center, RockDrawDistance, RockTint));
-        trees += treeItems.Count;
-        rocks += rockItems.Count;
-        return chunk;
+        _treeCount += treeItems.Count;
+        _rockCount += rockItems.Count;
     }
 
     private MultiMeshInstance3D BuildInstances(

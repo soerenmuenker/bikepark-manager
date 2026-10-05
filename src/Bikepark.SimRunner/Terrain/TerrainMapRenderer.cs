@@ -1,4 +1,5 @@
 using Bikepark.Sim.Terrain;
+using Bikepark.Sim.Trails;
 
 namespace Bikepark.SimRunner.Terrain;
 
@@ -35,7 +36,16 @@ internal static class TerrainMapRenderer
         new(0.20, 0.45, 0.85), // Water
     ];
 
-    public static byte[] Render(TerrainGrid grid, MapMode mode, IReadOnlyList<ScatterInstance>? scatter)
+    // Trail colors by rating; same as the Godot way view (game/scripts/ways/WayView.cs).
+    private static readonly Rgb[] RatingColors =
+    [
+        new(0.15, 0.65, 0.25), // Green
+        new(0.15, 0.40, 0.90), // Blue
+        new(0.90, 0.15, 0.15), // Red
+        new(0.08, 0.08, 0.08), // Black
+    ];
+
+    public static byte[] Render(TerrainGrid grid, MapMode mode, IReadOnlyList<ScatterInstance>? scatter, WayNetwork? network = null)
     {
         int n = grid.Samples;
         var heights = grid.Heights;
@@ -75,8 +85,52 @@ internal static class TerrainMapRenderer
             }
         }
 
+        if (network is not null)
+            DrawNetwork(rgb, n, network);
+
         DrawMarker(rgb, n, grid.Peak.X, grid.Peak.Z, new Rgb(0.9, 0.1, 0.1));
         return rgb;
+    }
+
+    private static void DrawNetwork(byte[] rgb, int n, WayNetwork network)
+    {
+        // Paths first (wide, gravel), then trails on top, then junctions and the base.
+        foreach (var way in network.Ways.OrderBy(w => w.Kind))
+        {
+            var g = network.Geometry(way.Id);
+            bool path = way.Kind == WayKind.AccessPath;
+            var color = path ? new Rgb(0.92, 0.90, 0.84) : RatingColors[(int)g.Rating];
+            int radius = path ? 2 : 1;
+            for (int i = 0; i < g.SampleCount; i++)
+                Disc(rgb, n, g.Xs[i] / 100, g.Zs[i] / 100, radius, color);
+        }
+        foreach (var way in network.Ways)
+        {
+            foreach (var join in new[] { way.StartJoin, way.EndJoin })
+            {
+                if (join is null || !network.TryGetGeometry(join.WayId, out var target)) continue;
+                var p = target.PositionAt(join.DistanceCm);
+                Disc(rgb, n, p.X / 100, p.Z / 100, 3, new Rgb(1, 1, 1));
+                Disc(rgb, n, p.X / 100, p.Z / 100, 2, new Rgb(0.2, 0.2, 0.2));
+            }
+        }
+        if (network.BaseWay is { } baseWay)
+        {
+            var b = network.Geometry(baseWay.Id).PositionAt(0);
+            Disc(rgb, n, b.X / 100, b.Z / 100, 6, new Rgb(1, 1, 1));
+            Disc(rgb, n, b.X / 100, b.Z / 100, 4, new Rgb(0.95, 0.55, 0.1));
+        }
+    }
+
+    private static void Disc(byte[] rgb, int n, int cx, int cz, int radius, Rgb color)
+    {
+        for (int dz = -radius; dz <= radius; dz++)
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                int x = cx + dx, z = cz + dz;
+                if (dx * dx + dz * dz <= radius * radius && x >= 0 && z >= 0 && x < n && z < n)
+                    Put(rgb, z * n + x, color);
+            }
     }
 
     private static Rgb ReliefColor(TerrainGrid grid, TerrainSample s)

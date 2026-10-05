@@ -25,9 +25,19 @@ public enum GuestLeaveReason
     StayCompleted,
     Unhappy,
     ParkClosed,
+    Tired,
 }
 
 public sealed record GuestLeft(long Tick, int GuestId, GuestLeaveReason Reason) : ISimEvent;
+
+public sealed record WayBuilt(long Tick, int WayId) : ISimEvent;
+
+public sealed record WayDeleted(long Tick, int WayId) : ISimEvent;
+
+public sealed record RunStarted(long Tick, int GuestId, int TrailId) : ISimEvent;
+
+/// <summary>A rider reached the end of a trail. Fun is the run's average, 0..1000.</summary>
+public sealed record RunFinished(long Tick, int GuestId, int TrailId, int Minutes, int Fun) : ISimEvent;
 
 public sealed record DayReport(
     long Day,

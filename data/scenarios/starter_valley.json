@@ -16,6 +16,25 @@
     "dailyUpkeepCents": 25000,
     "snackPriceCents": 400
   },
+  // Building rules and rider tuning (TrailRules). Grades in permille, speeds in cm/s, energy on 0..1000.
+  "trailRules": {
+    "segmentLengthMeters": 10,
+    "snapRadiusMeters": 12,
+    "minLengthMeters": 30,
+    "maxLengthMeters": 4000,
+    "pathMaxGradePermille": 150,
+    "trailMaxDownGradePermille": 700,
+    "trailMaxUpGradePermille": 80,
+    "pathCorridorCm": 400,
+    "trailCorridorCm": 200,
+    "climbSpeedMinCmPerS": 110,
+    "climbSpeedMaxCmPerS": 300,
+    "descentSpeedMinCmPerS": 300,
+    "descentSpeedMaxCmPerS": 900,
+    "climbEnergyPerMeterGain": 2,
+    "descentEnergyPer100Meters": 3,
+    "tiredEnergy": 150
+  },
   // Terrain is regenerated from these settings; "seed" defaults to the scenario seed.
   "terrain": {
     "sizeMeters": 1000,
