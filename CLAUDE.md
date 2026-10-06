@@ -16,7 +16,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Systems/LiftSystem.cs` – booked bike access tiers at opening, carrier dispatch, boarding bike cabins from the FIFO queue
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
-- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/Hud.cs` debug HUD,
+- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus, drawn icons, theme in code),
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `shaders/`)
 - `data/` – JSON content (`scenarios/`, `lift_types.json`, `scripts/` command scripts such as `demo_lift_network.json`)
@@ -80,12 +80,15 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 
 ## Game controls (debug build)
 
-WASD/arrows/screen edge/middle-drag pan · wheel or +/- zoom · Q/E or right-drag orbit · F1 cycles terrain overlay
-(natural / slope / surface) · HUD shows terrain data under the cursor · P draw gravel access path, T draw trail
-(click or drag points, Backspace undo, Enter build, Esc cancel; preview colored by gradient; ends snap onto plateaus) ·
-L place lift (valley, then top) · K place parking lot (centre, then direction) · [ / ] book lower/higher bike access tier
-(from next opening) · F follow next rider ·
-1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale (`Trails/Gradient.cs`, 1 point = 9°).
+HUD: bottom bar with clock/speed, category menus (B build · V trails · R riders · G lifts · M finances · O map; Esc
+closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
+pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
+P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter build, Esc cancel; preview colored
+by gradient; ends snap onto plateaus) · L place lift (valley, then top) · K place parking lot (centre, then direction) ·
+[ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · F follow next rider ·
+1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
+(`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
+`--panel=<menu>`, `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes).
 
 ## Conventions
 

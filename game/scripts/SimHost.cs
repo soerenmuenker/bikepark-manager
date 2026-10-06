@@ -15,7 +15,8 @@ namespace Bikepark.Game;
 /// <see cref="Enqueue"/>. Views that animate between ticks use <see cref="BeforeStep"/> and
 /// <see cref="InterpolationAlpha"/>.
 /// Command-line user args (after <c>--</c>): <c>--demo</c> builds the demo network, <c>--speed=N</c> picks a speed index,
-/// <c>--report</c> prints a KPI line every game hour (for headless checks).
+/// <c>--report</c> prints a KPI line every game hour (for headless checks), <c>--advance=N</c> simulates N ticks at start
+/// (after <c>--demo</c>, e.g. 720 = noon on day 1).
 /// </summary>
 public partial class SimHost : Node
 {
@@ -70,6 +71,7 @@ public partial class SimHost : Node
             if (arg == "--demo") LoadDemoNetwork();
             else if (arg == "--report") _report = true;
             else if (arg.StartsWith("--speed=", StringComparison.Ordinal) && int.TryParse(arg[8..], out int speed)) SetSpeedIndex(speed);
+            else if (arg.StartsWith("--advance=", StringComparison.Ordinal) && long.TryParse(arg[10..], out long ticks)) Sim.RunTicks(ticks);
         }
     }
 

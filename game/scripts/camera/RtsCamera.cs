@@ -7,7 +7,8 @@ namespace Bikepark.Game.Camera;
 /// RTS-style camera orbiting a focus point on the terrain.
 /// <list type="bullet">
 ///   <item>Pan: WASD / arrow keys, screen edges, or middle-mouse drag.</item>
-///   <item>Zoom: mouse wheel (or +/-).</item>
+///   <item>Zoom: mouse wheel, trackpad pinch or two-finger scroll, +/- keys (by character, so it works on any
+///         keyboard layout), or the HUD's zoom buttons.</item>
 ///   <item>Orbit: Q / E, or right-mouse drag (horizontal = rotate, vertical = tilt).</item>
 /// </list>
 /// The focus stays on the map and the camera never goes below the terrain.
@@ -88,11 +89,19 @@ public partial class RtsCamera : Node3D
                 _targetYaw -= motion.Relative.X * MouseOrbitSensitivity;
                 _targetPitch = ClampPitch(_targetPitch + motion.Relative.Y * MouseOrbitSensitivity);
                 break;
-            case InputEventKey { Pressed: true, PhysicalKeycode: Key.Equal or Key.KpAdd }:
-                Zoom(1f / ZoomStep);
+            case InputEventMagnifyGesture pinch when pinch.Factor > 0:
+                Zoom(1f / pinch.Factor);
                 break;
-            case InputEventKey { Pressed: true, PhysicalKeycode: Key.Minus or Key.KpSubtract }:
-                Zoom(ZoomStep);
+            case InputEventPanGesture pan when !_dragOrbit:
+                // Two-finger scroll on a trackpad: up zooms in, like the wheel.
+                Zoom(MathF.Pow(ZoomStep, pan.Delta.Y * 0.5f));
+                break;
+            // Logical keys: "+" is its own key on many layouts (e.g. German), "=" on US keyboards.
+            case InputEventKey { Pressed: true, Keycode: Key.Plus or Key.Equal or Key.KpAdd }:
+                ZoomIn();
+                break;
+            case InputEventKey { Pressed: true, Keycode: Key.Minus or Key.KpSubtract }:
+                ZoomOut();
                 break;
             default:
                 return;
@@ -109,7 +118,9 @@ public partial class RtsCamera : Node3D
         if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down)) input.Y += 1;
         if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left)) input.X -= 1;
         if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) input.X += 1;
-        input += EdgePanInput();
+        // No edge panning while the mouse is over the HUD (the bar sits at the bottom edge).
+        if (GetViewport().GuiGetHoveredControl() is null)
+            input += EdgePanInput();
         if (input != Vector2.Zero)
             Pan(input.Normalized() * PanSpeed * _targetDistance * dt);
 
@@ -154,6 +165,10 @@ public partial class RtsCamera : Node3D
         var right = new Vector2(MathF.Cos(_targetYaw), -MathF.Sin(_targetYaw));
         _targetFocus = ClampToMap(_targetFocus + right * screenDelta.X - forward * screenDelta.Y);
     }
+
+    public void ZoomIn() => Zoom(1f / ZoomStep);
+
+    public void ZoomOut() => Zoom(ZoomStep);
 
     private void Zoom(float factor) =>
         _targetDistance = Mathf.Clamp(_targetDistance * factor, MinDistance, MaxDistance);

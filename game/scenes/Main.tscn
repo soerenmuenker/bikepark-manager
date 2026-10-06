@@ -1,7 +1,7 @@
 [gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/SimHost.cs" id="1_simhost"]
-[ext_resource type="Script" path="res://scripts/Hud.cs" id="2_hud"]
+[ext_resource type="Script" path="res://scripts/ui/Hud.cs" id="2_hud"]
 [ext_resource type="Script" path="res://scripts/terrain/TerrainView.cs" id="3_terrain"]
 [ext_resource type="Script" path="res://scripts/camera/RtsCamera.cs" id="4_camera"]
 [ext_resource type="Script" path="res://scripts/ways/WayView.cs" id="5_wayview"]
