@@ -138,9 +138,13 @@ Rules:
 
 ## 11. Ways and riders (Phase 2)
 
-- **Ways** are what the player builds: gravel **access paths** (two-way, ≤ 15 % per 10 m segment, graded: their
-  height is the terrain smoothed over ±10 m, ends on the ground) and downhill **trails** (one-way, ≤ 70 % down,
-  ≤ 8 % up, follow the ground). The first path's low end is the park **base** where guests arrive; a trail needs
+- **Gradients** use a game scale from -10 to +10, linear in angle (1 point = 9°; 0 flat, ±10 vertical), stored in
+  tenths (`Gradient`, integer lookup table). Limits are deliberately generous (fun over realism): only extremes
+  are errors, steep stretches are merged warnings, and steepness is paid for in gameplay (slow climbs, extra energy).
+- **Ways** are what the player builds: gravel **access paths** (two-way, error beyond ±4.0, warning beyond 2.0;
+  graded: their height is the terrain smoothed over ±25 m, ends on the ground) and downhill **trails** (one-way,
+  error below -8.0 or above +3.0, warnings beyond -5.0 / +1.5; follow the ground). Splines are resampled every
+  1 m of horizontal distance so grading and interpolation see evenly spaced samples. The first path's low end is the park **base** where guests arrive; a trail needs
   a path first and both of its ends must snap (12 m) onto existing ways. Validation guarantees every point of the
   network is reachable from the base and can get back to it.
 - `WorldState.Ways` stores only player input (oriented, snapped control points and joins `(wayId, distanceCm)`).
@@ -152,7 +156,7 @@ Rules:
   seeded RNG), route up the paths to its start, ride it, score fun per segment, update mood and trail stats.
   Each tick moves riders 60 s along their legs at an integer speed from skill, grade, roughness, turns and
   difficulty. Climbing costs energy; tired riders go home. Riders only leave between laps (or at closing).
-- Time scale in the client: 1x = one game minute per real second; the view interpolates rider progress between
+- Time scale in the client: 1x = one game minute per 8 real seconds; the view interpolates rider progress between
   ticks (`SimHost.BeforeStep` + `InterpolationAlpha`).
 - Building is instant and free in Phase 2; trees and rocks in a way's corridor disappear (derived, not saved).
   Phase 3 replaces climbing-only access with lifts and queues, Phase 4 adds crews, cutting and build time.

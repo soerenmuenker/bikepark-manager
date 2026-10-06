@@ -1,7 +1,7 @@
 // Ribbons for paths, trails and the build preview: vertex colors, pulled slightly towards the camera in depth so
 // they stay visible on top of the terrain (including its coarser far-LOD mesh) without floating visibly.
 shader_type spatial;
-render_mode cull_disabled;
+render_mode cull_disabled, shadows_disabled, unshaded;
 
 uniform float depth_bias = 0.0015;
 uniform float roughness_value = 0.95;

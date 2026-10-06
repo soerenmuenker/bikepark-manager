@@ -17,7 +17,7 @@ public partial class RiderView : Node3D
     [Export] public NodePath CameraPath { get; set; } = "../RtsCamera";
 
     /// <summary>Riders are drawn larger than life so they read from an RTS camera.</summary>
-    [Export] public float ModelScale { get; set; } = 1.6f;
+    [Export] public float ModelScale { get; set; } = 3.5f;
 
     private SimHost _host = null!;
     private RtsCamera _camera = null!;

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Persistence;
@@ -8,8 +9,8 @@ namespace Bikepark.Sim.Persistence;
 /// <summary>JSON save/load of <see cref="WorldState"/>. A save is the full state; events are not saved.</summary>
 public static class SaveGame
 {
-    /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Load"/>.</summary>
-    public const int CurrentVersion = 1;
+    /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
+    public const int CurrentVersion = 2;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -18,11 +19,33 @@ public static class SaveGame
 
     public static WorldState Deserialize(string json)
     {
+        json = Migrate(json);
         var save = JsonSerializer.Deserialize<SaveFile>(json, SimJson.Indented)
                    ?? throw new InvalidDataException("Save file is empty.");
         if (save.Version != CurrentVersion)
             throw new InvalidDataException($"Unsupported save version {save.Version} (expected {CurrentVersion}).");
         return save.World ?? throw new InvalidDataException("Save file has no world.");
+    }
+
+    /// <summary>Upgrades older save JSON step by step to <see cref="CurrentVersion"/>.</summary>
+    private static string Migrate(string json)
+    {
+        var root = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) as JsonObject;
+        int version = root?["version"]?.GetValue<int>() ?? CurrentVersion;
+        if (root is null || version >= CurrentVersion) return json;
+
+        if (version == 1)
+        {
+            // v2: trail gradient limits moved from grade permille to the -10..10 gradient score; old values are dropped
+            // (the new defaults apply).
+            if (root["world"]?["trailRules"] is JsonObject rules)
+                foreach (string old in new[] { "pathMaxGradePermille", "trailMaxDownGradePermille", "trailMaxUpGradePermille" })
+                    rules.Remove(old);
+            version = 2;
+        }
+
+        root["version"] = version;
+        return root.ToJsonString();
     }
 
     public static void Save(WorldState state, string path) => File.WriteAllText(path, Serialize(state));

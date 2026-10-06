@@ -16,8 +16,36 @@ internal static class WayMeshes
         _ => new Color(0.08f, 0.08f, 0.08f),
     };
 
-    public static readonly Color Gravel = new(0.80f, 0.77f, 0.70f);
-    public static readonly Color Dirt = new(0.42f, 0.30f, 0.19f);
+    /// <summary>
+    /// Preview color for a segment's gradient score (tenths): green = easy, yellow, orange = steep, red = beyond the
+    /// limit; purple = climbing on a trail. Paths are judged in both directions, trails by their drop.
+    /// </summary>
+    public static Color GradientColor(WayKind kind, int tenths, TrailRules rules)
+    {
+        var easy = new Color(0.25f, 0.80f, 0.30f);
+        var medium = new Color(0.95f, 0.85f, 0.20f);
+        var steep = new Color(1.0f, 0.50f, 0.10f);
+        var tooSteep = new Color(0.95f, 0.10f, 0.10f);
+        if (kind == WayKind.AccessPath)
+        {
+            int g = Math.Abs(tenths);
+            return g > rules.PathMaxGradient ? tooSteep
+                : g > rules.PathSteepGradient ? steep
+                : g > rules.PathSteepGradient / 2 ? medium
+                : easy;
+        }
+        if (tenths > rules.TrailMaxClimbGradient) return tooSteep;
+        if (tenths > rules.TrailSteepClimbGradient) return new Color(0.70f, 0.30f, 0.90f);
+        int drop = -tenths;
+        return drop > rules.TrailMaxDropGradient ? tooSteep
+            : drop > rules.TrailSteepDropGradient ? steep
+            : drop > rules.TrailSteepDropGradient / 2 ? medium
+            : easy;
+    }
+
+    // Ways use an unshaded material (lit ribbons rendered dark), so colors are given in sRGB and converted to linear.
+    public static readonly Color Gravel = new Color(0.78f, 0.78f, 0.79f).SrgbToLinear(); // light rock grey
+    public static readonly Color Dirt = new Color(0.45f, 0.31f, 0.19f).SrgbToLinear(); // wood earth tone
 
     /// <param name="followGround">Edges sit on the terrain (trails); otherwise on the way's own graded height (paths).</param>
     /// <param name="color">Color per sample index.</param>

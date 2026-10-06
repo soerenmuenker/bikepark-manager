@@ -35,14 +35,32 @@ public class PersistenceTests
         string json = SaveGame.Serialize(state);
 
         Assert.Contains("\"type\": \"setEntryFee\"", json);
-        Assert.Contains("\"version\": 1", json);
+        Assert.Contains($"\"version\": {SaveGame.CurrentVersion}", json);
     }
 
     [Fact]
     public void Load_RejectsUnknownVersion()
     {
-        string json = SaveGame.Serialize(TestWorlds.Create()).Replace("\"version\": 1", "\"version\": 999");
+        string json = SaveGame.Serialize(TestWorlds.Create())
+            .Replace($"\"version\": {SaveGame.CurrentVersion}", "\"version\": 999");
         Assert.Throws<InvalidDataException>(() => SaveGame.Deserialize(json));
+    }
+
+    [Fact]
+    public void Load_MigratesVersion1_TrailGradientRules()
+    {
+        // A v1 save still carries the old permille gradient limits; they are dropped and the new defaults apply.
+        string v2 = SaveGame.Serialize(TestWorlds.Create());
+        var defaults = new Trails.TrailRules();
+        string v1 = v2.Replace($"\"version\": {SaveGame.CurrentVersion}", "\"version\": 1")
+            .Replace($"\"pathMaxGradient\": {defaults.PathMaxGradient},",
+                     "\"pathMaxGradePermille\": 150,\n      \"trailMaxDownGradePermille\": 700,\n      \"trailMaxUpGradePermille\": 80,");
+        Assert.Contains("pathMaxGradePermille", v1);
+
+        var loaded = SaveGame.Deserialize(v1);
+
+        Assert.Equal(defaults.PathMaxGradient, loaded.TrailRules.PathMaxGradient);
+        Assert.Equal(StateHash.Compute(SaveGame.Deserialize(v2)), StateHash.Compute(loaded));
     }
 
     [Fact]

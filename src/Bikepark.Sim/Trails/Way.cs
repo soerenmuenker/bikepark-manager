@@ -53,11 +53,26 @@ public sealed class TrailRules
     public int MaxLengthMeters { get; set; } = 4_000;
     public int MaxControlPoints { get; set; } = 200;
 
-    /// <summary>Steepest allowed 10 m segment of an access path, either direction (150 = 15 %).</summary>
-    public int PathMaxGradePermille { get; set; } = 150;
+    /// <summary>
+    /// Gravel paths are graded (cut and fill): their surface is the ground smoothed over ± this many meters, so
+    /// local bumps don't count against the gradient limits. Trails follow the ground.
+    /// </summary>
+    public int PathGradingMeters { get; set; } = WayGeometry.DefaultGradingMeters;
 
-    public int TrailMaxDownGradePermille { get; set; } = 700;
-    public int TrailMaxUpGradePermille { get; set; } = 80;
+    // Gradient limits per 10 m segment, in tenths of the -10..+10 gradient score (see Gradient; 30 = 3.0 = 27°).
+    // Beyond "Max" a way cannot be built; beyond "Steep" the planner only warns (riders feel it, it still builds).
+
+    /// <summary>Steepest gravel path segment, either direction.</summary>
+    public int PathMaxGradient { get; set; } = 40;
+    public int PathSteepGradient { get; set; } = 20;
+
+    /// <summary>Steepest drop on a trail (as a positive number).</summary>
+    public int TrailMaxDropGradient { get; set; } = 80;
+    public int TrailSteepDropGradient { get; set; } = 50;
+
+    /// <summary>Steepest climb on a trail.</summary>
+    public int TrailMaxClimbGradient { get; set; } = 30;
+    public int TrailSteepClimbGradient { get; set; } = 15;
 
     /// <summary>Full corridor width cleared of trees and rocks.</summary>
     public int PathCorridorCm { get; set; } = 400;
@@ -79,8 +94,17 @@ public sealed class TrailRules
         if (SnapRadiusMeters is < 1 or > 100) errors.Add("trailRules.snapRadiusMeters must be within 1..100");
         if (MinLengthMeters < 1 || MaxLengthMeters <= MinLengthMeters) errors.Add("trailRules min/max length are inconsistent");
         if (MaxControlPoints < 2) errors.Add("trailRules.maxControlPoints must be >= 2");
-        if (PathMaxGradePermille <= 0 || TrailMaxDownGradePermille <= 0 || TrailMaxUpGradePermille < 0)
-            errors.Add("trailRules grade limits must be positive");
+        if (PathGradingMeters is < 0 or > 200) errors.Add("trailRules.pathGradingMeters must be within 0..200");
+        foreach (var (name, steep, max) in new[]
+                 {
+                     ("path", PathSteepGradient, PathMaxGradient),
+                     ("trail drop", TrailSteepDropGradient, TrailMaxDropGradient),
+                     ("trail climb", TrailSteepClimbGradient, TrailMaxClimbGradient),
+                 })
+        {
+            if (steep <= 0 || steep > max || max > Gradient.MaxTenths)
+                errors.Add($"trailRules {name} gradients must satisfy 0 < steep <= max <= {Gradient.MaxTenths}");
+        }
         if (PathCorridorCm <= 0 || TrailCorridorCm <= 0) errors.Add("trailRules corridor widths must be positive");
         if (ClimbSpeedMinCmPerS <= 0 || ClimbSpeedMaxCmPerS < ClimbSpeedMinCmPerS) errors.Add("trailRules climb speeds are inconsistent");
         if (DescentSpeedMinCmPerS <= 0 || DescentSpeedMaxCmPerS < DescentSpeedMinCmPerS) errors.Add("trailRules descent speeds are inconsistent");

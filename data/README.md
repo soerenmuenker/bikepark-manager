@@ -20,9 +20,11 @@ One file per scenario (`ScenarioDefinition`): `id`, `name`, `description`, `seed
 
 The same `{tick, command}` list format is accepted by `Bikepark.SimRunner --commands <file>`.
 
-`trailRules` (`TrailRules`, all optional): building limits (`pathMaxGradePermille`, `trailMaxDownGradePermille`,
-`trailMaxUpGradePermille`, `snapRadiusMeters`, min/max length, corridor widths) and rider tuning (climb/descent
-speeds in cm/s, energy costs, `tiredEnergy`).
+`trailRules` (`TrailRules`, all optional): building limits and rider tuning. Gradients use the game's -10..+10
+scale (1 point = 9°, 0 flat, ±10 vertical) in tenths: `pathMaxGradient` 40 / `pathSteepGradient` 20,
+`trailMaxDropGradient` 80 / `trailSteepDropGradient` 50, `trailMaxClimbGradient` 30 / `trailSteepClimbGradient` 15
+("max" = can't build, "steep" = warning). Also `pathGradingMeters` (gravel smoothing), `snapRadiusMeters`,
+min/max length, corridor widths, climb/descent speeds in cm/s, energy costs, `tiredEnergy`.
 
 `terrain` (`TerrainSettings`, all optional): `seed` (defaults to the scenario seed), `sizeMeters`,
 `baseElevationCm`, `reliefCm`, `peakXMeters`, `peakZMeters`, `peakRadiusMeters`, `ridgeCount`,

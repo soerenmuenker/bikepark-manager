@@ -182,9 +182,10 @@ internal sealed class RiderSystem : ISimSystem
             budgetMs -= (int)Math.Min(budgetMs, Math.Max(1, (move * 1000 + speed - 1) / speed));
             guest.RouteProgressCm += move;
 
-            // Energy: climbing costs per meter gained, descending a little per distance.
+            // Energy: climbing costs per meter gained, more on steep grades (a 100 % grade doubles it);
+            // descending costs a little per distance.
             if (gradeAlong > 0)
-                guest.Energy -= (int)(move * gradeAlong / 1000 * rules.ClimbEnergyPerMeterGain / 100);
+                guest.Energy -= (int)(move * gradeAlong / 1000 * rules.ClimbEnergyPerMeterGain * (1000 + gradeAlong) / 100_000);
             else
                 guest.Energy -= (int)(move * rules.DescentEnergyPer100Meters / 10_000);
             guest.Energy = Math.Max(0, guest.Energy);

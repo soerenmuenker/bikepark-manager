@@ -26,8 +26,18 @@ public class TrailGeometryAndPlannerTests
 
         for (int i = 0; i < geometry.SampleCount; i++)
             Assert.Equal(Plane.HeightAt(geometry.Xs[i], geometry.Zs[i]), geometry.Ys[i]);
+        // Ends are exact; the line passes within half a sample spacing of every inner control point.
+        Assert.Equal((points[0].X, points[0].Z), (geometry.Xs[0], geometry.Zs[0]));
+        Assert.Equal((points[^1].X, points[^1].Z), (geometry.Xs[^1], geometry.Zs[^1]));
         foreach (var p in points)
-            Assert.Contains(Enumerable.Range(0, geometry.SampleCount), i => geometry.Xs[i] == p.X && geometry.Zs[i] == p.Z);
+            Assert.Contains(Enumerable.Range(0, geometry.SampleCount), i =>
+                Math.Abs(geometry.Xs[i] - p.X) <= 50 && Math.Abs(geometry.Zs[i] - p.Z) <= 50);
+        // Samples are evenly spaced (1 m horizontally), except possibly the last one.
+        for (int i = 1; i < geometry.SampleCount - 1; i++)
+        {
+            long dx = geometry.Xs[i] - geometry.Xs[i - 1], dz = geometry.Zs[i] - geometry.Zs[i - 1];
+            Assert.InRange(Math.Sqrt(dx * dx + dz * dz), 97, 103);
+        }
     }
 
     [Fact]
@@ -78,12 +88,26 @@ public class TrailGeometryAndPlannerTests
     [Fact]
     public void Path_ThatIsTooSteep_IsRejected_AlongTheContourItIsFine()
     {
-        var steep = TestTerrain.Plane(250);
+        var steep = TestTerrain.Plane(1000); // 45° = gradient 5.0, beyond the 4.0 limit
         var down = WayPlanner.Plan(steep, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 50), P(90, 50)]);
         var across = WayPlanner.Plan(steep, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(50, 10), P(50, 90)]);
 
         Assert.Contains(down.Issues, i => i.Code == "pathTooSteep");
         Assert.True(across.IsValid, across.FirstError);
+    }
+
+    [Fact]
+    public void SteepButAllowedPath_BuildsWithOneMergedWarning()
+    {
+        var steep = TestTerrain.Plane(500); // 26.6° = gradient 2.9: steep (> 2.0) but within the 4.0 limit
+        var plan = WayPlanner.Plan(steep, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 50), P(90, 50)]);
+
+        Assert.True(plan.IsValid, plan.FirstError);
+        var warning = Assert.Single(plan.Issues, i => i.Code == "pathSteep");
+        Assert.Equal(IssueSeverity.Warning, warning.Severity);
+        Assert.Equal(0, warning.AtCm);
+        Assert.Equal(plan.LengthCm, warning.ToCm);
+        Assert.Contains("+2.9", warning.Message);
     }
 
     [Fact]
@@ -127,11 +151,18 @@ public class TrailGeometryAndPlannerTests
     }
 
     [Fact]
-    public void Trail_ThatClimbs_IsRejected()
+    public void Trail_ThatClimbs_IsRejected_GentleClimbsOnlyWarn()
     {
-        // Snapped at both ends, but drawn so that the middle climbs back up 20 %.
-        var plan = WayPlanner.Plan(Plane, NetworkWithPath(), Rules, WayKind.Trail, [P(15, 25), P(70, 30), P(40, 32), P(85, 25)]);
-        Assert.Contains(plan.Issues, i => i.Code == "trailUphill");
+        // On a 70 % plane (gradient 3.9) a trail that turns back uphill climbs beyond the +3.0 limit.
+        var steep = TestTerrain.Plane(700);
+        var tooMuch = WayPlanner.Plan(steep, NetworkWith(trail: false, steep), Rules, WayKind.Trail, [P(15, 25), P(70, 30), P(40, 32), P(85, 25)]);
+        Assert.Contains(tooMuch.Issues, i => i.Code == "trailUphill" && i.Severity == IssueSeverity.Error);
+
+        // On a 40 % plane (gradient 2.4) the same climb is only a warning.
+        var gentle = TestTerrain.Plane(400);
+        var ok = WayPlanner.Plan(gentle, NetworkWith(trail: false, gentle), Rules, WayKind.Trail, [P(15, 25), P(70, 30), P(40, 32), P(85, 25)]);
+        Assert.True(ok.IsValid, ok.FirstError);
+        Assert.Contains(ok.Issues, i => i.Code == "trailClimb" && i.Severity == IssueSeverity.Warning);
     }
 
     [Fact]
@@ -188,17 +219,43 @@ public class TrailGeometryAndPlannerTests
 
     private static WayNetwork NetworkWithPath() => NetworkWith(trail: false);
 
-    private static WayNetwork NetworkWith(bool trail)
+    private static WayNetwork NetworkWith(bool trail, TerrainGrid? terrain = null)
     {
-        var path = WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(5, 20), P(95, 20)]);
+        terrain ??= Plane;
+        var path = WayPlanner.Plan(terrain, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(5, 20), P(95, 20)]);
+        Assert.True(path.IsValid, path.FirstError);
         var ways = new List<Way> { new() { Id = 1, Kind = WayKind.AccessPath, Points = path.Points } };
-        var network = WayNetwork.Build(ways, Plane, Rules);
+        var network = WayNetwork.Build(ways, terrain, Rules);
         if (!trail) return network;
 
-        var t = WayPlanner.Plan(Plane, network, Rules, WayKind.Trail, [P(15, 25), P(50, 40), P(85, 25)]);
+        var t = WayPlanner.Plan(terrain, network, Rules, WayKind.Trail, [P(15, 25), P(50, 40), P(85, 25)]);
         Assert.True(t.IsValid, t.FirstError);
         ways.Add(new Way { Id = 2, Kind = WayKind.Trail, Points = t.Points, StartJoin = t.StartJoin, EndJoin = t.EndJoin });
-        return WayNetwork.Build(ways, Plane, Rules);
+        return WayNetwork.Build(ways, terrain, Rules);
+    }
+}
+
+public class GradientTests
+{
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(158, 10)]     // 9°   = 1.0
+    [InlineData(-160, -10)]
+    [InlineData(325, 20)]     // 18°  = 2.0
+    [InlineData(1000, 50)]    // 45°  = 5.0
+    [InlineData(-3078, -80)]  // 72°  = -8.0
+    [InlineData(1_000_000, 100)] // vertical
+    public void FromPermille_MapsAnglesLinearlyOntoMinus10To10(int permille, int tenths) =>
+        Assert.Equal(tenths, Gradient.FromPermille(permille));
+
+    [Fact]
+    public void Conversions_RoundTrip_AndFormat()
+    {
+        for (int t = -99; t <= 99; t++)
+            Assert.Equal(t, Gradient.FromPermille(Gradient.ToPermille(t)));
+        Assert.Equal("-2.3", Gradient.Format(-23));
+        Assert.Equal("+1.0", Gradient.Format(10));
+        Assert.Equal("0.0", Gradient.Format(0));
     }
 }
 

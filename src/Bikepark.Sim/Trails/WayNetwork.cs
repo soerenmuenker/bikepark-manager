@@ -53,7 +53,7 @@ public sealed class WayNetwork
         var ordered = ways.OrderBy(w => w.Id).ToList();
         var geometries = new Dictionary<int, WayGeometry>();
         foreach (var way in ordered)
-            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100);
+            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
         return new WayNetwork(ordered, geometries, rules);
     }
 

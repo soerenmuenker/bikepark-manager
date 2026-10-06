@@ -9,6 +9,7 @@ using Bikepark.Sim.Events;
 using Bikepark.Sim.Reporting;
 using Bikepark.Sim.Trails;
 using Godot;
+using Gradient = Bikepark.Sim.Trails.Gradient;
 
 namespace Bikepark.Game;
 
@@ -91,7 +92,7 @@ public partial class Hud : CanvasLayer
         float degrees = Mathf.RadToDeg(MathF.Atan(sample.SlopePermille / 1000f));
         return $"{overlay}\n" +
                $"Cursor {hit.X:F1}, {hit.Z:F1} m   elevation {sample.HeightCm / 100f:F1} m   " +
-               $"slope {sample.SlopePermille}‰ ({degrees:F1}°)   {sample.Surface}\n" +
+               $"slope {Gradient.Format(Gradient.FromPermille(sample.SlopePermille)).TrimStart('+')} ({degrees:F0}°)   {sample.Surface}\n" +
                $"trees {sample.TreeDensity}  rock {sample.Rock}  roots {sample.Roots}  water {sample.WaterDepthCm} cm";
     }
 
@@ -109,7 +110,8 @@ public partial class Hud : CanvasLayer
             {
                 string kind = plan.Kind == WayKind.Trail ? $"   {g.Rating} (difficulty {g.DifficultyScore})" : "";
                 lines.Add($"{plan.LengthCm / 100} m   {(plan.DropCm >= 0 ? "drop" : "climb")} {Math.Abs(plan.DropCm) / 100} m   " +
-                          $"max down {g.MaxDownGradePermille / 10}%   max up {g.MaxUpGradePermille / 10}%{kind}");
+                          $"steepest {Gradient.Format(-g.MaxDropGradient)} / {Gradient.Format(g.MaxClimbGradient)}{kind}");
+                lines.Add("Gradient: -10 = vertical drop · 0 = flat · +10 = vertical wall (green easy → red too steep)");
                 foreach (var issue in plan.Issues.Take(3))
                     lines.Add($"{(issue.Severity == IssueSeverity.Error ? "✗" : "!")} {issue.Message}");
                 if (plan.IsValid) lines.Add("✓ Valid — press Enter to build");
@@ -210,6 +212,11 @@ public partial class Hud : CanvasLayer
             int speed = SimHost.SpeedMultipliers[i];
             AddButton(speedRow, speed == 0 ? "Pause" : $"{speed}x", () => _host.SetSpeedIndex(index));
         }
+
+        var skipRow = new HBoxContainer();
+        root.AddChild(skipRow);
+        AddButton(skipRow, "Skip to opening hours", _host.SkipToOpeningHours);
+        AddButton(skipRow, "Turbo till closing hours", _host.TurboToClosingHours);
 
         var buildRow = new HBoxContainer();
         root.AddChild(buildRow);

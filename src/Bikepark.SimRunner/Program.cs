@@ -95,6 +95,8 @@ public static class Program
             trail ? geometry.DifficultyScore : null,
             geometry.LengthCm / 100,
             Math.Abs(geometry.StartHeightCm - geometry.EndHeightCm) / 100,
+            Gradient.Format(-geometry.MaxDropGradient),
+            Gradient.Format(geometry.MaxClimbGradient),
             w.Stats.Runs,
             w.Stats.Runs == 0 ? null : Math.Round((double)w.Stats.SumRunMinutes / w.Stats.Runs, 1),
             w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs));
@@ -111,6 +113,8 @@ internal sealed record WayReport(
     int? Difficulty,
     long LengthMeters,
     long DropMeters,
+    string? MaxDropGradient,
+    string? MaxClimbGradient,
     long Runs,
     double? AverageRunMinutes,
     int? AverageFun);

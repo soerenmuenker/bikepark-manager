@@ -73,7 +73,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 
 WASD/arrows/screen edge/middle-drag pan · wheel or +/- zoom · Q/E or right-drag orbit · F1 cycles terrain overlay
 (natural / slope / surface) · HUD shows terrain data under the cursor · P draw gravel access path, T draw trail
-(click or drag points, Backspace undo, Enter build, Esc cancel) · F follow next rider · 1x = 1 game minute per second.
+(click or drag points, Backspace undo, Enter build, Esc cancel; preview colored by gradient) · F follow next rider ·
+1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale (`Trails/Gradient.cs`, 1 point = 9°).
 
 ## Conventions
 

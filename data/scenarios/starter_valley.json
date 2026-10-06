@@ -16,15 +16,21 @@
     "dailyUpkeepCents": 25000,
     "snackPriceCents": 400
   },
-  // Building rules and rider tuning (TrailRules). Grades in permille, speeds in cm/s, energy on 0..1000.
+  // Building rules and rider tuning (TrailRules). Gradients in tenths of the -10..+10 gradient score
+  // (1 point = 9°; 40 = 4.0 = 36°): beyond "max" a way can't be built, beyond "steep" it only warns.
+  // Speeds in cm/s, energy on 0..1000.
   "trailRules": {
     "segmentLengthMeters": 10,
     "snapRadiusMeters": 12,
     "minLengthMeters": 30,
     "maxLengthMeters": 4000,
-    "pathMaxGradePermille": 150,
-    "trailMaxDownGradePermille": 700,
-    "trailMaxUpGradePermille": 80,
+    "pathGradingMeters": 25,
+    "pathMaxGradient": 40,
+    "pathSteepGradient": 20,
+    "trailMaxDropGradient": 80,
+    "trailSteepDropGradient": 50,
+    "trailMaxClimbGradient": 30,
+    "trailSteepClimbGradient": 15,
     "pathCorridorCm": 400,
     "trailCorridorCm": 200,
     "climbSpeedMinCmPerS": 110,

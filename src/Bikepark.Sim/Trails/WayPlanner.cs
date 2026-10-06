@@ -79,7 +79,7 @@ public static class WayPlanner
             && Math.Abs(startJoin.DistanceCm - endJoin.DistanceCm) < 100)
             return Fail(kind, points, "sameJunction", "Both ends attach to the same spot.");
 
-        var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100);
+        var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
 
         long length = geometry.LengthCm;
         if (length < rules.MinLengthMeters * 100L)
@@ -110,25 +110,58 @@ public static class WayPlanner
         };
     }
 
+    /// <summary>
+    /// Gradients per segment: errors only at the extremes, steep stretches as (merged) warnings. Runs of consecutive
+    /// segments with the same finding become one issue covering the whole stretch, quoting its steepest score.
+    /// </summary>
     private static void CheckGrades(WayKind kind, TrailRules rules, WayGeometry geometry, List<WayIssue> issues)
     {
+        (string Code, IssueSeverity Severity, int Worst, long At, long To)? run = null;
+        void Flush()
+        {
+            if (run is not { } r) return;
+            issues.Add(new WayIssue(r.Severity, r.Code, GradeMessage(r.Code, r.Worst, rules), r.At, r.To));
+            run = null;
+        }
+
         foreach (var segment in geometry.Segments)
         {
-            int grade = segment.GradePermille;
-            if (kind == WayKind.AccessPath && Math.Abs(grade) > rules.PathMaxGradePermille)
-                issues.Add(Error("pathTooSteep",
-                    $"Too steep for a gravel path: {Percent(Math.Abs(grade))} (max {Percent(rules.PathMaxGradePermille)}).",
-                    segment.StartCm, segment.EndCm));
-            else if (kind == WayKind.Trail && -grade > rules.TrailMaxDownGradePermille)
-                issues.Add(Error("trailTooSteep",
-                    $"Too steep: {Percent(-grade)} downhill (max {Percent(rules.TrailMaxDownGradePermille)}).",
-                    segment.StartCm, segment.EndCm));
-            else if (kind == WayKind.Trail && grade > rules.TrailMaxUpGradePermille)
-                issues.Add(Error("trailUphill",
-                    $"Climbs {Percent(grade)} (max {Percent(rules.TrailMaxUpGradePermille)} uphill on a trail).",
-                    segment.StartCm, segment.EndCm));
+            int g = segment.GradientTenths;
+            (string Code, IssueSeverity Severity, int Value)? finding = kind == WayKind.AccessPath
+                ? Math.Abs(g) > rules.PathMaxGradient ? ("pathTooSteep", IssueSeverity.Error, Math.Abs(g))
+                : Math.Abs(g) > rules.PathSteepGradient ? ("pathSteep", IssueSeverity.Warning, Math.Abs(g))
+                : null
+                : -g > rules.TrailMaxDropGradient ? ("trailTooSteep", IssueSeverity.Error, -g)
+                : -g > rules.TrailSteepDropGradient ? ("trailSteep", IssueSeverity.Warning, -g)
+                : g > rules.TrailMaxClimbGradient ? ("trailUphill", IssueSeverity.Error, g)
+                : g > rules.TrailSteepClimbGradient ? ("trailClimb", IssueSeverity.Warning, g)
+                : null;
+
+            if (finding is not { } f)
+            {
+                Flush();
+                continue;
+            }
+            if (run is { } r && r.Code == f.Code && r.To == segment.StartCm)
+                run = r with { Worst = Math.Max(r.Worst, f.Value), To = segment.EndCm };
+            else
+            {
+                Flush();
+                run = (f.Code, f.Severity, f.Value, segment.StartCm, segment.EndCm);
+            }
         }
+        Flush();
     }
+
+    private static string GradeMessage(string code, int worst, TrailRules rules) => code switch
+    {
+        "pathTooSteep" => $"Too steep for a gravel path: {Gradient.Format(worst)} (limit {Gradient.Format(rules.PathMaxGradient)}). Try a switchback.",
+        "pathSteep" => $"Steep gravel section ({Gradient.Format(worst)}): riders crawl up and tire faster. Switchbacks help.",
+        "trailTooSteep" => $"Too steep to ride: {Gradient.Format(-worst)} (limit {Gradient.Format(-rules.TrailMaxDropGradient)}).",
+        "trailSteep" => $"Very steep section ({Gradient.Format(-worst)}): only skilled riders will enjoy it.",
+        "trailUphill" => $"Climbs too much for a trail: {Gradient.Format(worst)} (limit {Gradient.Format(rules.TrailMaxClimbGradient)}).",
+        _ => $"Uphill section ({Gradient.Format(worst)}): riders have to pedal.",
+    };
 
     private static void CheckConnections(WayKind kind, WayNetwork network, WayJoin? start, WayJoin? end, List<WayIssue> issues)
     {
@@ -187,5 +220,4 @@ public static class WayPlanner
 
     private static WayIssue Warning(string code, string message) => new(IssueSeverity.Warning, code, message);
 
-    private static string Percent(int permille) => $"{permille / 10} %";
 }

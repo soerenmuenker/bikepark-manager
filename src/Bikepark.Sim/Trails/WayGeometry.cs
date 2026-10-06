@@ -27,7 +27,11 @@ public readonly record struct WaySegment(
     int Roots,
     int Trees,
     TerrainSurface Surface,
-    int Difficulty);
+    int Difficulty)
+{
+    /// <summary>Gradient score in tenths (-100..100) along the way's direction; see <see cref="Trails.Gradient"/>.</summary>
+    public int GradientTenths => Trails.Gradient.FromPermille(GradePermille);
+}
 
 /// <summary>A point on a way: position in cm and the (unnormalized) horizontal direction of travel.</summary>
 public readonly record struct WayPoint(int X, int Y, int Z, int DirX, int DirZ);
@@ -36,14 +40,14 @@ public readonly record struct WayPoint(int X, int Y, int Z, int DirX, int DirZ);
 /// The derived shape of a way: an integer Catmull-Rom spline through the control points, sampled about every
 /// meter and laid onto the terrain, with cumulative 3D distance and ~10 m segments. Fully deterministic.
 /// Trails follow the ground; access paths are graded (cut and fill): their height is the terrain smoothed over
-/// ±<see cref="GradingHalfWindowSamples"/> samples, with both ends kept at ground level.
+/// ±<c>gradingMeters</c> (about one sample per meter), with both ends kept at ground level.
 /// </summary>
 public sealed class WayGeometry
 {
     public const int GreenMaxDifficulty = 250;
     public const int BlueMaxDifficulty = 480;
     public const int RedMaxDifficulty = 700;
-    public const int GradingHalfWindowSamples = 10;
+    public const int DefaultGradingMeters = 25;
 
     private readonly int[] _x;
     private readonly int[] _y;
@@ -88,8 +92,11 @@ public sealed class WayGeometry
 
     public TrailRating Rating { get; }
 
-    public int MaxDownGradePermille => _segments.Length == 0 ? 0 : Math.Max(0, -_segments.Min(s => s.GradePermille));
-    public int MaxUpGradePermille => _segments.Length == 0 ? 0 : Math.Max(0, _segments.Max(s => s.GradePermille));
+    /// <summary>Steepest drop along the way, as a positive gradient score in tenths.</summary>
+    public int MaxDropGradient => _segments.Length == 0 ? 0 : Math.Max(0, -_segments.Min(s => s.GradientTenths));
+
+    /// <summary>Steepest climb along the way, gradient score in tenths.</summary>
+    public int MaxClimbGradient => _segments.Length == 0 ? 0 : Math.Max(0, _segments.Max(s => s.GradientTenths));
 
     /// <summary>Position at a distance along the way (clamped), interpolated between samples.</summary>
     public WayPoint PositionAt(long distanceCm)
@@ -127,7 +134,8 @@ public sealed class WayGeometry
         return i >= 0 ? Math.Min(i, _distance.Length - 2) : ~i - 1;
     }
 
-    public static WayGeometry Build(TerrainGrid grid, WayKind kind, IReadOnlyList<PointCm> points, int segmentLengthCm)
+    public static WayGeometry Build(
+        TerrainGrid grid, WayKind kind, IReadOnlyList<PointCm> points, int segmentLengthCm, int gradingMeters = DefaultGradingMeters)
     {
         if (points.Count < 2) throw new ArgumentException("A way needs at least two points.", nameof(points));
 
@@ -136,7 +144,7 @@ public sealed class WayGeometry
         var ground = new int[n];
         for (int i = 0; i < n; i++)
             ground[i] = grid.HeightAt(xs[i], zs[i]);
-        var y = kind == WayKind.AccessPath ? Grade(ground) : ground;
+        var y = kind == WayKind.AccessPath ? Grade(ground, gradingMeters) : ground;
 
         // Accumulate in 1/16 cm: rounding each ~1 m step to whole cm would lose the height component.
         var distance = new long[n];
@@ -155,7 +163,7 @@ public sealed class WayGeometry
     }
 
     /// <summary>Symmetric moving average that shrinks towards the ends, so the end heights stay unchanged.</summary>
-    private static int[] Grade(int[] ground)
+    private static int[] Grade(int[] ground, int halfWindow)
     {
         int n = ground.Length;
         var prefix = new long[n + 1];
@@ -165,14 +173,64 @@ public sealed class WayGeometry
         var graded = new int[n];
         for (int i = 0; i < n; i++)
         {
-            int w = Math.Min(GradingHalfWindowSamples, Math.Min(i, n - 1 - i));
+            int w = Math.Min(halfWindow, Math.Min(i, n - 1 - i));
             graded[i] = (int)((prefix[i + w + 1] - prefix[i - w]) / (2 * w + 1));
         }
         return graded;
     }
 
-    /// <summary>Catmull-Rom through all control points (endpoints repeated), sampled about every meter.</summary>
+    private const int SampleSpacingCm = 100;
+    private const int DenseSpacingCm = 20;
+
+    /// <summary>
+    /// Catmull-Rom through all control points (endpoints repeated), then resampled every
+    /// <see cref="SampleSpacingCm"/> of horizontal distance. Even spacing matters: path grading averages over a
+    /// number of samples, and spline parameter steps are not evenly spaced. Both ends stay exact.
+    /// </summary>
     private static (List<int> X, List<int> Z) SampleSpline(IReadOnlyList<PointCm> p, int limitCm)
+    {
+        var (dx, dz) = SampleSplineDense(p, limitCm);
+        var xs = new List<int> { dx[0] };
+        var zs = new List<int> { dz[0] };
+        // Distances in 1/16 cm, so rounding the short dense steps doesn't stretch the spacing.
+        const long spacing = SampleSpacingCm * 16L;
+        long walked = 0, next = spacing;
+        for (int i = 1; i < dx.Count; i++)
+        {
+            long sx = dx[i] - dx[i - 1], sz = dz[i] - dz[i - 1];
+            long step = ISqrt((sx * sx + sz * sz) << 8);
+            while (step > 0 && walked + step >= next)
+            {
+                long f = (next - walked) * 1000 / step; // position within this dense step, permille
+                xs.Add((int)(dx[i - 1] + sx * f / 1000));
+                zs.Add((int)(dz[i - 1] + sz * f / 1000));
+                next += spacing;
+            }
+            walked += step;
+        }
+
+        // End exactly on the last control point; drop a resampled point that would sit too close to it.
+        if (xs.Count > 1 && walked - (next - spacing) < spacing / 3)
+        {
+            xs.RemoveAt(xs.Count - 1);
+            zs.RemoveAt(zs.Count - 1);
+        }
+        if (xs[^1] != dx[^1] || zs[^1] != dz[^1])
+        {
+            xs.Add(dx[^1]);
+            zs.Add(dz[^1]);
+        }
+        if (xs.Count == 1)
+        {
+            // Degenerate input (all points equal): keep a two-sample way so lengths stay positive.
+            xs.Add(xs[0]);
+            zs.Add(zs[0]);
+        }
+        return (xs, zs);
+    }
+
+    /// <summary>Catmull-Rom through all control points (endpoints repeated), sampled densely by spline parameter.</summary>
+    private static (List<int> X, List<int> Z) SampleSplineDense(IReadOnlyList<PointCm> p, int limitCm)
     {
         var xs = new List<int> { Math.Clamp(p[0].X, 0, limitCm) };
         var zs = new List<int> { Math.Clamp(p[0].Z, 0, limitCm) };
@@ -183,7 +241,7 @@ public sealed class WayGeometry
             var p2 = p[i + 1];
             var p3 = p[Math.Min(i + 2, p.Count - 1)];
             long cdx = p2.X - p1.X, cdz = p2.Z - p1.Z;
-            int steps = (int)Math.Max(1, (ISqrt(cdx * cdx + cdz * cdz) + 99) / 100);
+            int steps = (int)Math.Max(1, (ISqrt(cdx * cdx + cdz * cdz) + DenseSpacingCm - 1) / DenseSpacingCm);
             for (int k = 1; k <= steps; k++)
             {
                 long t = k * One / steps;
@@ -195,12 +253,6 @@ public sealed class WayGeometry
             }
         }
 
-        if (xs.Count == 1)
-        {
-            // Degenerate input (all points equal): keep a two-sample way so lengths stay positive.
-            xs.Add(xs[0]);
-            zs.Add(zs[0]);
-        }
         return (xs, zs);
     }
 

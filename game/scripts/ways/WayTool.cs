@@ -186,16 +186,14 @@ public partial class WayTool : Node3D
             return;
         }
 
-        var errors = Plan.Issues.Where(i => i.Severity == IssueSeverity.Error && i.AtCm >= 0).ToList();
-        bool invalid = !Plan.IsValid;
-        var ok = Kind == WayKind.AccessPath ? WayMeshes.Gravel : WayMeshes.RatingColor(g.Rating);
-        var bad = new Color(0.95f, 0.1f, 0.1f);
-        var warn = new Color(1f, 0.6f, 0.1f);
+        // Color by gradient per segment; a problem with the whole way (e.g. not connected) dims it.
+        var rules = _host.Sim.State.TrailRules;
+        bool wholeWayProblem = Plan.Issues.Any(i => i.Severity == IssueSeverity.Error && i.AtCm < 0);
         Color ColorAt(int i)
         {
-            long d = g.Distances[i];
-            if (errors.Any(e => d >= e.AtCm && d <= e.ToCm)) return bad;
-            return invalid ? warn : ok; // whole-way problem (e.g. not connected): orange
+            var segment = g.Segments[g.SegmentIndexAt(g.Distances[i])];
+            var color = WayMeshes.GradientColor(Kind, segment.GradientTenths, rules);
+            return wholeWayProblem ? color.Lerp(new Color(0.35f, 0.35f, 0.35f), 0.55f) : color;
         }
 
         _preview.Mesh = WayMeshes.Ribbon(grid, g, Kind == WayKind.AccessPath ? 3.0f : 1.4f, 0.15f,
