@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bikepark.Sim;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Events;
+using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Reporting;
 using Bikepark.Sim.Scenarios;
@@ -62,6 +63,8 @@ public static class Program
         sim.Events.Subscribe<CommandRejected>(rejections.Add);
         var leftReasons = new List<GuestLeaveReason>();
         sim.Events.Subscribe<GuestLeft>(e => leftReasons.Add(e.Reason));
+        var turnedAway = new List<TurnAwayReason>();
+        sim.Events.Subscribe<GuestTurnedAway>(e => turnedAway.Add(e.Reason));
 
         for (int day = 0; day < options.Days; day++)
         {
@@ -78,7 +81,9 @@ public static class Program
             Days: options.Days,
             Kpis: KpiReport.From(state),
             Ways: WayReports(sim),
+            Lifts: LiftReports(sim),
             GuestsLeft: leaveReasons,
+            TurnedAway: turnedAway.GroupBy(r => r).OrderBy(g => g.Key).ToDictionary(g => g.Key.ToString(), g => g.Count()),
             RejectedCommands: rejections.Select(r => new RejectedCommand(r.Tick, r.Command, r.Reason)).ToList(),
             Daily: options.IncludeDaily ? dailyReports : null);
 
@@ -101,7 +106,45 @@ public static class Program
             w.Stats.Runs == 0 ? null : Math.Round((double)w.Stats.SumRunMinutes / w.Stats.Runs, 1),
             w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs));
     }).ToList();
+
+    private static List<LiftReport> LiftReports(Simulation sim)
+    {
+        var state = sim.State;
+        return state.Lifts.Select(l =>
+        {
+            var type = LiftNetwork.FindType(state, l.TypeId)!;
+            var (horizontal, rise, length) = LiftMath.Line(LiftNetwork.Pad(state, l.Valley.TerrainEditId)!, LiftNetwork.Pad(state, l.Mountain.TerrainEditId)!);
+            var op = LiftNetwork.FindOperator(state, l.OperatorId);
+            var tier = op is not null && l.BikeAccess is { } access ? op.BikeAccessTiers[access.TierIndex] : null;
+            return new LiftReport(
+                l.Id, l.Name, type.Name, op?.Name, tier?.Name, l.BikeCarrierPermille,
+                LiftMath.BikeRidersPerHour(type, l.BikeCarrierPermille),
+                length / 100, rise / 100, Math.Round(LiftMath.RideSeconds(type, length) / 60.0, 1),
+                l.Stats.Riders,
+                l.Stats.Riders == 0 ? null : Math.Round((double)l.Stats.SumWaitMinutes / l.Stats.Riders, 1),
+                l.Stats.MaxQueue,
+                l.Queue.Count,
+                tier?.DailyFeeCents);
+        }).ToList();
+    }
 }
+
+internal sealed record LiftReport(
+    int Id,
+    string Name,
+    string Type,
+    string? Operator,
+    string? BikeAccessTier,
+    int BikeCarrierPermille,
+    int BikeRidersPerHour,
+    long LengthMeters,
+    long RiseMeters,
+    double RideMinutes,
+    long Riders,
+    double? AverageWaitMinutes,
+    int MaxQueue,
+    int QueueNow,
+    long? DailyFeeCents);
 
 internal sealed record RejectedCommand(long Tick, ICommand Command, string Reason);
 
@@ -123,7 +166,9 @@ internal sealed record RunnerOutput(
     int Days,
     KpiReport Kpis,
     List<WayReport> Ways,
+    List<LiftReport> Lifts,
     Dictionary<string, int> GuestsLeft,
+    Dictionary<string, int> TurnedAway,
     List<RejectedCommand> RejectedCommands,
     List<DayReport>? Daily);
 

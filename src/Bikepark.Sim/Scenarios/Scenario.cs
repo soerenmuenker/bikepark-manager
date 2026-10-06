@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Terrain;
@@ -24,6 +25,17 @@ public sealed class ScenarioDefinition
     /// <summary>Terrain parameters. A null terrain seed follows the scenario seed (and --seed overrides).</summary>
     public TerrainSettings Terrain { get; set; } = new();
 
+    /// <summary>Lift catalog file, relative to the scenario file (e.g. <c>../lift_types.json</c>); loaded into <see cref="LiftTypes"/>.</summary>
+    public string? LiftTypesFile { get; set; }
+
+    /// <summary>Lift models available in this scenario (inline, plus those from <see cref="LiftTypesFile"/>).</summary>
+    public List<LiftType> LiftTypes { get; set; } = [];
+
+    /// <summary>Lift companies operating in the area and the bike access they rent out.</summary>
+    public List<LiftOperator> Operators { get; set; } = [];
+
+    public LiftRules LiftRules { get; set; } = new();
+
     /// <summary>Optional scripted commands (e.g. tutorial events), queued when the scenario starts.</summary>
     public List<TimedCommand> Commands { get; set; } = [];
 }
@@ -34,7 +46,20 @@ public static class ScenarioLoader
         JsonSerializer.Deserialize<ScenarioDefinition>(json, SimJson.Indented)
         ?? throw new InvalidDataException("Scenario file is empty.");
 
-    public static ScenarioDefinition LoadFile(string path) => Parse(File.ReadAllText(path));
+    /// <summary>Loads a scenario and the lift catalog it references.</summary>
+    public static ScenarioDefinition LoadFile(string path)
+    {
+        var scenario = Parse(File.ReadAllText(path));
+        if (scenario.LiftTypesFile is { Length: > 0 } catalog)
+        {
+            string catalogPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".", catalog);
+            var types = JsonSerializer.Deserialize<List<LiftType>>(File.ReadAllText(catalogPath), SimJson.Indented)
+                        ?? throw new InvalidDataException($"Lift catalog '{catalog}' is empty.");
+            scenario.LiftTypes = [.. scenario.LiftTypes, .. types];
+            scenario.LiftTypesFile = null;
+        }
+        return scenario;
+    }
 
     /// <summary>Builds the initial world for a scenario. <paramref name="seedOverride"/> replaces the scenario's seed.</summary>
     public static WorldState CreateWorld(ScenarioDefinition scenario, ulong? seedOverride = null)
@@ -51,6 +76,9 @@ public static class ScenarioLoader
             Rules = scenario.Rules,
             Terrain = scenario.Terrain with { Seed = scenario.Terrain.Seed ?? seed },
             TrailRules = scenario.TrailRules,
+            LiftTypes = scenario.LiftTypes,
+            Operators = scenario.Operators,
+            LiftRules = scenario.LiftRules,
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
         };
 
@@ -75,6 +103,12 @@ public static class ScenarioLoader
 
         errors.AddRange(s.Terrain.Validate());
         errors.AddRange(s.TrailRules.Validate());
+        errors.AddRange(s.LiftRules.Validate());
+        if (s.LiftTypesFile is { Length: > 0 }) errors.Add("liftTypesFile can only be resolved when loading from a file");
+        foreach (var type in s.LiftTypes) errors.AddRange(type.Validate());
+        if (s.LiftTypes.Select(t => t.Id).Distinct().Count() != s.LiftTypes.Count) errors.Add("liftTypes: ids must be unique");
+        foreach (var op in s.Operators) errors.AddRange(op.Validate());
+        if (s.Operators.Select(o => o.Id).Distinct().Count() != s.Operators.Count) errors.Add("operators: ids must be unique");
 
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid scenario '{s.Id}': {string.Join("; ", errors)}");

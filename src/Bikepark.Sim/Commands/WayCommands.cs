@@ -7,7 +7,7 @@ namespace Bikepark.Sim.Commands;
 /// Builds an access path or trail instantly (Phase 2 debug build, free). Points are the player's raw clicks;
 /// <see cref="WayPlanner"/> orients them, snaps the ends onto the network and validates.
 /// </summary>
-public sealed record BuildWayCommand(WayKind Kind, string Name, List<PointCm> Points) : ICommand
+public sealed record BuildWayCommand(WayKind Kind, string Name, List<PointCm> Points, WayOrigin Origin = WayOrigin.Player) : ICommand
 {
     public const int MaxNameLength = 40;
 
@@ -32,6 +32,9 @@ public sealed record BuildWayCommand(WayKind Kind, string Name, List<PointCm> Po
             Points = plan.Points,
             StartJoin = plan.StartJoin,
             EndJoin = plan.EndJoin,
+            StartHubId = plan.StartHubId,
+            EndHubId = plan.EndHubId,
+            Origin = Origin,
         };
         state.Ways.Add(way);
         state.WaysRevision++;
@@ -43,7 +46,7 @@ public sealed record BuildWayCommand(WayKind Kind, string Name, List<PointCm> Po
 
     // Value equality over the points, so identical commands compare equal (records compare lists by reference).
     public bool Equals(BuildWayCommand? other) =>
-        other is not null && Kind == other.Kind && Name == other.Name
+        other is not null && Kind == other.Kind && Name == other.Name && Origin == other.Origin
         && (ReferenceEquals(Points, other.Points) || (Points is not null && other.Points is not null && Points.SequenceEqual(other.Points)));
 
     public override int GetHashCode() => HashCode.Combine(Kind, Name, Points?.Count ?? -1);
@@ -56,6 +59,7 @@ public sealed record DeleteWayCommand(int WayId) : ICommand
     {
         var ways = ctx.State.Ways;
         if (ways.All(w => w.Id != WayId)) return "No such path or trail.";
+        if (ways.First(w => w.Id == WayId).Origin == WayOrigin.Scenario) return "This route belongs to the scenario and cannot be removed.";
         var dependent = ways.FirstOrDefault(w => w.StartJoin?.WayId == WayId || w.EndJoin?.WayId == WayId);
         return dependent is null ? null : $"'{dependent.Name}' is attached to it; remove that first.";
     }

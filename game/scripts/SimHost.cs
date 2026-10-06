@@ -32,7 +32,7 @@ public partial class SimHost : Node
 
     [Export] public string SavePath { get; set; } = "user://savegame.json";
 
-    [Export] public string DemoNetworkFile { get; set; } = "data/scripts/demo_network.json";
+    [Export] public string DemoNetworkFile { get; set; } = "data/scripts/demo_lift_network.json";
 
     /// <summary>Game minutes per real second while turbo-skipping towards closing time.</summary>
     [Export] public double TurboTicksPerSecond { get; set; } = 120;
@@ -100,10 +100,12 @@ public partial class SimHost : Node
     {
         var k = Bikepark.Sim.Reporting.KpiReport.From(Sim.State, includeHash: false);
         GD.Print($"[report] {Bikepark.Sim.Core.GameTime.Format(Sim.State.Tick)} guests={k.GuestsInPark} " +
-                 $"onTrails={k.RidersOnTrails} runs={k.RunsCompleted} fun={k.AverageRunFun} ways={k.AccessPaths}+{k.Trails}");
+                 $"onTrails={k.RidersOnTrails} runs={k.RunsCompleted} fun={k.AverageRunFun} ways={k.AccessPaths}+{k.Trails} " +
+                 $"queuing={k.GuestsQueuing} onLift={k.RidersOnLifts} liftRides={k.LiftRides} wait={k.AverageWaitMinutes}min " +
+                 $"maxQueue={k.MaxQueue} money={k.MoneyCents / 100}");
     }
 
-    /// <summary>Queues the demo network (gravel path + two trails) from data/scripts.</summary>
+    /// <summary>Queues the demo trails from the plateau (data/scripts/demo_lift_network.json).</summary>
     public void LoadDemoNetwork()
     {
         var script = JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(ResolveContentPath(DemoNetworkFile)), SimJson.Indented) ?? [];

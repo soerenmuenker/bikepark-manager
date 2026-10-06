@@ -1,5 +1,6 @@
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
+using Bikepark.Sim.Lifts;
 using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Systems;
@@ -31,7 +32,10 @@ internal sealed class ParkHoursSystem : ISimSystem
     }
 }
 
-/// <summary>Spawns guests while the park is open. Arrival rate drops as the entry fee rises above the reference fee.</summary>
+/// <summary>
+/// Spawns guests while the park is open. Arrival rate drops as the entry fee rises above the reference fee. With
+/// parking lots, guests arrive by car and are turned away when the lots are full.
+/// </summary>
 internal sealed class GuestArrivalSystem : ISimSystem
 {
     public void Update(SimContext ctx)
@@ -61,6 +65,15 @@ internal sealed class GuestArrivalSystem : ISimSystem
         var state = ctx.State;
         long fee = state.Park.EntryFeeCents;
         long cash = ctx.Rng.Range(2_000, 8_001);
+
+        if (LiftMath.ParkingCapacity(state) is { } capacity && state.Guests.Count >= capacity)
+        {
+            state.Stats.TotalTurnedAway++;
+            state.Stats.TurnedAwayToday++;
+            state.Stats.TotalTurnedAwayParkingFull++;
+            ctx.Publish(new GuestTurnedAway(ctx.Tick, TurnAwayReason.ParkingFull));
+            return;
+        }
 
         if (cash < fee)
         {
@@ -96,8 +109,9 @@ internal sealed class GuestArrivalSystem : ISimSystem
 }
 
 /// <summary>
-/// Updates guests in the park: mood, spending, and leaving. Riders only leave between laps (or at closing time);
-/// tired riders go home.
+/// Updates guests in the park: mood, spending, rest, and leaving. Riders only leave between laps or out of a lift
+/// queue (or at closing time); tired riders go home. Waiting in a queue beyond the grace time costs mood; queuing and
+/// riding a lift restore energy.
 /// </summary>
 internal sealed class GuestSystem : ISimSystem
 {
@@ -135,6 +149,8 @@ internal sealed class GuestSystem : ISimSystem
             }
             else
                 guests[write++] = guest;
+            if (leave is not null && guest.Activity == RiderActivity.Queuing)
+                LiftSystem.LeaveQueue(state, guest);
         }
         guests.RemoveRange(write, guests.Count - write);
     }
@@ -142,11 +158,17 @@ internal sealed class GuestSystem : ISimSystem
     private static GuestLeaveReason? UpdateGuest(SimContext ctx, Guest guest, bool crowded)
     {
         var rules = ctx.State.Rules;
-        bool onTheWay = guest.Activity is RiderActivity.Climbing or RiderActivity.Descending;
+        var liftRules = ctx.State.LiftRules;
+        bool onTheWay = guest.Activity is RiderActivity.Climbing or RiderActivity.Descending or RiderActivity.Walking or RiderActivity.OnLift;
 
         guest.Happiness += ctx.Rng.Range(-1, 2);
         if (crowded)
             guest.Happiness -= CrowdingPenalty;
+
+        if (guest.Activity is RiderActivity.Queuing or RiderActivity.OnLift)
+            guest.Energy = Math.Min(1000, guest.Energy + liftRules.RestEnergyPerMinute);
+        if (guest.Activity == RiderActivity.Queuing && ctx.Tick - guest.QueueSinceTick >= liftRules.QueueGraceMinutes)
+            guest.Happiness -= liftRules.QueueMoodPenaltyPerMinute;
 
         if (!onTheWay && guest.CashCents >= rules.SnackPriceCents && ctx.Rng.ChancePermille(SnackChancePermille))
         {
@@ -169,7 +191,10 @@ internal sealed class GuestSystem : ISimSystem
     }
 }
 
-/// <summary>Charges daily upkeep and closes the books at the last minute of each day.</summary>
+/// <summary>
+/// Charges daily upkeep and the bike access fees of lifts run by lift companies (the tier in effect that day), and
+/// closes the books at the last minute of each day.
+/// </summary>
 internal sealed class FinanceSystem : ISimSystem
 {
     public void Update(SimContext ctx)
@@ -179,6 +204,15 @@ internal sealed class FinanceSystem : ISimSystem
 
         var state = ctx.State;
         state.Finance.Spend(state.Rules.DailyUpkeepCents);
+        foreach (var lift in state.Lifts)
+        {
+            if (lift.BikeAccess is not { } access || LiftNetwork.FindOperator(state, lift.OperatorId) is not { } op) continue;
+            if (access.TierIndex < 0 || access.TierIndex >= op.BikeAccessTiers.Count) continue;
+            long fee = op.BikeAccessTiers[access.TierIndex].DailyFeeCents;
+            state.Finance.Spend(fee);
+            state.Finance.TotalLiftFeesCents += fee;
+            state.Finance.LiftFeesTodayCents += fee;
+        }
 
         var report = new DayReport(
             Day: GameTime.Day(ctx.Tick),
@@ -186,11 +220,19 @@ internal sealed class FinanceSystem : ISimSystem
             TurnedAway: state.Stats.TurnedAwayToday,
             RevenueCents: state.Finance.RevenueTodayCents,
             ExpensesCents: state.Finance.ExpensesTodayCents,
-            MoneyCents: state.Finance.MoneyCents);
+            MoneyCents: state.Finance.MoneyCents,
+            LiftFeesCents: state.Finance.LiftFeesTodayCents,
+            LiftRides: state.Lifts.Sum(l => l.Stats.RidersToday));
         ctx.Publish(new DayEnded(ctx.Tick, report));
 
         foreach (var way in state.Ways)
             way.Stats.RunsToday = 0;
+        foreach (var lift in state.Lifts)
+        {
+            lift.Stats.RidersToday = 0;
+            lift.Stats.MaxQueueToday = 0;
+        }
+        state.Finance.LiftFeesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
         state.Stats.TurnedAwayToday = 0;
         state.Finance.RevenueTodayCents = 0;

@@ -1,4 +1,5 @@
 using Bikepark.Game.Camera;
+using Bikepark.Game.Lifts;
 using Bikepark.Game.Riders;
 using Bikepark.Game.Terrain;
 using Bikepark.Game.Ways;
@@ -6,6 +7,7 @@ using Bikepark.Sim;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
+using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reporting;
 using Bikepark.Sim.Trails;
 using Godot;
@@ -14,8 +16,9 @@ using Gradient = Bikepark.Sim.Trails.Gradient;
 namespace Bikepark.Game;
 
 /// <summary>
-/// Placeholder debug HUD: KPIs, terrain info under the cursor, build tool panel, followed rider, a list of paths
-/// and trails with their stats, and a short event log. Issues commands; pure view, never writes to WorldState.
+/// Placeholder debug HUD: KPIs, lifts (queue, wait, bike access tier; [ and ] book a tier), terrain info under the
+/// cursor, build tool panels, followed rider, a list of paths and trails with their stats, and a short event log.
+/// Issues commands; pure view, never writes to WorldState.
 /// </summary>
 public partial class Hud : CanvasLayer
 {
@@ -27,6 +30,7 @@ public partial class Hud : CanvasLayer
     [Export] public NodePath CameraPath { get; set; } = "../RtsCamera";
     [Export] public NodePath WayToolPath { get; set; } = "../WayTool";
     [Export] public NodePath RiderViewPath { get; set; } = "../RiderView";
+    [Export] public NodePath StructureToolPath { get; set; } = "../StructureTool";
 
     private readonly Queue<string> _log = new();
     private readonly List<IDisposable> _subscriptions = [];
@@ -36,7 +40,9 @@ public partial class Hud : CanvasLayer
     private RtsCamera _camera = null!;
     private WayTool _tool = null!;
     private RiderView _riders = null!;
+    private StructureTool _structures = null!;
     private Label _stats = null!;
+    private Label _liftInfo = null!;
     private Label _terrainInfo = null!;
     private Label _toolInfo = null!;
     private Label _logLabel = null!;
@@ -50,6 +56,7 @@ public partial class Hud : CanvasLayer
         _camera = GetNode<RtsCamera>(CameraPath);
         _tool = GetNode<WayTool>(WayToolPath);
         _riders = GetNode<RiderView>(RiderViewPath);
+        _structures = GetNode<StructureTool>(StructureToolPath);
         BuildUi();
         _host.SimulationReplaced += Subscribe;
         Subscribe(_host.Sim);
@@ -70,13 +77,63 @@ public partial class Hud : CanvasLayer
             $"Money {Money(kpi.MoneyCents)}   Entry fee {Money(kpi.EntryFeeCents)}\n" +
             $"Guests {kpi.GuestsInPark} ({_riders.VisibleRiders} riding)   mood {kpi.AverageHappiness / 10}%   " +
             $"(exit avg {kpi.AverageExitHappiness / 10}%)\n" +
-            $"Visitors {kpi.TotalVisitors}   runs {kpi.RunsCompleted}   avg run fun {kpi.AverageRunFun / 10}%";
+            $"Visitors {kpi.TotalVisitors}   runs {kpi.RunsCompleted}   avg run fun {kpi.AverageRunFun / 10}%" +
+            (state.ParkingLots.Count > 0 ? $"\nParking {kpi.ParkingOccupancyPermille / 10}% full   turned away (full) {kpi.TotalTurnedAwayParkingFull}" : "");
+        _liftInfo.Text = LiftInfo();
+        _liftInfo.Visible = _liftInfo.Text.Length > 0;
         _terrainInfo.Text = TerrainInfo();
         _toolInfo.Text = ToolInfo();
         _toolInfo.Visible = _toolInfo.Text.Length > 0;
 
         if (_waysDirty) RebuildWayList();
         UpdateWayRows();
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey { Pressed: true, Echo: false } key) return;
+        int step = key.PhysicalKeycode switch { Key.Bracketleft => -1, Key.Bracketright => 1, _ => 0 };
+        if (step == 0) return;
+        ChangeBikeTier(step);
+        GetViewport().SetInputAsHandled();
+    }
+
+    /// <summary>Books the next lower/higher bike access tier on the first lift run by a lift company (from the next opening).</summary>
+    private void ChangeBikeTier(int step)
+    {
+        var state = _host.Sim.State;
+        var lift = state.Lifts.FirstOrDefault(l => l.BikeAccess is not null);
+        if (lift is null || LiftNetwork.FindOperator(state, lift.OperatorId) is not { } op) return;
+        int current = lift.BikeAccess!.PendingTierIndex ?? lift.BikeAccess.TierIndex;
+        int next = Math.Clamp(current + step, 0, op.BikeAccessTiers.Count - 1);
+        if (next != current) _host.Enqueue(new SetLiftBikeAccessCommand(lift.Id, next));
+    }
+
+    private string LiftInfo()
+    {
+        var state = _host.Sim.State;
+        var lines = new List<string>();
+        foreach (var lift in state.Lifts)
+        {
+            var type = LiftNetwork.FindType(state, lift.TypeId);
+            if (type is null) continue;
+            int wait = LiftMath.ExpectedWaitMinutes(type, lift.BikeCarrierPermille, lift.Queue.Count);
+            double avg = lift.Stats.Riders == 0 ? 0 : (double)lift.Stats.SumWaitMinutes / lift.Stats.Riders;
+            lines.Add($"{lift.Name}: queue {lift.Queue.Count} ({(wait < 0 ? "no bikes" : $"~{wait} min")})   " +
+                      $"{LiftMath.BikeRidersPerHour(type, lift.BikeCarrierPermille)} riders/h   today {lift.Stats.RidersToday} rides, " +
+                      $"max queue {lift.Stats.MaxQueueToday}, avg wait {avg:F1} min");
+            if (lift.BikeAccess is { } access && LiftNetwork.FindOperator(state, lift.OperatorId) is { } op)
+            {
+                var tier = op.BikeAccessTiers[access.TierIndex];
+                string pending = access.PendingTierIndex is { } p
+                    ? $"   → {op.BikeAccessTiers[p].Name} ({Money(op.BikeAccessTiers[p].DailyFeeCents)}/day) from next opening"
+                    : "";
+                lines.Add($"   {op.Name}: {tier.Name} ({tier.BikeCarrierPermille / 10}% of cabins), {Money(tier.DailyFeeCents)}/day{pending}   [ / ] change");
+            }
+        }
+        if (state.Lifts.Count > 0)
+            lines.Add($"Lift fees paid {Money(state.Finance.TotalLiftFeesCents)}");
+        return string.Join('\n', lines);
     }
 
     private string TerrainInfo()
@@ -102,6 +159,24 @@ public partial class Hud : CanvasLayer
         if (_riders.FollowedRider is { } rider)
             lines.Add($"Following: {rider}   [F] next, pan to stop");
 
+        if (_structures.Mode != StructureTool.ToolMode.None)
+        {
+            lines.Add(_structures.Status);
+            lines.Add("Click to place · Backspace undo · Enter build · Esc cancel");
+            if (_structures.LiftPlan is { } lp)
+            {
+                if (lp.LengthCm > 0)
+                    lines.Add($"{lp.HorizontalCm / 100} m long, +{lp.RiseCm / 100} m, ride {lp.RideSeconds / 60.0:F1} min");
+                foreach (var issue in lp.Issues.Take(3)) lines.Add($"✗ {issue.Message}");
+                if (lp.IsValid) lines.Add("✓ Valid — press Enter to build");
+            }
+            if (_structures.ParkingPlan is { } pp)
+            {
+                foreach (var issue in pp.Issues.Take(3)) lines.Add($"✗ {issue.Message}");
+                if (pp.IsValid) lines.Add("✓ Valid — press Enter to build");
+            }
+        }
+
         if (_tool.Mode != WayTool.ToolMode.None)
         {
             lines.Add($"{_tool.Status}   points {_tool.PointCount}");
@@ -124,7 +199,8 @@ public partial class Hud : CanvasLayer
     {
         Unsubscribe();
         _subscriptions.Add(sim.Events.Subscribe<DayEnded>(e =>
-            Log($"Day {e.Report.Day + 1} closed: {e.Report.Visitors} visitors, net {Money(e.Report.RevenueCents - e.Report.ExpensesCents)}")));
+            Log($"Day {e.Report.Day + 1} closed: {e.Report.Visitors} visitors, {e.Report.LiftRides} lift rides, " +
+                $"lift fees {Money(e.Report.LiftFeesCents)}, net {Money(e.Report.RevenueCents - e.Report.ExpensesCents)}")));
         _subscriptions.Add(sim.Events.Subscribe<ParkOpened>(e => Log($"{GameTime.Format(e.Tick)} park opened")));
         _subscriptions.Add(sim.Events.Subscribe<ParkClosed>(e => Log($"{GameTime.Format(e.Tick)} park closed")));
         _subscriptions.Add(sim.Events.Subscribe<CommandRejected>(e => Log($"Rejected: {e.Reason}")));
@@ -134,6 +210,10 @@ public partial class Hud : CanvasLayer
             Log($"Built {_host.Sim.Network.FindWay(e.WayId)?.Name}");
         }));
         _subscriptions.Add(sim.Events.Subscribe<WayDeleted>(_ => _waysDirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<LiftBuilt>(e => Log($"Built {_host.Sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name}")));
+        _subscriptions.Add(sim.Events.Subscribe<ParkingLotBuilt>(_ => Log("Built a parking lot")));
+        _subscriptions.Add(sim.Events.Subscribe<BikeAccessBooked>(e => Log($"Booked bike access tier {e.TierIndex} (from next opening)")));
+        _subscriptions.Add(sim.Events.Subscribe<BikeAccessChanged>(e => Log($"{GameTime.Format(e.Tick)} bike access now {e.BikeCarrierPermille / 10}% of cabins")));
         _waysDirty = true;
     }
 
@@ -161,14 +241,15 @@ public partial class Hud : CanvasLayer
         _wayRows.Clear();
 
         var ways = _host.Sim.State.Ways;
-        _wayList.AddChild(new Label { Text = ways.Count == 0 ? "No paths or trails yet.\n[P] draw a gravel path from the valley up." : "Paths and trails" });
+        _wayList.AddChild(new Label { Text = ways.Count == 0 ? "No paths or trails yet.\n[T] draw a trail down from the plateau." : "Paths and trails" });
         foreach (var way in ways)
         {
             var row = new HBoxContainer();
             var label = new Label { CustomMinimumSize = new Vector2(330, 0) };
             row.AddChild(label);
             int id = way.Id;
-            AddButton(row, "Delete", () => _host.Enqueue(new DeleteWayCommand(id)));
+            if (way.Origin == WayOrigin.Player)
+                AddButton(row, "Delete", () => _host.Enqueue(new DeleteWayCommand(id)));
             _wayList.AddChild(row);
             _wayRows.Add((id, label));
         }
@@ -201,6 +282,8 @@ public partial class Hud : CanvasLayer
 
         _stats = new Label();
         root.AddChild(_stats);
+        _liftInfo = new Label();
+        root.AddChild(_liftInfo);
         _terrainInfo = new Label();
         root.AddChild(_terrainInfo);
 
@@ -222,13 +305,17 @@ public partial class Hud : CanvasLayer
         root.AddChild(buildRow);
         AddButton(buildRow, "Gravel path [P]", () => _tool.SetMode(_tool.Mode == WayTool.ToolMode.AccessPath ? WayTool.ToolMode.None : WayTool.ToolMode.AccessPath));
         AddButton(buildRow, "Trail [T]", () => _tool.SetMode(_tool.Mode == WayTool.ToolMode.Trail ? WayTool.ToolMode.None : WayTool.ToolMode.Trail));
-        AddButton(buildRow, "Demo network", _host.LoadDemoNetwork);
+        AddButton(buildRow, "Lift [L]", () => _structures.SetMode(_structures.Mode == StructureTool.ToolMode.Lift ? StructureTool.ToolMode.None : StructureTool.ToolMode.Lift));
+        AddButton(buildRow, "Parking [K]", () => _structures.SetMode(_structures.Mode == StructureTool.ToolMode.Parking ? StructureTool.ToolMode.None : StructureTool.ToolMode.Parking));
+        AddButton(buildRow, "Demo trails", _host.LoadDemoNetwork);
         AddButton(buildRow, "Follow rider [F]", _riders.FollowNext);
 
         var actionRow = new HBoxContainer();
         root.AddChild(actionRow);
         AddButton(actionRow, "Fee -", () => ChangeFee(-FeeStepCents));
         AddButton(actionRow, "Fee +", () => ChangeFee(FeeStepCents));
+        AddButton(actionRow, "Bikes - [", () => ChangeBikeTier(-1));
+        AddButton(actionRow, "Bikes + ]", () => ChangeBikeTier(1));
         AddButton(actionRow, "Save", _host.Save);
         AddButton(actionRow, "Load", () => Log(_host.Load() ? "Loaded save." : "No save found."));
 

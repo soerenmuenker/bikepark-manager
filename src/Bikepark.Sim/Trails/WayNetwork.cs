@@ -2,40 +2,73 @@ using Bikepark.Sim.Terrain;
 
 namespace Bikepark.Sim.Trails;
 
-/// <summary>One stretch of a route: along a way from one distance to another (either direction on access paths).</summary>
-public readonly record struct RouteLeg(int WayId, long FromCm, long ToCm)
+/// <summary>How a route leg is travelled.</summary>
+public enum LegKind : byte
+{
+    /// <summary>Along a way's geometry (<see cref="RouteLeg.WayId"/> is the way).</summary>
+    Way = 0,
+
+    /// <summary>Up a lift line (<see cref="RouteLeg.WayId"/> is the lift).</summary>
+    Lift = 1,
+
+    /// <summary>On foot between a parking lot and its station (<see cref="RouteLeg.WayId"/> is the parking lot).</summary>
+    Walk = 2,
+}
+
+/// <summary>
+/// One stretch of a route: along a way from one distance to another (either direction on access paths), or along a
+/// lift/walk link (<see cref="Kind"/>; then <see cref="WayId"/> is the lift or parking lot and distances run along the link).
+/// </summary>
+public readonly record struct RouteLeg(int WayId, long FromCm, long ToCm, LegKind Kind = LegKind.Way)
 {
     public long LengthCm => Math.Abs(ToCm - FromCm);
 }
 
+public enum HubKind : byte
+{
+    ValleyStation = 0,
+    MountainStation = 1,
+    Parking = 2,
+}
+
+/// <summary>A network node that is an area, not a point on a way: a station platform, plateau or parking lot.</summary>
+public sealed record NetworkHub(int Id, HubKind Kind, int OwnerId, TerrainPad Pad);
+
+/// <summary>A connection between two hubs that is not a way: a lift line (one-way up) or a walk (two-way).</summary>
+public sealed record NetworkLink(LegKind Kind, int Id, int FromHubId, int ToHubId, long LengthCm, long Cost, int CorridorCm);
+
 /// <summary>
-/// Everything derived from <see cref="State.WorldState.Ways"/>: geometries, the junction graph and spatial lookups.
-/// Rebuilt whenever the ways change (see <see cref="Simulation.Network"/>); never saved.
+/// Everything derived from <see cref="State.WorldState.Ways"/> and the structures: geometries, the junction graph and
+/// spatial lookups. Rebuilt whenever ways or terrain edits change (see <see cref="Simulation.Network"/>); never saved.
 /// <para>
-/// Graph: nodes are the base (start of the first access path), way endpoints and junctions; edges are the stretches
-/// of a way between consecutive nodes. Access paths are two-way, trails one-way (start → end). Validation keeps the
-/// invariant that every point of every way is reachable from the base and can get back to it.
+/// Graph: nodes are way endpoints, junctions and hubs (all way ends on one hub are the same node); edges are the
+/// stretches of a way between consecutive nodes plus lift and walk links. Access paths and walks are two-way, trails
+/// and lifts one-way. The base, where guests arrive, is the parking lot if there is one, else the valley station,
+/// else the start of the first access path.
 /// </para>
 /// </summary>
 public sealed class WayNetwork
 {
     private readonly List<Way> _ways;
     private readonly Dictionary<int, WayGeometry> _geometries;
+    private readonly List<NetworkHub> _hubs;
+    private readonly List<NetworkLink> _links;
     private readonly Dictionary<(int WayId, long DistanceCm), int> _nodeIndex = [];
     private readonly List<(int WayId, long DistanceCm)> _nodes = [];
     private readonly List<List<Edge>> _edges = [];
     private readonly CorridorIndex _corridors = new();
     private readonly CorridorIndex _centerlines = new();
 
-    private readonly record struct Edge(int To, int WayId, long FromCm, long ToCm, long Cost);
+    private readonly record struct Edge(int To, LegKind Kind, int Id, long FromCm, long ToCm, long Cost);
 
-    public static WayNetwork Empty { get; } = new([], [], new TrailRules());
+    public static WayNetwork Empty { get; } = new([], [], [], [], new TrailRules());
 
-    private WayNetwork(List<Way> ways, Dictionary<int, WayGeometry> geometries, TrailRules rules)
+    private WayNetwork(List<Way> ways, Dictionary<int, WayGeometry> geometries, List<NetworkHub> hubs, List<NetworkLink> links, TrailRules rules)
     {
         _ways = ways;
         _geometries = geometries;
-        BaseWay = ways.FirstOrDefault(w => w.Kind == WayKind.AccessPath);
+        _hubs = hubs;
+        _links = links;
         foreach (var way in ways)
         {
             var geometry = geometries[way.Id];
@@ -43,18 +76,25 @@ public sealed class WayNetwork
             _centerlines.Add(way.Id, geometry, 0);
         }
         BuildGraph();
-        BaseNode = BaseWay is null ? -1 : NodeAt(BaseWay.Id, 0);
+
+        var baseHub = hubs.FirstOrDefault(h => h.Kind == HubKind.Parking) ?? hubs.FirstOrDefault(h => h.Kind == HubKind.ValleyStation);
+        BaseHub = baseHub;
+        BaseWay = baseHub is null ? ways.FirstOrDefault(w => w.Kind == WayKind.AccessPath) : null;
+        BaseNode = baseHub is not null ? HubNode(baseHub.Id) : BaseWay is null ? -1 : NodeAt(BaseWay.Id, 0);
     }
 
-    /// <summary>Builds the network for the given ways (in id order) on the terrain.</summary>
-    public static WayNetwork Build(IReadOnlyList<Way> ways, TerrainGrid grid, TrailRules rules)
+    /// <summary>Builds the network for the given ways (in id order), hubs and links on the terrain.</summary>
+    public static WayNetwork Build(IReadOnlyList<Way> ways, TerrainGrid grid, TrailRules rules) => Build(ways, [], [], grid, rules);
+
+    public static WayNetwork Build(
+        IReadOnlyList<Way> ways, IReadOnlyList<NetworkHub> hubs, IReadOnlyList<NetworkLink> links, TerrainGrid grid, TrailRules rules)
     {
-        if (ways.Count == 0) return Empty;
+        if (ways.Count == 0 && hubs.Count == 0) return Empty;
         var ordered = ways.OrderBy(w => w.Id).ToList();
         var geometries = new Dictionary<int, WayGeometry>();
         foreach (var way in ordered)
             geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
-        return new WayNetwork(ordered, geometries, rules);
+        return new WayNetwork(ordered, geometries, hubs.OrderBy(h => h.Id).ToList(), links.ToList(), rules);
     }
 
     /// <summary>All ways in id order.</summary>
@@ -62,10 +102,21 @@ public sealed class WayNetwork
 
     public IEnumerable<Way> Trails => _ways.Where(w => w.Kind == WayKind.Trail);
 
-    /// <summary>The first access path; its start is where guests arrive.</summary>
+    /// <summary>Hubs in id order.</summary>
+    public IReadOnlyList<NetworkHub> Hubs => _hubs;
+
+    public IReadOnlyList<NetworkLink> Links => _links;
+
+    /// <summary>True if there are no ways and no hubs.</summary>
+    public bool IsEmpty => _ways.Count == 0 && _hubs.Count == 0;
+
+    /// <summary>The first access path, if guests arrive at its start (no parking lot or station yet).</summary>
     public Way? BaseWay { get; }
 
-    public bool HasAccessPath => BaseWay is not null;
+    /// <summary>The hub guests arrive at (parking lot, else valley station), if any.</summary>
+    public NetworkHub? BaseHub { get; }
+
+    public bool HasBase => BaseNode >= 0;
 
     public int BaseNode { get; }
 
@@ -77,30 +128,67 @@ public sealed class WayNetwork
 
     public Way? FindWay(int wayId) => _ways.FirstOrDefault(w => w.Id == wayId);
 
+    public NetworkHub? FindHub(int hubId) => _hubs.FirstOrDefault(h => h.Id == hubId);
+
+    public NetworkLink? FindLink(LegKind kind, int id) => _links.FirstOrDefault(l => l.Kind == kind && l.Id == id);
+
     /// <summary>Node at a way position, or -1 if there is no node exactly there.</summary>
     public int NodeAt(int wayId, long distanceCm) =>
         _nodeIndex.TryGetValue((wayId, distanceCm), out int node) ? node : -1;
+
+    /// <summary>Node of a hub, or -1.</summary>
+    public int HubNode(int hubId) => NodeAt(HubKey(hubId), 0);
 
     public int StartNode(Way way) => NodeAt(way.Id, 0);
 
     public int EndNode(Way way) => NodeAt(way.Id, Geometry(way.Id).LengthCm);
 
-    /// <summary>A position of the node: the way and distance it was first created at.</summary>
+    /// <summary>A position of the node: the way and distance it was first created at (hubs: negative id, 0).</summary>
     public (int WayId, long DistanceCm) NodePosition(int node) => _nodes[node];
 
-    /// <summary>True if (x, z) lies inside the cleared corridor of any way.</summary>
-    public bool IsInCorridor(int xCm, int zCm) => _corridors.Contains(xCm, zCm);
+    /// <summary>True if (x, z) lies inside the cleared corridor of any way or lift line.</summary>
+    public bool IsInCorridor(int xCm, int zCm)
+    {
+        if (_corridors.Contains(xCm, zCm)) return true;
+        foreach (var link in _links)
+        {
+            if (link.Kind != LegKind.Lift || link.CorridorCm <= 0) continue;
+            var a = FindHub(link.FromHubId)!.Pad;
+            var b = FindHub(link.ToHubId)!.Pad;
+            if (DistanceToSegment(xCm, zCm, a.CenterX, a.CenterZ, b.CenterX, b.CenterZ) <= link.CorridorCm / 2) return true;
+        }
+        return false;
+    }
 
     /// <summary>Closest point on any way's centerline within the radius.</summary>
     public (int WayId, long DistanceCm, PointCm Point)? Nearest(int xCm, int zCm, int radiusCm) =>
         _centerlines.Nearest(xCm, zCm, radiusCm);
 
-    /// <summary>
-    /// Cheapest route between two nodes (cost = distance plus a penalty for climbing), as merged legs.
-    /// Returns an empty list if from == to, null if unreachable. Deterministic.
-    /// </summary>
-    public List<RouteLeg>? Route(int from, int to)
+    /// <summary>The hub whose flat area is closest to (x, z), within the radius (0 = inside). Ties: lower id.</summary>
+    public NetworkHub? HubAt(int xCm, int zCm, int radiusCm)
     {
+        NetworkHub? best = null;
+        long bestDistance = long.MaxValue;
+        foreach (var hub in _hubs)
+        {
+            long d = hub.Pad.DistanceOutside(xCm, zCm);
+            if (d > radiusCm || d >= bestDistance) continue;
+            best = hub;
+            bestDistance = d;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Cheapest route between two nodes (cost = distance plus a penalty for climbing; links have their own cost), as
+    /// merged legs. Lift links are only used if <paramref name="liftUsable"/> allows them (null: all). Returns an empty
+    /// list if from == to, null if unreachable. Deterministic.
+    /// </summary>
+    public List<RouteLeg>? Route(int from, int to, Func<int, bool>? liftUsable = null) => Route(from, to, liftUsable, out _);
+
+    public List<RouteLeg>? Route(int from, int to, Func<int, bool>? liftUsable, out long totalCost)
+    {
+        totalCost = 0;
         if (from < 0 || to < 0) return null;
         if (from == to) return [];
 
@@ -118,6 +206,7 @@ public sealed class WayNetwork
             if (node == to) break;
             foreach (var edge in _edges[node])
             {
+                if (edge.Kind == LegKind.Lift && liftUsable is not null && !liftUsable(edge.Id)) continue;
                 long next = cost[node] + edge.Cost;
                 if (next >= cost[edge.To]) continue;
                 cost[edge.To] = next;
@@ -128,12 +217,13 @@ public sealed class WayNetwork
         }
 
         if (cost[to] == long.MaxValue) return null;
+        totalCost = cost[to];
 
         var legs = new List<RouteLeg>();
         for (int n = to; n != from; n = previous[n])
         {
             var e = via[n]!.Value;
-            legs.Add(new RouteLeg(e.WayId, e.FromCm, e.ToCm));
+            legs.Add(new RouteLeg(e.Id, e.FromCm, e.ToCm, e.Kind));
         }
         legs.Reverse();
 
@@ -141,7 +231,7 @@ public sealed class WayNetwork
         var merged = new List<RouteLeg>();
         foreach (var leg in legs)
         {
-            if (merged.Count > 0 && merged[^1] is var last && last.WayId == leg.WayId && last.ToCm == leg.FromCm
+            if (merged.Count > 0 && merged[^1] is var last && last.Kind == leg.Kind && last.WayId == leg.WayId && last.ToCm == leg.FromCm
                 && Math.Sign(last.ToCm - last.FromCm) == Math.Sign(leg.ToCm - leg.FromCm))
                 merged[^1] = last with { ToCm = leg.ToCm };
             else
@@ -151,6 +241,9 @@ public sealed class WayNetwork
 
         static long Key(long c, int n) => (c << 20) | (uint)n;
     }
+
+    /// <summary>Union-find key of a hub (way ids are positive, so negative ids never collide).</summary>
+    private static int HubKey(int hubId) => -hubId;
 
     private void BuildGraph()
     {
@@ -162,8 +255,9 @@ public sealed class WayNetwork
                 if (join is not null && stops.TryGetValue(join.WayId, out var set))
                     set.Add(Math.Clamp(join.DistanceCm, 0, _geometries[join.WayId].LengthCm));
         }
+        var hubIds = _hubs.Select(h => h.Id).ToHashSet();
 
-        // Union way endpoints with the point they join.
+        // Union way endpoints with the point (or hub) they join.
         var parent = new Dictionary<(int, long), (int, long)>();
         (int, long) Find((int, long) k)
         {
@@ -181,28 +275,34 @@ public sealed class WayNetwork
         foreach (var way in _ways)
         {
             long length = _geometries[way.Id].LengthCm;
-            if (way.StartJoin is { } s && stops.ContainsKey(s.WayId))
+            if (way.StartHubId != 0 && hubIds.Contains(way.StartHubId))
+                Union((way.Id, 0), (HubKey(way.StartHubId), 0));
+            else if (way.StartJoin is { } s && stops.ContainsKey(s.WayId))
                 Union((way.Id, 0), (s.WayId, Math.Clamp(s.DistanceCm, 0, _geometries[s.WayId].LengthCm)));
-            if (way.EndJoin is { } e && stops.ContainsKey(e.WayId))
+            if (way.EndHubId != 0 && hubIds.Contains(way.EndHubId))
+                Union((way.Id, length), (HubKey(way.EndHubId), 0));
+            else if (way.EndJoin is { } e && stops.ContainsKey(e.WayId))
                 Union((way.Id, length), (e.WayId, Math.Clamp(e.DistanceCm, 0, _geometries[e.WayId].LengthCm)));
         }
 
-        // Nodes in deterministic order (ways by id, stops by distance).
-        foreach (var way in _ways)
+        // Nodes in deterministic order (hubs by id, then ways by id, stops by distance).
+        void AddNode((int, long) key)
         {
-            foreach (long d in stops[way.Id])
+            var root = Find(key);
+            if (!_nodeIndex.TryGetValue(root, out int node))
             {
-                var root = Find((way.Id, d));
-                if (!_nodeIndex.TryGetValue(root, out int node))
-                {
-                    node = _nodes.Count;
-                    _nodes.Add(root);
-                    _edges.Add([]);
-                    _nodeIndex[root] = node;
-                }
-                _nodeIndex[(way.Id, d)] = node;
+                node = _nodes.Count;
+                _nodes.Add(root);
+                _edges.Add([]);
+                _nodeIndex[root] = node;
             }
+            _nodeIndex[key] = node;
         }
+        foreach (var hub in _hubs)
+            AddNode((HubKey(hub.Id), 0));
+        foreach (var way in _ways)
+            foreach (long d in stops[way.Id])
+                AddNode((way.Id, d));
 
         foreach (var way in _ways)
         {
@@ -212,10 +312,19 @@ public sealed class WayNetwork
             {
                 int a = _nodeIndex[(way.Id, d[i])], b = _nodeIndex[(way.Id, d[i + 1])];
                 if (a == b) continue;
-                _edges[a].Add(new Edge(b, way.Id, d[i], d[i + 1], Cost(geometry, d[i], d[i + 1])));
+                _edges[a].Add(new Edge(b, LegKind.Way, way.Id, d[i], d[i + 1], Cost(geometry, d[i], d[i + 1])));
                 if (way.Kind == WayKind.AccessPath)
-                    _edges[b].Add(new Edge(a, way.Id, d[i + 1], d[i], Cost(geometry, d[i + 1], d[i])));
+                    _edges[b].Add(new Edge(a, LegKind.Way, way.Id, d[i + 1], d[i], Cost(geometry, d[i + 1], d[i])));
             }
+        }
+
+        foreach (var link in _links)
+        {
+            int a = HubNode(link.FromHubId), b = HubNode(link.ToHubId);
+            if (a < 0 || b < 0 || a == b) continue;
+            _edges[a].Add(new Edge(b, link.Kind, link.Id, 0, link.LengthCm, link.Cost));
+            if (link.Kind == LegKind.Walk)
+                _edges[b].Add(new Edge(a, link.Kind, link.Id, link.LengthCm, 0, link.Cost));
         }
     }
 
@@ -224,5 +333,14 @@ public sealed class WayNetwork
     {
         long gain = Math.Max(0, geometry.HeightAt(to) - geometry.HeightAt(from));
         return Math.Abs(to - from) + 10 * gain;
+    }
+
+    private static long DistanceToSegment(long px, long pz, long ax, long az, long bx, long bz)
+    {
+        long dx = bx - ax, dz = bz - az;
+        long len2 = dx * dx + dz * dz;
+        long t = len2 == 0 ? 0 : Math.Clamp(((px - ax) * dx + (pz - az) * dz) * 1024 / len2, 0, 1024);
+        long cx = ax + dx * t / 1024 - px, cz = az + dz * t / 1024 - pz;
+        return FixedMath.ISqrt(cx * cx + cz * cz);
     }
 }

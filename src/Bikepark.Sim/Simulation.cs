@@ -1,6 +1,7 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
+using Bikepark.Sim.Lifts;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Systems;
 using Bikepark.Sim.Terrain;
@@ -21,9 +22,11 @@ public sealed class Simulation
 {
     private readonly SimContext _context;
     private readonly IReadOnlyList<ISimSystem> _systems;
-    private readonly Lazy<TerrainGrid> _terrain;
+    private readonly Lazy<TerrainGrid> _baseTerrain;
+    private TerrainGrid? _terrain;
+    private int _terrainRevision = -1;
     private WayNetwork? _network;
-    private int _networkRevision = -1;
+    private (int Ways, int Terrain) _networkRevision = (-1, -1);
 
     public Simulation(WorldState state)
     {
@@ -31,7 +34,7 @@ public sealed class Simulation
         State = state;
         Events = new EventBus();
         Commands = new CommandQueue(state);
-        _terrain = new Lazy<TerrainGrid>(() => TerrainCache.Get(state.Terrain, state.Seed));
+        _baseTerrain = new Lazy<TerrainGrid>(() => TerrainCache.Get(state.Terrain, state.Seed));
         _context = new SimContext(this, Events);
 
         // Order matters for determinism and gameplay. Append new systems deliberately.
@@ -40,6 +43,7 @@ public sealed class Simulation
             new ParkHoursSystem(),
             new GuestArrivalSystem(),
             new RiderSystem(),
+            new LiftSystem(),
             new GuestSystem(),
             new FinanceSystem(),
         ];
@@ -52,22 +56,43 @@ public sealed class Simulation
     public CommandQueue Commands { get; }
 
     /// <summary>
-    /// The terrain, derived from <see cref="WorldState.Terrain"/> (and the world seed). Generated on first access.
+    /// The terrain, derived from <see cref="WorldState.Terrain"/> (and the world seed) plus the stored
+    /// <see cref="WorldState.TerrainEdits"/>. Generated on first access, re-derived when <see cref="WorldState.TerrainRevision"/>
+    /// changes.
     /// </summary>
-    public TerrainGrid Terrain => _terrain.Value;
+    public TerrainGrid Terrain
+    {
+        get
+        {
+            if (_terrain is null || _terrainRevision != State.TerrainRevision)
+            {
+                _terrain = TerrainEditor.Apply(_baseTerrain.Value, State.TerrainEdits);
+                _terrainRevision = State.TerrainRevision;
+            }
+            return _terrain;
+        }
+    }
+
+    /// <summary>The generated terrain without edits.</summary>
+    public TerrainGrid BaseTerrain => _baseTerrain.Value;
 
     /// <summary>
-    /// The way network derived from <see cref="WorldState.Ways"/>, rebuilt when <see cref="WorldState.WaysRevision"/>
-    /// changes. With no ways it is empty and does not generate the terrain.
+    /// The way network derived from <see cref="WorldState.Ways"/>, the lifts and the parking lots, rebuilt when
+    /// <see cref="WorldState.WaysRevision"/> or <see cref="WorldState.TerrainRevision"/> changes (every structure change
+    /// edits the terrain). With nothing built it is empty and does not generate the terrain.
     /// </summary>
     public WayNetwork Network
     {
         get
         {
-            if (_network is null || _networkRevision != State.WaysRevision)
+            var revision = (State.WaysRevision, State.TerrainRevision);
+            if (_network is null || _networkRevision != revision)
             {
-                _network = State.Ways.Count == 0 ? WayNetwork.Empty : WayNetwork.Build(State.Ways, Terrain, State.TrailRules);
-                _networkRevision = State.WaysRevision;
+                var (hubs, links) = LiftNetwork.Build(State);
+                _network = State.Ways.Count == 0 && hubs.Count == 0
+                    ? WayNetwork.Empty
+                    : WayNetwork.Build(State.Ways, hubs, links, Terrain, State.TrailRules);
+                _networkRevision = revision;
             }
             return _network;
         }

@@ -21,6 +21,11 @@ public sealed class WayPlan
 
     public WayJoin? StartJoin { get; init; }
     public WayJoin? EndJoin { get; init; }
+
+    /// <summary>Hub (station plateau, parking lot) an end attaches to instead of a way; 0 = none.</summary>
+    public int StartHubId { get; init; }
+    public int EndHubId { get; init; }
+
     public WayGeometry? Geometry { get; init; }
 
     /// <summary>True if the input was drawn the other way round and has been flipped.</summary>
@@ -54,23 +59,34 @@ public static class WayPlanner
             return Fail(kind, points, "tooManyPoints", $"At most {rules.MaxControlPoints} points.");
         if (points.Any(p => !grid.Contains(p.X, p.Z)))
             return Fail(kind, points, "outsideMap", "All points must be on the map.");
-        if (kind == WayKind.Trail && !network.HasAccessPath)
-            return Fail(kind, points, "needsAccessPath", "Build a gravel access path first: riders need it to get up.");
+        if (kind == WayKind.Trail && !network.HasBase)
+            return Fail(kind, points, "needsAccessPath", "Build a gravel access path or a lift first: riders need a way up.");
 
         // Orientation: access paths start at their low end, trails at their high end.
         int first = grid.HeightAt(points[0].X, points[0].Z), last = grid.HeightAt(points[^1].X, points[^1].Z);
         bool reversed = kind == WayKind.AccessPath ? first > last : first < last;
         if (reversed) points.Reverse();
 
-        // Snap endpoints onto the existing network.
+        // Snap endpoints onto the existing network: hubs (onto the edge of their flat area) win over ways.
         int snapRadius = rules.SnapRadiusMeters * 100;
         WayJoin? startJoin = null, endJoin = null;
-        if (network.Nearest(points[0].X, points[0].Z, snapRadius) is { } s)
+        int startHub = 0, endHub = 0;
+        if (network.HubAt(points[0].X, points[0].Z, snapRadius) is { } sh)
+        {
+            startHub = sh.Id;
+            points[0] = sh.Pad.ClosestEdgePoint(points[0].X, points[0].Z);
+        }
+        else if (network.Nearest(points[0].X, points[0].Z, snapRadius) is { } s)
         {
             startJoin = new WayJoin(s.WayId, s.DistanceCm);
             points[0] = s.Point;
         }
-        if (network.Nearest(points[^1].X, points[^1].Z, snapRadius) is { } e)
+        if (network.HubAt(points[^1].X, points[^1].Z, snapRadius) is { } eh)
+        {
+            endHub = eh.Id;
+            points[^1] = eh.Pad.ClosestEdgePoint(points[^1].X, points[^1].Z);
+        }
+        else if (network.Nearest(points[^1].X, points[^1].Z, snapRadius) is { } e)
         {
             endJoin = new WayJoin(e.WayId, e.DistanceCm);
             points[^1] = e.Point;
@@ -78,6 +94,8 @@ public static class WayPlanner
         if (startJoin is not null && endJoin is not null && startJoin.WayId == endJoin.WayId
             && Math.Abs(startJoin.DistanceCm - endJoin.DistanceCm) < 100)
             return Fail(kind, points, "sameJunction", "Both ends attach to the same spot.");
+        if (startHub != 0 && startHub == endHub)
+            return Fail(kind, points, "sameJunction", "Both ends attach to the same plateau.");
 
         var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
 
@@ -88,7 +106,7 @@ public static class WayPlanner
             issues.Add(Error("tooLong", $"Too long: at most {rules.MaxLengthMeters} m."));
 
         CheckGrades(kind, rules, geometry, issues);
-        CheckConnections(kind, network, startJoin, endJoin, issues);
+        CheckConnections(kind, network, startJoin is not null || startHub != 0, endJoin is not null || endHub != 0, issues);
         if (kind == WayKind.Trail && geometry.EndHeightCm >= geometry.StartHeightCm)
             issues.Add(Error("noDrop", "A trail must end lower than it starts."));
 
@@ -102,6 +120,8 @@ public static class WayPlanner
             Points = points,
             StartJoin = startJoin,
             EndJoin = endJoin,
+            StartHubId = startHub,
+            EndHubId = endHub,
             Geometry = geometry,
             Reversed = reversed,
             TreesToClear = trees,
@@ -163,19 +183,19 @@ public static class WayPlanner
         _ => $"Uphill section ({Gradient.Format(worst)}): riders have to pedal.",
     };
 
-    private static void CheckConnections(WayKind kind, WayNetwork network, WayJoin? start, WayJoin? end, List<WayIssue> issues)
+    private static void CheckConnections(WayKind kind, WayNetwork network, bool startConnected, bool endConnected, List<WayIssue> issues)
     {
         if (kind == WayKind.AccessPath)
         {
-            if (network.Ways.Count > 0 && start is null && end is null)
-                issues.Add(Error("notConnected", "Connect at least one end to an existing path or trail."));
+            if (!network.IsEmpty && !startConnected && !endConnected)
+                issues.Add(Error("notConnected", "Connect at least one end to an existing path, trail or station."));
             return;
         }
 
-        if (start is null)
-            issues.Add(Error("startNotConnected", "The trail must start on a path or trail (snap the top end to it)."));
-        if (end is null)
-            issues.Add(Error("endNotConnected", "The trail must end on a path or trail (snap the bottom end to it)."));
+        if (!startConnected)
+            issues.Add(Error("startNotConnected", "The trail must start on a path, trail or plateau (snap the top end to it)."));
+        if (!endConnected)
+            issues.Add(Error("endNotConnected", "The trail must end on a path, trail or station (snap the bottom end to it)."));
     }
 
     private static (int Trees, int Rocks) CountCleared(

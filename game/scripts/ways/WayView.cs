@@ -8,7 +8,7 @@ namespace Bikepark.Game.Ways;
 
 /// <summary>
 /// Draws the built way network: gravel paths, dirt trails with a rating stripe, name labels and the base marker.
-/// Rebuilds when ways change and tells the terrain to clear trees and rocks from the corridors. Pure view.
+/// Rebuilds when ways, structures or the terrain change and tells the terrain to clear trees and rocks from the corridors. Pure view.
 /// </summary>
 public partial class WayView : Node3D
 {
@@ -27,6 +27,7 @@ public partial class WayView : Node3D
         _host = GetNode<SimHost>(SimHostPath);
         _terrain = GetNode<TerrainView>(TerrainPath);
         _material = WayMeshes.CreateMaterial();
+        _terrain.TerrainBuilt += _ => _dirty = true;
         _host.SimulationReplaced += OnSimulationReplaced;
         OnSimulationReplaced(_host.Sim);
     }
@@ -50,6 +51,10 @@ public partial class WayView : Node3D
         _subscriptions.Clear();
         _subscriptions.Add(sim.Events.Subscribe<WayBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<WayDeleted>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<LiftBuilt>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<LiftDeleted>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<ParkingLotBuilt>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<ParkingLotDeleted>(_ => _dirty = true));
         _dirty = true;
     }
 
@@ -60,8 +65,8 @@ public partial class WayView : Node3D
         AddChild(_content);
 
         var network = sim.Network;
-        _terrain.SetScatterFilter(network.Ways.Count == 0 ? null : network.IsInCorridor);
-        if (network.Ways.Count == 0) return;
+        _terrain.SetScatterFilter(network.IsEmpty ? null : network.IsInCorridor);
+        if (network.IsEmpty) return;
         var grid = sim.Terrain;
 
         foreach (var way in network.Ways)
@@ -80,9 +85,11 @@ public partial class WayView : Node3D
             }
         }
 
-        if (network.BaseWay is { } baseWay)
+        Vector3? basePosition = network.BaseHub is { } hub
+            ? new Vector3(hub.Pad.CenterX / 100f, hub.Pad.TargetHeightCm / 100f, hub.Pad.CenterZ / 100f)
+            : network.BaseWay is { } baseWay ? WayMeshes.ToWorld(network.Geometry(baseWay.Id).PositionAt(0)) : null;
+        if (basePosition is { } b)
         {
-            var b = WayMeshes.ToWorld(network.Geometry(baseWay.Id).PositionAt(0));
             var pole = new MeshInstance3D
             {
                 Name = "Base",

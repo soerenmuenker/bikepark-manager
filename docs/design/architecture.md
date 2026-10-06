@@ -1,6 +1,6 @@
 # Bikepark Manager – Architecture
 
-Status: living document. Last updated 2026-10-05.
+Status: living document. Last updated 2026-10-06.
 
 Bikepark Manager is a park-management game in the spirit of RollerCoaster Tycoon. The core decision
 is a **hard split between a deterministic simulation and the presentation layer**:
@@ -39,7 +39,7 @@ Everything that matters for gameplay can be run, tested and balanced without lau
 - `Simulation.Step()` simulates exactly one tick:
   1. take all commands due at this tick from the `CommandQueue` and, in `(Tick, Sequence)` order,
      validate → apply → publish `CommandApplied` / `CommandRejected`;
-  2. run all systems in a **fixed, explicit order** (`ParkHours → GuestArrival → Guest → Finance`);
+  2. run all systems in a **fixed, explicit order** (`ParkHours → GuestArrival → Rider → Lift → Guest → Finance`);
   3. increment `WorldState.Tick`.
 - The sim has no notion of real time or frame rate. `SimHost` (Godot) converts real time into
   a number of ticks with a fixed-step accumulator, a speed multiplier and a per-frame cap.
@@ -159,11 +159,37 @@ Rules:
 - Time scale in the client: 1x = one game minute per 8 real seconds; the view interpolates rider progress between
   ticks (`SimHost.BeforeStep` + `InterpolationAlpha`).
 - Building is instant and free in Phase 2; trees and rocks in a way's corridor disappear (derived, not saved).
-  Phase 3 replaces climbing-only access with lifts and queues, Phase 4 adds crews, cutting and build time.
+  Phase 3 adds lifts and queues next to climbing (§12), Phase 4 adds crews, cutting and build time.
+
+## 12. Lifts, stations, parking and queues (Phase 3)
+
+Design note: [lifts.md](lifts.md).
+
+- **Terrain edits** are stored as `WorldState.TerrainEdits` (flattened oriented pads: target height, embankment
+  gradient). `Simulation.Terrain` = `TerrainEditor.Apply(generated grid, edits)`, cached by `TerrainRevision`. The
+  generated grid stays cached in `TerrainCache` and is never mutated. The embankment blends to the natural ground
+  at its gradient, then steepens until it meets the ground. Pads clear trees, rocks and roots. Every structure
+  change bumps `TerrainRevision`, so the network is rebuilt on `(WaysRevision, TerrainRevision)`.
+- **Structures**: `Lift` (two stations on pads, type, optional operator, `BikeCarrierPermille`, FIFO `Queue`,
+  dispatch clock) and `ParkingLot`. Content: `data/lift_types.json` (via `liftTypesFile` in the scenario) and the
+  scenario's `operators` with bike access tiers, both copied into the world. `StructurePlanner` is the single
+  validator (lifts, parking, pads), used by the build commands and the in-game preview.
+- **Network**: stations and parking lots are hubs (graph nodes; way ends snap onto their pad edge). Lift links
+  (one-way up) and walk links (two-way) join them. `RouteLeg.Kind` is Way / Lift / Walk. `Route(from, to,
+  liftUsable)` can exclude lifts. The base is the parking hub, else the valley station, else the first access path.
+- **Systems**: `… → RiderSystem → LiftSystem → GuestSystem → FinanceSystem`. RiderSystem picks the cheaper of the
+  lift route (+ expected wait) and the pedalling route, walks, queues and moves riders on the lift. LiftSystem
+  applies booked tiers at opening, dispatches carriers on an integer ms clock and boards the bike carriers
+  (`LiftMath.IsBikeCarrier`). GuestSystem charges queue mood and restores energy while queuing or riding.
+  FinanceSystem pays each operator the active tier's daily fee.
+- **Commands**: `buildLift`, `buildParkingLot`, `setLiftBikeAccess` (from the next opening), `deleteLift`,
+  `deleteParkingLot` (rejected while ways attach). `buildWay` gained `origin` (`scenario` ways can't be deleted).
+- **Saves**: all additions are new properties with defaults. Version-2 saves without them still load (tested), so
+  the version stays 2.
 
 ## Open questions / next steps
 
-- Terrain edits (cut/fill, cleared trees as wood) as saved changes.
+- Further terrain edits (cut/fill by the player, cleared trees as wood) as saved changes, like the pads.
 - Water features (ponds, streams) using the reserved water layer, if gameplay needs them.
 - Guest pathfinding and needs model; keep allocation-free and integer-based.
 - Export pipeline for `/data`; possibly embed content as resources.

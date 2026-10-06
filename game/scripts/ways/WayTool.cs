@@ -85,6 +85,9 @@ public partial class WayTool : Node3D
         {
             switch (key.PhysicalKeycode)
             {
+                case Key.L or Key.K when Mode != ToolMode.None:
+                    SetMode(ToolMode.None);
+                    return; // let the structure tool take it
                 case Key.P:
                     SetMode(Mode == ToolMode.AccessPath ? ToolMode.None : ToolMode.AccessPath);
                     break;
@@ -216,10 +219,15 @@ public partial class WayTool : Node3D
                 if (join is null || !sim.Network.TryGetGeometry(join.WayId, out var target)) continue;
                 markers.Add((WayMeshes.ToWorld(target.PositionAt(join.DistanceCm)) + Vector3.Up * 0.8f, new Color(0.2f, 1f, 0.4f), 2.2f));
             }
+            // Ends snapped onto a plateau or station platform.
+            foreach (var (hubId, point) in new[] { (Plan.StartHubId, Plan.Points[0]), (Plan.EndHubId, Plan.Points[^1]) })
+                if (hubId != 0 && sim.Network.FindHub(hubId) is { } hub)
+                    markers.Add((new Vector3(point.X / 100f, hub.Pad.TargetHeightCm / 100f + 0.8f, point.Z / 100f), new Color(0.2f, 1f, 0.4f), 2.2f));
         }
         if (_cursor is { } c)
         {
-            bool nearNetwork = sim.Network.Nearest(c.X, c.Z, sim.State.TrailRules.SnapRadiusMeters * 100) is not null;
+            int snap = sim.State.TrailRules.SnapRadiusMeters * 100;
+            bool nearNetwork = sim.Network.Nearest(c.X, c.Z, snap) is not null || sim.Network.HubAt(c.X, c.Z, snap) is not null;
             markers.Add((new Vector3(c.X / 100f, grid.HeightAt(c.X, c.Z) / 100f + 0.6f, c.Z / 100f),
                 nearNetwork ? new Color(0.2f, 1f, 0.4f) : new Color(1f, 0.9f, 0.3f), 1.4f));
         }

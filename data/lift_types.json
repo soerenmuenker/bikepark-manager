@@ -1,0 +1,40 @@
+// Lift catalog (LiftType). Copied into the world when a scenario starts, so saves are self-contained.
+// Only bike-equipped carriers take riders (bikesPerCarrier each); the share of equipped carriers is the lift's
+// bike usage grade, set by the operator's bike access tiers or by the park for its own lifts.
+// Speeds in cm/s, gradients in tenths of the -10..+10 gradient score.
+[
+  {
+    "id": "gondola_8",
+    "name": "8-seat gondola",
+    "kind": "gondola",
+    "carrierCapacity": 8,
+    "bikesPerCarrier": 2,
+    "intervalSeconds": 12,
+    "speedCmPerS": 500,
+    "minLengthMeters": 150,
+    "maxLengthMeters": 2500,
+    "maxGradient": 40,
+    "stationLengthMeters": 30,
+    "stationWidthMeters": 20,
+    "plateauLengthMeters": 50,
+    "plateauWidthMeters": 40,
+    "corridorCm": 1200
+  },
+  {
+    "id": "chairlift_4",
+    "name": "4-seat chairlift",
+    "kind": "chairlift",
+    "carrierCapacity": 4,
+    "bikesPerCarrier": 2,
+    "intervalSeconds": 9,
+    "speedCmPerS": 400,
+    "minLengthMeters": 100,
+    "maxLengthMeters": 1800,
+    "maxGradient": 45,
+    "stationLengthMeters": 24,
+    "stationWidthMeters": 16,
+    "plateauLengthMeters": 40,
+    "plateauWidthMeters": 30,
+    "corridorCm": 1000
+  }
+]

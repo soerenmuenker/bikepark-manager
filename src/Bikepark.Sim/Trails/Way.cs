@@ -8,6 +8,13 @@ public enum WayKind : byte
     Trail = 1,
 }
 
+/// <summary>Who made a way. Scenario ways (e.g. the existing hiking route) behave like player ways for now.</summary>
+public enum WayOrigin : byte
+{
+    Player = 0,
+    Scenario = 1,
+}
+
 /// <summary>A horizontal position in centimeters (X east, Z south).</summary>
 public readonly record struct PointCm(int X, int Z);
 
@@ -29,6 +36,12 @@ public sealed class Way
 
     public WayJoin? StartJoin { get; set; }
     public WayJoin? EndJoin { get; set; }
+
+    /// <summary>Hub (station plateau, parking lot) the start / end attaches to instead of a way; 0 = none.</summary>
+    public int StartHubId { get; set; }
+    public int EndHubId { get; set; }
+
+    public WayOrigin Origin { get; set; }
 
     public WayStats Stats { get; set; } = new();
 }

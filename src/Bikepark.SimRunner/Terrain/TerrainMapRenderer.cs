@@ -94,6 +94,29 @@ internal static class TerrainMapRenderer
 
     private static void DrawNetwork(byte[] rgb, int n, WayNetwork network)
     {
+        // Structures under the ways: pads (stations, plateaus, parking lots), then lift lines.
+        foreach (var hub in network.Hubs)
+        {
+            var color = hub.Kind == HubKind.Parking ? new Rgb(0.38, 0.38, 0.40) : new Rgb(0.80, 0.74, 0.62);
+            int reach = Math.Max(hub.Pad.HalfLengthCm, hub.Pad.HalfWidthCm) / 100 + 2;
+            for (int z = hub.Pad.CenterZ / 100 - reach; z <= hub.Pad.CenterZ / 100 + reach; z++)
+                for (int x = hub.Pad.CenterX / 100 - reach; x <= hub.Pad.CenterX / 100 + reach; x++)
+                    if (x >= 0 && z >= 0 && x < n && z < n && hub.Pad.Contains(x * 100L, z * 100L))
+                        Put(rgb, z * n + x, color);
+        }
+        foreach (var link in network.Links)
+        {
+            var a = network.FindHub(link.FromHubId)!.Pad;
+            var b = network.FindHub(link.ToHubId)!.Pad;
+            var color = link.Kind == LegKind.Lift ? new Rgb(0.75, 0.10, 0.10) : new Rgb(0.95, 0.95, 0.95);
+            long steps = Math.Max(1, link.LengthCm / 50);
+            for (long i = 0; i <= steps; i++)
+            {
+                long x = a.CenterX + (b.CenterX - a.CenterX) * i / steps, z = a.CenterZ + (b.CenterZ - a.CenterZ) * i / steps;
+                Disc(rgb, n, (int)(x / 100), (int)(z / 100), link.Kind == LegKind.Lift ? 1 : 0, color);
+            }
+        }
+
         // Paths first (wide, gravel), then trails on top, then junctions and the base.
         foreach (var way in network.Ways.OrderBy(w => w.Kind))
         {
@@ -114,7 +137,18 @@ internal static class TerrainMapRenderer
                 Disc(rgb, n, p.X / 100, p.Z / 100, 2, new Rgb(0.2, 0.2, 0.2));
             }
         }
-        if (network.BaseWay is { } baseWay)
+        foreach (var way in network.Ways)
+        {
+            var g = network.Geometry(way.Id);
+            if (way.StartHubId != 0) { Disc(rgb, n, g.Xs[0] / 100, g.Zs[0] / 100, 3, new Rgb(1, 1, 1)); Disc(rgb, n, g.Xs[0] / 100, g.Zs[0] / 100, 2, new Rgb(0.2, 0.2, 0.2)); }
+            if (way.EndHubId != 0) { Disc(rgb, n, g.Xs[^1] / 100, g.Zs[^1] / 100, 3, new Rgb(1, 1, 1)); Disc(rgb, n, g.Xs[^1] / 100, g.Zs[^1] / 100, 2, new Rgb(0.2, 0.2, 0.2)); }
+        }
+        if (network.BaseHub is { } baseHub)
+        {
+            Disc(rgb, n, baseHub.Pad.CenterX / 100, baseHub.Pad.CenterZ / 100, 6, new Rgb(1, 1, 1));
+            Disc(rgb, n, baseHub.Pad.CenterX / 100, baseHub.Pad.CenterZ / 100, 4, new Rgb(0.95, 0.55, 0.1));
+        }
+        else if (network.BaseWay is { } baseWay)
         {
             var b = network.Geometry(baseWay.Id).PositionAt(0);
             Disc(rgb, n, b.X / 100, b.Z / 100, 6, new Rgb(1, 1, 1));

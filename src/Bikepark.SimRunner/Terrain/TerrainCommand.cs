@@ -26,19 +26,24 @@ internal static class TerrainCommand
 
         var stopwatch = Stopwatch.StartNew();
         var sim = new Simulation(state);
-        var grid = sim.Terrain;
+        _ = sim.BaseTerrain;
         long generationMs = stopwatch.ElapsedMilliseconds;
 
-        // Build commands (e.g. a way network) are applied in one step so the map can show them.
+        // The scenario's own commands (lift, parking, hiking route) and build commands (e.g. a way network) are applied
+        // in one step so the map can show them.
         var rejected = new List<string>();
         if (options.CommandsPath is { } commandsPath)
         {
             var script = JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(commandsPath), SimJson.Indented) ?? [];
             foreach (var timed in script)
-                sim.Commands.Enqueue(timed.Command);
-            sim.Step();
-            rejected.AddRange(sim.Events.Pending.OfType<CommandRejected>().Select(r => r.Reason));
+                sim.Commands.Enqueue(timed.Command, 0);
         }
+        if (state.PendingCommands.Count > 0)
+        {
+            sim.Step();
+            rejected.AddRange(sim.Events.Pending.OfType<CommandRejected>().Select(r => $"{r.Command.GetType().Name}: {r.Reason}"));
+        }
+        var grid = sim.Terrain;
         var network = sim.Network;
 
         var scatter = TerrainScatter.CollectAll(grid).Where(s => !network.IsInCorridor(s.XCm, s.ZCm)).ToList();
@@ -97,6 +102,14 @@ internal static class TerrainCommand
                 rating = w.Kind == WayKind.Trail ? network.Geometry(w.Id).Rating.ToString() : null,
                 lengthMeters = network.Geometry(w.Id).LengthCm / 100,
             }),
+            lifts = network.Links.Where(l => l.Kind == LegKind.Lift).Select(l => new
+            {
+                id = l.Id,
+                lengthMeters = l.LengthCm / 100,
+                valley = network.FindHub(l.FromHubId)!.Pad,
+                mountain = network.FindHub(l.ToHubId)!.Pad,
+            }),
+            hubs = network.Hubs.Select(h => new { h.Id, kind = h.Kind.ToString(), x = h.Pad.CenterX / 100, z = h.Pad.CenterZ / 100, heightCm = h.Pad.TargetHeightCm }),
             rejectedCommands = rejected,
             terrainHash = grid.ComputeHash(),
             generationMs,

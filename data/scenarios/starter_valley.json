@@ -1,7 +1,7 @@
 {
   "id": "starter_valley",
   "name": "Starter Valley",
-  "description": "A small hillside with a handful of flow trails. Keep the books balanced and the riders happy.",
+  "description": "A quiet mountain with a gondola run by Alpine Lift Co. and an old gravel hiking route. Rent bike access on the gondola, build trails from the top plateau, keep the books balanced and the riders happy.",
   "seed": 1337,
   "parkName": "Starter Valley Bikepark",
   "startingMoneyCents": 5000000,
@@ -55,5 +55,61 @@
     "treeLineCm": 108000,
     "forestCoveragePermille": 650
   },
-  "commands": []
+  // Lift models come from the shared catalog.
+  "liftTypesFile": "../lift_types.json",
+  // The gondola belongs to a lift company; the park rents bike access in tiers (share of cabins equipped for bikes),
+  // paying the tier's daily fee at the end of each day. A booked tier starts at the next opening.
+  "operators": [
+    {
+      "id": "alpine_lifts",
+      "name": "Alpine Lift Co.",
+      "bikeAccessTiers": [
+        { "name": "No bikes", "bikeCarrierPermille": 0, "dailyFeeCents": 0 },
+        { "name": "Every 4th cabin", "bikeCarrierPermille": 250, "dailyFeeCents": 30000 },
+        { "name": "Every 2nd cabin", "bikeCarrierPermille": 500, "dailyFeeCents": 65000 },
+        { "name": "All cabins", "bikeCarrierPermille": 1000, "dailyFeeCents": 140000 }
+      ]
+    }
+  ],
+  // Structures, queues and lift routing (LiftRules). Routing costs are in cm of flat travel per minute.
+  "liftRules": {
+    "walkSpeedCmPerS": 120,
+    "guestsPerCarPermille": 2000,
+    "parkingSquareMetersPerSpace": 25,
+    "parkingWidthMeters": 40,
+    "stationReachMeters": 80,
+    "maxPadCutFillCm": 1500,
+    "embankmentGradient": 35,
+    "queueGraceMinutes": 5,
+    "queueMoodPenaltyPerMinute": 3,
+    "restEnergyPerMinute": 3,
+    "liftRideCostCmPerMinute": 9000,
+    "liftWaitCostCmPerMinute": 18000
+  },
+  // What is already there when the scenario starts: the gondola with its valley station and top plateau, the
+  // parking lot, and the gravel hiking route (riders may pedal up it too).
+  "commands": [
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildLift", "typeId": "gondola_8", "name": "Valley Gondola",
+        "valley": {"x": 20500, "z": 85000}, "mountain": {"x": 60500, "z": 50500},
+        "operatorId": "alpine_lifts", "initialTier": 1
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildParkingLot", "name": "Valley Parking",
+        "center": {"x": 15000, "z": 89000}, "toward": {"x": 20500, "z": 85000}, "spaces": 80
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "Old Hiking Route", "origin": "scenario",
+        "points": [{"x": 19000, "z": 86000}, {"x": 19923, "z": 86766}, {"x": 20820, "z": 85969}, {"x": 21717, "z": 85172}, {"x": 22514, "z": 86069}, {"x": 23473, "z": 86791}, {"x": 24505, "z": 87402}, {"x": 24385, "z": 86208}, {"x": 24288, "z": 85012}, {"x": 23808, "z": 83912}, {"x": 23454, "z": 82766}, {"x": 22840, "z": 81735}, {"x": 22345, "z": 80642}, {"x": 21608, "z": 79695}, {"x": 21074, "z": 78620}, {"x": 22056, "z": 79310}, {"x": 23109, "z": 79885}, {"x": 24220, "z": 80340}, {"x": 25249, "z": 80956}, {"x": 26381, "z": 81356}, {"x": 27572, "z": 81211}, {"x": 28761, "z": 81047}, {"x": 29954, "z": 81176}, {"x": 31082, "z": 81583}, {"x": 30284, "z": 80687}, {"x": 29436, "z": 79838}, {"x": 28614, "z": 78964}, {"x": 27818, "z": 78066}, {"x": 27050, "z": 77144}, {"x": 26310, "z": 76200}, {"x": 25685, "z": 75175}, {"x": 25282, "z": 74045}, {"x": 26173, "z": 74848}, {"x": 27152, "z": 75542}, {"x": 28289, "z": 75927}, {"x": 29462, "z": 76180}, {"x": 30656, "z": 76302}, {"x": 31850, "z": 76186}, {"x": 33048, "z": 76257}, {"x": 34222, "z": 76506}, {"x": 35402, "z": 76721}, {"x": 36589, "z": 76901}, {"x": 35696, "z": 76099}, {"x": 34833, "z": 75265}, {"x": 34001, "z": 74401}, {"x": 33201, "z": 73506}, {"x": 32435, "z": 72583}, {"x": 31702, "z": 71632}, {"x": 31005, "z": 70655}, {"x": 30344, "z": 69654}, {"x": 31481, "z": 70038}, {"x": 32654, "z": 70288}, {"x": 33835, "z": 70505}, {"x": 35034, "z": 70482}, {"x": 36224, "z": 70326}, {"x": 37410, "z": 70145}, {"x": 38606, "z": 70042}, {"x": 39806, "z": 70013}, {"x": 40994, "z": 69843}, {"x": 42194, "z": 69848}, {"x": 43392, "z": 69916}, {"x": 44577, "z": 69727}, {"x": 43643, "z": 68973}, {"x": 42752, "z": 68169}, {"x": 41906, "z": 67318}, {"x": 41106, "z": 66423}, {"x": 40357, "z": 65487}, {"x": 39658, "z": 64511}, {"x": 39013, "z": 63499}, {"x": 40096, "z": 64017}, {"x": 41237, "z": 64387}, {"x": 42432, "z": 64501}, {"x": 43631, "z": 64464}, {"x": 44828, "z": 64384}, {"x": 46022, "z": 64258}, {"x": 47209, "z": 64085}, {"x": 48409, "z": 64070}, {"x": 49609, "z": 64093}, {"x": 50808, "z": 64145}, {"x": 51706, "z": 63349}, {"x": 52818, "z": 63799}, {"x": 52343, "z": 62697}, {"x": 51316, "z": 62077}, {"x": 50356, "z": 61357}, {"x": 49473, "z": 60545}, {"x": 48674, "z": 59649}, {"x": 47968, "z": 58678}, {"x": 47361, "z": 57643}, {"x": 46858, "z": 56554}, {"x": 48037, "z": 56779}, {"x": 49226, "z": 56941}, {"x": 50409, "z": 57137}, {"x": 51568, "z": 57451}, {"x": 52544, "z": 56754}, {"x": 53706, "z": 57053}, {"x": 54605, "z": 57848}, {"x": 55575, "z": 58554}, {"x": 56606, "z": 59168}, {"x": 57761, "z": 59496}, {"x": 56790, "z": 58790}, {"x": 55874, "z": 58016}, {"x": 55472, "z": 56885}, {"x": 54485, "z": 56203}, {"x": 53671, "z": 55321}, {"x": 53066, "z": 54285}, {"x": 54206, "z": 53910}, {"x": 53831, "z": 52770}, {"x": 53761, "z": 51572}, {"x": 53992, "z": 50395}, {"x": 55079, "z": 50902}, {"x": 55767, "z": 51886}, {"x": 56717, "z": 52619}, {"x": 57686, "z": 53327}, {"x": 58500, "z": 52500}]
+      }
+    }
+  ]
 }

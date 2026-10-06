@@ -1,15 +1,18 @@
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
+using Bikepark.Sim.Lifts;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Systems;
 
 /// <summary>
-/// Moves riders around the way network. Riders are simulated, not physically simulated: each lap a rider picks a
-/// trail, follows the cheapest route up the access paths to its start, rides it down, and scores the run.
-/// Each tick covers 60 s of travel, segment by segment, at a speed from skill, grade, surface and difficulty.
-/// Without an access path guests keep their pre-trail behaviour (<see cref="RiderActivity.Wandering"/>).
+/// Moves riders around the network. Riders are simulated, not physically simulated: each lap a rider picks a
+/// trail, takes the cheapest way to its start (walk from the parking lot, queue for and ride the lift, or pedal up
+/// the access paths, whichever costs less given the current queue and the rider's energy), rides it down, and scores
+/// the run. Each tick covers 60 s of travel, segment by segment, at a speed from skill, grade, surface and difficulty.
+/// Riders in a lift queue wait for <see cref="LiftSystem"/> to board them. Without a base (no access path, station or
+/// parking lot) guests keep their pre-trail behaviour (<see cref="RiderActivity.Wandering"/>).
 /// </summary>
 internal sealed class RiderSystem : ISimSystem
 {
@@ -22,18 +25,18 @@ internal sealed class RiderSystem : ISimSystem
         var state = ctx.State;
         if (state.Guests.Count == 0) return;
 
-        if (state.Ways.Count == 0 || !ctx.Network.HasAccessPath)
+        var network = ctx.Network;
+        if (!network.HasBase)
         {
             foreach (var guest in state.Guests)
-                if (guest.Activity != RiderActivity.Wandering) MakeWandering(guest);
+                if (guest.Activity != RiderActivity.Wandering) MakeWandering(state, guest);
             return;
         }
 
-        var network = ctx.Network;
         foreach (var guest in state.Guests)
         {
             if (guest.Activity == RiderActivity.Wandering)
-                PlaceAtBase(guest, network);
+                PlaceAtBase(state, guest, network);
 
             if (guest.Activity == RiderActivity.Idle)
             {
@@ -45,36 +48,53 @@ internal sealed class RiderSystem : ISimSystem
         }
     }
 
-    /// <summary>Riders whose lap or position uses the way go back to the base (or wander if there is no path left).</summary>
-    internal static void ResetRidersUsing(SimContext ctx, int wayId)
+    /// <summary>
+    /// Riders whose lap or position uses one of the ids (ways, lifts, stations, parking lots) go back to the base
+    /// (or wander if there is no base left). Call after the change, so the base reflects the new network.
+    /// </summary>
+    internal static void ResetRidersUsing(SimContext ctx, params int[] ids)
     {
         var network = ctx.Network;
         foreach (var guest in ctx.State.Guests)
         {
-            bool affected = guest.LocationWayId == wayId || guest.TrailId == wayId || guest.Route.Any(l => l.WayId == wayId);
+            bool affected = ids.Contains(guest.LocationWayId) || ids.Contains(guest.LocationHubId) || ids.Contains(guest.TrailId)
+                            || guest.Route.Any(l => ids.Contains(l.WayId));
             if (!affected) continue;
-            if (network.HasAccessPath) PlaceAtBase(guest, network); else MakeWandering(guest);
+            if (network.HasBase) PlaceAtBase(ctx.State, guest, network); else MakeWandering(ctx.State, guest);
         }
     }
 
-    private static void PlaceAtBase(Guest guest, WayNetwork network)
+    /// <summary>Sends a rider back to where guests arrive (riders in a queue leave it).</summary>
+    internal static void PlaceAtBase(WorldState state, Guest guest, WayNetwork network)
     {
-        ClearLap(guest);
+        ClearLap(state, guest);
         guest.Activity = RiderActivity.Idle;
-        guest.LocationWayId = network.BaseWay!.Id;
+        if (network.BaseHub is { } hub)
+        {
+            guest.LocationHubId = hub.Id;
+            guest.LocationWayId = 0;
+        }
+        else
+        {
+            guest.LocationHubId = 0;
+            guest.LocationWayId = network.BaseWay!.Id;
+        }
         guest.LocationCm = 0;
     }
 
-    private static void MakeWandering(Guest guest)
+    private static void MakeWandering(WorldState state, Guest guest)
     {
-        ClearLap(guest);
+        ClearLap(state, guest);
         guest.Activity = RiderActivity.Wandering;
         guest.LocationWayId = 0;
+        guest.LocationHubId = 0;
         guest.LocationCm = 0;
     }
 
-    private static void ClearLap(Guest guest)
+    private static void ClearLap(WorldState state, Guest guest)
     {
+        if (guest.Activity == RiderActivity.Queuing)
+            LiftSystem.LeaveQueue(state, guest);
         guest.Route = [];
         guest.RouteProgressCm = 0;
         guest.LegIndex = 0;
@@ -87,17 +107,18 @@ internal sealed class RiderSystem : ISimSystem
 
     private static bool StartLap(SimContext ctx, WayNetwork network, Guest guest)
     {
-        int from = network.NodeAt(guest.LocationWayId, guest.LocationCm);
+        var state = ctx.State;
+        int from = guest.LocationHubId != 0 ? network.HubNode(guest.LocationHubId) : network.NodeAt(guest.LocationWayId, guest.LocationCm);
         if (from < 0)
         {
-            PlaceAtBase(guest, network);
+            PlaceAtBase(state, guest, network);
             from = network.BaseNode;
         }
 
         var options = new List<(Way Trail, List<RouteLeg> Route, int Weight)>();
         foreach (var trail in network.Trails)
         {
-            var route = network.Route(from, network.StartNode(trail));
+            var route = BestRoute(state, network, guest, from, network.StartNode(trail));
             if (route is null) continue;
             options.Add((trail, route, Weight(guest, trail, network.Geometry(trail.Id))));
         }
@@ -118,8 +139,34 @@ internal sealed class RiderSystem : ISimSystem
         guest.TrailId = pick.Trail.Id;
         guest.RunFun = 0;
         guest.RunSegments = 0;
+        guest.LocationHubId = 0;
         EnterLeg(ctx, network, guest, 0);
         return true;
+    }
+
+    /// <summary>
+    /// The cheaper of the best route using lifts (plus the expected queue time) and the best route on foot / pedalling.
+    /// Climbing costs more for tired riders. Lifts without bike carriers are never used.
+    /// </summary>
+    internal static List<RouteLeg>? BestRoute(WorldState state, WayNetwork network, Guest guest, int from, int to)
+    {
+        bool Usable(int liftId) => state.Lifts.FirstOrDefault(l => l.Id == liftId) is { BikeCarrierPermille: > 0 };
+        var withLifts = network.Route(from, to, Usable, out long liftCost);
+        if (withLifts is null || withLifts.All(l => l.Kind != LegKind.Lift)) return withLifts;
+
+        foreach (var leg in withLifts)
+        {
+            if (leg.Kind != LegKind.Lift) continue;
+            var lift = state.Lifts.First(l => l.Id == leg.WayId);
+            var type = LiftNetwork.FindType(state, lift.TypeId)!;
+            int wait = Math.Max(0, LiftMath.ExpectedWaitMinutes(type, lift.BikeCarrierPermille, lift.Queue.Count));
+            liftCost += (long)wait * state.LiftRules.LiftWaitCostCmPerMinute;
+        }
+
+        var climbing = network.Route(from, to, _ => false, out long climbCost);
+        if (climbing is null) return withLifts;
+        climbCost = climbCost * (2000 - Math.Clamp(guest.Energy, 0, 1000)) / 1000;
+        return climbCost < liftCost ? climbing : withLifts;
     }
 
     /// <summary>How much a rider wants this trail: difficulty vs skill, style, and a little variety.</summary>
@@ -148,27 +195,45 @@ internal sealed class RiderSystem : ISimSystem
 
     // ---------------------------------------------------------------- moving
 
+    private static bool IsMoving(Guest guest) =>
+        guest.Activity is RiderActivity.Climbing or RiderActivity.Descending or RiderActivity.Walking or RiderActivity.OnLift;
+
     private static void Advance(SimContext ctx, WayNetwork network, Guest guest, int budgetMs)
     {
         var rules = ctx.State.TrailRules;
-        while (budgetMs > 0 && guest.Activity is RiderActivity.Climbing or RiderActivity.Descending)
+        while (budgetMs > 0 && IsMoving(guest))
         {
             var (legIndex, offset) = LocateOnRoute(guest);
             var leg = guest.Route[legIndex];
-            if (!network.TryGetGeometry(leg.WayId, out var geometry))
-            {
-                PlaceAtBase(guest, network);
-                return;
-            }
-
-            int dir = leg.ToCm >= leg.FromCm ? 1 : -1;
-            long position = leg.FromCm + dir * offset;
-            if (position == leg.ToCm)
+            if (offset == leg.LengthCm)
             {
                 FinishLeg(ctx, network, guest, legIndex);
                 continue;
             }
 
+            if (leg.Kind != LegKind.Way)
+            {
+                int linkSpeed = LinkSpeed(ctx.State, leg);
+                if (linkSpeed <= 0)
+                {
+                    PlaceAtBase(ctx.State, guest, network);
+                    return;
+                }
+                long linkMove = Math.Min((long)linkSpeed * budgetMs / 1000, leg.LengthCm - offset);
+                if (linkMove <= 0) break;
+                budgetMs -= (int)Math.Min(budgetMs, Math.Max(1, (linkMove * 1000 + linkSpeed - 1) / linkSpeed));
+                guest.RouteProgressCm += linkMove;
+                continue;
+            }
+
+            if (!network.TryGetGeometry(leg.WayId, out var geometry))
+            {
+                PlaceAtBase(ctx.State, guest, network);
+                return;
+            }
+
+            int dir = leg.ToCm >= leg.FromCm ? 1 : -1;
+            long position = leg.FromCm + dir * offset;
             var segment = geometry.Segments[geometry.SegmentIndexAt(dir > 0 ? position : position - 1)];
             long boundary = dir > 0 ? Math.Min(segment.EndCm, leg.ToCm) : Math.Max(segment.StartCm, leg.ToCm);
             long toBoundary = Math.Abs(boundary - position);
@@ -198,6 +263,14 @@ internal sealed class RiderSystem : ISimSystem
         }
     }
 
+    /// <summary>Speed along a lift or walk leg in cm/s (0 if the lift no longer exists).</summary>
+    private static int LinkSpeed(WorldState state, RouteLeg leg)
+    {
+        if (leg.Kind == LegKind.Walk) return state.LiftRules.WalkSpeedCmPerS;
+        var lift = state.Lifts.FirstOrDefault(l => l.Id == leg.WayId);
+        return lift is null ? 0 : LiftNetwork.FindType(state, lift.TypeId)?.SpeedCmPerS ?? 0;
+    }
+
     /// <summary>The leg the rider is on and how far into it.</summary>
     private static (int Leg, long Offset) LocateOnRoute(Guest guest)
     {
@@ -210,6 +283,9 @@ internal sealed class RiderSystem : ISimSystem
 
     private static void FinishLeg(SimContext ctx, WayNetwork network, Guest guest, int legIndex)
     {
+        var leg = guest.Route[legIndex];
+        if (leg.Kind == LegKind.Lift)
+            ctx.Publish(new RiderUnloaded(ctx.Tick, guest.Id, leg.WayId));
         if (legIndex + 1 < guest.Route.Count)
             EnterLeg(ctx, network, guest, legIndex + 1);
         else
@@ -220,8 +296,25 @@ internal sealed class RiderSystem : ISimSystem
     {
         var leg = guest.Route[legIndex];
         guest.LegIndex = legIndex;
-        bool onTrail = network.FindWay(leg.WayId)?.Kind == WayKind.Trail;
-        guest.Activity = onTrail ? RiderActivity.Descending : RiderActivity.Climbing;
+        switch (leg.Kind)
+        {
+            case LegKind.Walk:
+                guest.Activity = RiderActivity.Walking;
+                break;
+            case LegKind.Lift:
+                var lift = ctx.State.Lifts.FirstOrDefault(l => l.Id == leg.WayId);
+                if (lift is null)
+                {
+                    PlaceAtBase(ctx.State, guest, network);
+                    return;
+                }
+                LiftSystem.JoinQueue(ctx, lift, guest);
+                break;
+            default:
+                bool onTrail = network.FindWay(leg.WayId)?.Kind == WayKind.Trail;
+                guest.Activity = onTrail ? RiderActivity.Descending : RiderActivity.Climbing;
+                break;
+        }
         if (legIndex == guest.Route.Count - 1)
         {
             guest.RunStartTick = ctx.Tick;
@@ -246,9 +339,10 @@ internal sealed class RiderSystem : ISimSystem
             trail.Stats.SumRunMinutes += minutes;
             trail.Stats.SumFun += fun;
             guest.LocationWayId = trailId;
+            guest.LocationHubId = 0;
             guest.LocationCm = network.Geometry(trailId).LengthCm;
         }
-        ClearLap(guest);
+        ClearLap(ctx.State, guest);
         guest.Activity = RiderActivity.Idle;
         ctx.Publish(new RunFinished(ctx.Tick, guest.Id, trailId, minutes, fun));
     }

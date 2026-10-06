@@ -1,5 +1,8 @@
 using Bikepark.Game.Camera;
+using Bikepark.Game.Lifts;
 using Bikepark.Game.Ways;
+using Bikepark.Sim;
+using Bikepark.Sim.Lifts;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Trails;
 using Godot;
@@ -7,9 +10,10 @@ using Godot;
 namespace Bikepark.Game.Riders;
 
 /// <summary>
-/// Draws riders that are on the way network as instanced low-poly bike + rider models, smoothly interpolated between
-/// simulation ticks (previous route progress is captured in <see cref="SimHost.BeforeStep"/>). Jersey color shows
-/// skill (green/blue/red/black like trail ratings). F makes the camera follow the next riding rider.
+/// Draws riders that are on the way network, walking from the parking lot, standing in a lift queue or riding a lift,
+/// as instanced low-poly bike + rider models, smoothly interpolated between simulation ticks (previous route progress
+/// is captured in <see cref="SimHost.BeforeStep"/>). Jersey color shows skill (green/blue/red/black like trail
+/// ratings). F makes the camera follow the next riding rider.
 /// </summary>
 public partial class RiderView : Node3D
 {
@@ -95,15 +99,29 @@ public partial class RiderView : Node3D
         var mm = _instances.Multimesh;
         _positions.Clear();
 
+        var queueIndex = new Dictionary<int, (Lift Lift, int Index)>();
+        foreach (var lift in sim.State.Lifts)
+            for (int i = 0; i < lift.Queue.Count; i++)
+                queueIndex[lift.Queue[i]] = (lift, i);
+
         int count = 0;
         foreach (var guest in sim.State.Guests)
         {
             if (!IsOnNetwork(guest)) continue;
-            long progress = guest.RouteProgressCm;
-            if (_previous.TryGetValue(guest.Id, out var prev) && ReferenceEquals(prev.Route, guest.Route))
-                progress = prev.Progress + (long)((guest.RouteProgressCm - prev.Progress) * alpha);
-
-            if (!TryLocate(network, guest.Route, progress, out var position, out var forward)) continue;
+            Vector3 position, forward;
+            if (guest.Activity == RiderActivity.Queuing)
+            {
+                if (!queueIndex.TryGetValue(guest.Id, out var q) || LiftNetwork.Pad(sim.State, q.Lift.Valley.TerrainEditId) is not { } pad) continue;
+                position = LiftShapes.QueueSlot(pad, q.Index);
+                forward = LiftShapes.Forward(pad);
+            }
+            else
+            {
+                long progress = guest.RouteProgressCm;
+                if (_previous.TryGetValue(guest.Id, out var prev) && ReferenceEquals(prev.Route, guest.Route))
+                    progress = prev.Progress + (long)((guest.RouteProgressCm - prev.Progress) * alpha);
+                if (!TryLocate(sim, network, guest.Route, progress, out position, out forward)) continue;
+            }
 
             if (count >= mm.InstanceCount)
                 mm.InstanceCount = Math.Max(64, mm.InstanceCount * 2);
@@ -126,10 +144,11 @@ public partial class RiderView : Node3D
     }
 
     private static bool IsOnNetwork(Guest g) =>
-        g.Activity is RiderActivity.Climbing or RiderActivity.Descending && g.Route.Count > 0;
+        g.Activity is RiderActivity.Climbing or RiderActivity.Descending or RiderActivity.Walking or RiderActivity.Queuing or RiderActivity.OnLift
+        && g.Route.Count > 0;
 
     /// <summary>World position and travel direction at a progress along a route.</summary>
-    private static bool TryLocate(WayNetwork network, List<RouteLeg> route, long progress, out Vector3 position, out Vector3 forward)
+    private static bool TryLocate(Simulation sim, WayNetwork network, List<RouteLeg> route, long progress, out Vector3 position, out Vector3 forward)
     {
         position = default;
         forward = Vector3.Forward;
@@ -142,6 +161,8 @@ public partial class RiderView : Node3D
                 remaining -= leg.LengthCm;
                 continue;
             }
+            if (leg.Kind != LegKind.Way)
+                return TryLocateOnLink(sim, network, leg, Math.Min(remaining, leg.LengthCm), out position, out forward);
             if (!network.TryGetGeometry(leg.WayId, out var g)) return false;
             int dir = leg.ToCm >= leg.FromCm ? 1 : -1;
             long d = leg.FromCm + dir * Math.Min(remaining, leg.LengthCm);
@@ -153,6 +174,30 @@ public partial class RiderView : Node3D
             return true;
         }
         return false;
+    }
+
+    /// <summary>On a lift (in a cabin under the up rope) or walking between parking lot and station.</summary>
+    private static bool TryLocateOnLink(Simulation sim, WayNetwork network, RouteLeg leg, long offset, out Vector3 position, out Vector3 forward)
+    {
+        position = default;
+        forward = Vector3.Forward;
+        if (network.FindLink(leg.Kind, leg.WayId) is not { } link) return false;
+        var from = network.FindHub(link.FromHubId)!.Pad;
+        var to = network.FindHub(link.ToHubId)!.Pad;
+        float t = link.LengthCm == 0 ? 1f : (leg.FromCm + Math.Sign(leg.ToCm - leg.FromCm) * offset) / (float)link.LengthCm;
+        if (leg.Kind == LegKind.Lift)
+        {
+            position = LiftShapes.OnRope(from, to, t, up: true) + Vector3.Down * (LiftShapes.CabinDrop + 1.0f);
+            forward = LiftShapes.Forward(from);
+            return true;
+        }
+        var a = LiftShapes.Center(from);
+        var b = LiftShapes.Center(to);
+        var p = a.Lerp(b, t);
+        position = new Vector3(p.X, sim.Terrain.HeightAt((long)(p.X * 100), (long)(p.Z * 100)) / 100f, p.Z);
+        var f = (leg.ToCm >= leg.FromCm ? b - a : a - b) with { Y = 0 };
+        if (f.LengthSquared() > 0.0001f) forward = f.Normalized();
+        return true;
     }
 
     private static Color SkillColor(int skill) =>

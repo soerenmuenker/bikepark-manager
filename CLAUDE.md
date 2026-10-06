@@ -6,16 +6,20 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 ## Layout
 
 - `src/Bikepark.Sim/` – simulation library (WorldState, Simulation tick loop, SimRandom, commands, events, save/load, scenarios, KPIs)
-  - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks)
+  - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks),
+    `TerrainEdit`/`TerrainEditor` (stored flattened pads applied on top of the generated grid)
   - `Trails/` – `Way` (player-built access paths and trails), `WayGeometry` (integer spline, segments, rating),
     `WayPlanner` (validation, shared by command and preview), `WayNetwork` (derived graph, routing, corridors)
-  - `Systems/RiderSystem.cs` – riders choose a trail, climb the access paths, ride down, score fun
+  - `Lifts/` – `LiftType`/`LiftOperator`/`LiftRules` (content), `Lift`/`ParkingLot` (state), `LiftMath` (bike carriers,
+    throughput), `StructurePlanner` (validation of lifts, parking, pads), `LiftNetwork` (hubs + links for the network)
+  - `Systems/RiderSystem.cs` – riders choose a trail and the cheaper way up (walk + lift queue, or pedal the paths), ride down, score fun
+  - `Systems/LiftSystem.cs` – booked bike access tiers at opening, carrier dispatch, boarding bike cabins from the FIFO queue
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/Hud.cs` debug HUD,
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool,
-  `scripts/riders/RiderView.cs`, `shaders/`)
-- `data/` – JSON content (`scenarios/`, `scripts/` command scripts such as `demo_network.json`)
+  `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `shaders/`)
+- `data/` – JSON content (`scenarios/`, `lift_types.json`, `scripts/` command scripts such as `demo_lift_network.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
 ## Commands
@@ -27,10 +31,11 @@ dotnet build Bikepark.sln
 dotnet test Bikepark.sln
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json] [--daily] [--save out.json]
 # Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
-dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_network.json]
-# Riders on the demo network: per-trail runs, run times, fun, why guests left
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_network.json
-# Godot (from game/): compile, then run headless with the demo network at 30x, printing KPIs every game hour
+# (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
+dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
+# Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json
+# Godot (from game/): compile, then run headless with the demo trails at 60x, printing KPIs (incl. queues) every game hour
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --build-solutions --quit
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --fixed-fps 60 --quit-after 2400 -- --demo --speed=4 --report
 ```
@@ -68,12 +73,18 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     routing graph and corridors are derived in `WayNetwork` (rebuilt on `WaysRevision`). All way validation lives
     in `WayPlanner` so the build command and the in-game preview can never disagree. Riders are simulated, not
     physically simulated: they move along route legs by distance (cm) per tick; the view interpolates.
+12. **Structures** (lifts, parking lots) store only input: pads go into `WorldState.TerrainEdits` (bump
+    `TerrainRevision`), the terrain/network are re-derived. Stations and parking lots are network hubs; all
+    structure validation lives in `StructurePlanner`. Bike access: `LiftMath.IsBikeCarrier` decides which carriers take
+    bikes (sim and view); tier changes apply at the next opening; fees are charged by `FinanceSystem`.
 
 ## Game controls (debug build)
 
 WASD/arrows/screen edge/middle-drag pan · wheel or +/- zoom · Q/E or right-drag orbit · F1 cycles terrain overlay
 (natural / slope / surface) · HUD shows terrain data under the cursor · P draw gravel access path, T draw trail
-(click or drag points, Backspace undo, Enter build, Esc cancel; preview colored by gradient) · F follow next rider ·
+(click or drag points, Backspace undo, Enter build, Esc cancel; preview colored by gradient; ends snap onto plateaus) ·
+L place lift (valley, then top) · K place parking lot (centre, then direction) · [ / ] book lower/higher bike access tier
+(from next opening) · F follow next rider ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale (`Trails/Gradient.cs`, 1 point = 9°).
 
 ## Conventions

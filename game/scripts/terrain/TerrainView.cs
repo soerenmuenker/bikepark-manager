@@ -36,6 +36,7 @@ public partial class TerrainView : Node3D
     private Node3D? _chunks;
     private readonly List<(Node3D Node, int X0, int Z0, int SizeX, int SizeZ)> _chunkInfo = [];
     private Func<int, int, bool>? _cleared;
+    private SimHost _host = null!;
 
     public TerrainGrid? Grid { get; private set; }
 
@@ -72,9 +73,56 @@ public partial class TerrainView : Node3D
         _rockMesh = ScatterMeshes.CreateRock();
         _scatterMaterial = ScatterMeshes.CreateMaterial();
 
-        var host = GetNode<SimHost>(SimHostPath);
-        host.SimulationReplaced += OnSimulationReplaced;
-        OnSimulationReplaced(host.Sim);
+        _host = GetNode<SimHost>(SimHostPath);
+        _host.SimulationReplaced += OnSimulationReplaced;
+        OnSimulationReplaced(_host.Sim);
+    }
+
+    public override void _Process(double delta)
+    {
+        // Structures flatten the ground (terrain edits): rebuild the chunks whose samples changed.
+        var grid = _host.Sim.Terrain;
+        if (Grid is not null && !ReferenceEquals(grid, Grid) && grid.SizeMeters == Grid.SizeMeters)
+            RebuildChangedChunks(grid);
+    }
+
+    private void RebuildChangedChunks(TerrainGrid grid)
+    {
+        var old = Grid!;
+        Grid = grid;
+        var scatter = new List<ScatterInstance>();
+        int rebuilt = 0;
+        for (int i = 0; i < _chunkInfo.Count; i++)
+        {
+            var (node, x0, z0, sizeX, sizeZ) = _chunkInfo[i];
+            if (!ChunkChanged(old, grid, x0, z0, sizeX, sizeZ)) continue;
+            int index = node.GetIndex();
+            _chunks!.RemoveChild(node);
+            node.QueueFree();
+            _chunkInfo.RemoveAt(i);
+            var chunk = BuildChunk(grid, x0, z0, scatter);
+            _chunkInfo.Insert(i, _chunkInfo[^1]);
+            _chunkInfo.RemoveAt(_chunkInfo.Count - 1);
+            _chunks.AddChild(chunk);
+            _chunks.MoveChild(chunk, index);
+            rebuilt++;
+        }
+        GD.Print($"Terrain: rebuilt {rebuilt} changed chunks");
+        TerrainBuilt?.Invoke(grid);
+    }
+
+    private static bool ChunkChanged(TerrainGrid a, TerrainGrid b, int x0, int z0, int sizeX, int sizeZ)
+    {
+        // Include the skirt/normal neighbourhood: one sample around the chunk.
+        int xa = Math.Max(0, x0 - 1), xb = Math.Min(a.SizeMeters, x0 + sizeX + 1);
+        for (int z = Math.Max(0, z0 - 1); z <= Math.Min(a.SizeMeters, z0 + sizeZ + 1); z++)
+        {
+            int start = a.Index(xa, z), length = xb - xa + 1;
+            if (!a.Heights.Slice(start, length).SequenceEqual(b.Heights.Slice(start, length))) return true;
+            if (!a.TreeDensity.Slice(start, length).SequenceEqual(b.TreeDensity.Slice(start, length))) return true;
+            if (!a.Rock.Slice(start, length).SequenceEqual(b.Rock.Slice(start, length))) return true;
+        }
+        return false;
     }
 
     public override void _UnhandledInput(InputEvent @event)

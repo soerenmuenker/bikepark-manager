@@ -1,5 +1,6 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
 
@@ -32,6 +33,12 @@ public sealed class WorldState
     /// </summary>
     public TerrainSettings Terrain { get; set; } = new();
 
+    /// <summary>Flattened pads (stations, plateaus, parking lots), applied in order on top of the generated terrain.</summary>
+    public List<TerrainEdit> TerrainEdits { get; set; } = [];
+
+    /// <summary>Incremented whenever <see cref="TerrainEdits"/> changes; invalidates the derived terrain and network.</summary>
+    public int TerrainRevision { get; set; }
+
     public TrailRules TrailRules { get; set; } = new();
 
     /// <summary>Access paths and trails, in build order. Only player input; geometry is derived.</summary>
@@ -39,6 +46,19 @@ public sealed class WorldState
 
     /// <summary>Incremented whenever <see cref="Ways"/> changes; invalidates the derived network.</summary>
     public int WaysRevision { get; set; }
+
+    /// <summary>Lift models (content, copied from <c>data/lift_types.json</c>).</summary>
+    public List<LiftType> LiftTypes { get; set; } = [];
+
+    /// <summary>Lift companies and the bike access they offer (content, from the scenario).</summary>
+    public List<LiftOperator> Operators { get; set; } = [];
+
+    public LiftRules LiftRules { get; set; } = new();
+
+    /// <summary>Lifts in build order.</summary>
+    public List<Lift> Lifts { get; set; } = [];
+
+    public List<ParkingLot> ParkingLots { get; set; } = [];
 
     public FinanceState Finance { get; set; } = new();
 
@@ -87,6 +107,10 @@ public sealed class FinanceState
     public long RevenueTodayCents { get; set; }
     public long ExpensesTodayCents { get; set; }
 
+    /// <summary>Bike access fees paid to lift companies (included in the expenses).</summary>
+    public long TotalLiftFeesCents { get; set; }
+    public long LiftFeesTodayCents { get; set; }
+
     public void Earn(long cents)
     {
         MoneyCents += cents;
@@ -108,6 +132,9 @@ public sealed class ParkStats
     public long TotalTurnedAway { get; set; }
     public int VisitorsToday { get; set; }
     public int TurnedAwayToday { get; set; }
+
+    /// <summary>Guests turned away because the parking lots were full (included in <see cref="TotalTurnedAway"/>).</summary>
+    public long TotalTurnedAwayParkingFull { get; set; }
     public long TotalGuestsLeft { get; set; }
     public long TotalLeftUnhappy { get; set; }
 
@@ -135,6 +162,15 @@ public enum RiderActivity : byte
 
     /// <summary>On a trail.</summary>
     Descending = 3,
+
+    /// <summary>On foot between the parking lot and the valley station.</summary>
+    Walking = 4,
+
+    /// <summary>In a lift queue (<see cref="Lift.Queue"/>).</summary>
+    Queuing = 5,
+
+    /// <summary>Riding a lift up.</summary>
+    OnLift = 6,
 }
 
 public sealed class Guest
@@ -160,11 +196,15 @@ public sealed class Guest
 
     public RiderActivity Activity { get; set; }
 
-    /// <summary>Where an idle rider is: a way and distance along it (a network node).</summary>
+    /// <summary>Where an idle rider is: a way and distance along it (a network node), or a hub (station, parking lot).</summary>
     public int LocationWayId { get; set; }
     public long LocationCm { get; set; }
+    public int LocationHubId { get; set; }
 
-    /// <summary>Current lap: legs to the chosen trail's start, then the trail itself (last leg).</summary>
+    /// <summary>When the rider joined the current lift queue.</summary>
+    public long QueueSinceTick { get; set; }
+
+    /// <summary>Current lap: legs (walks, lifts, paths) to the chosen trail's start, then the trail itself (last leg).</summary>
     public List<RouteLeg> Route { get; set; } = [];
 
     /// <summary>Distance covered along the whole <see cref="Route"/>.</summary>

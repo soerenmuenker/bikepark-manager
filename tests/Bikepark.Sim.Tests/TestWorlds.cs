@@ -36,6 +36,41 @@ internal static class TestWorlds
 
     public static WorldState Create(ulong seed = 1337) => ScenarioLoader.CreateWorld(Scenario(seed));
 
+    /// <summary>
+    /// Starter Valley as shipped: gondola run by Alpine Lift Co. (tier 1, every 4th cabin), valley parking and the old
+    /// hiking route, built by the scenario's tick-0 commands. The terrain is pinned to seed 1337 for every world seed.
+    /// </summary>
+    public static ScenarioDefinition LiftScenario(ulong seed = 1337)
+    {
+        var scenario = ScenarioLoader.LoadFile(Path.Combine(RepoRoot(), "data", "scenarios", "starter_valley.json"));
+        scenario.Seed = seed;
+        scenario.Terrain = scenario.Terrain with { Seed = 1337 };
+        return scenario;
+    }
+
+    /// <summary>The demo trails from the plateau (data/scripts/demo_lift_network.json), built at tick 0.</summary>
+    public static IReadOnlyList<TimedCommand> DemoLiftNetwork() =>
+        JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(Path.Combine(RepoRoot(), "data", "scripts", "demo_lift_network.json")), SimJson.Indented)!;
+
+    /// <summary>A command script for the lift world: the demo trails plus bike access bookings.</summary>
+    public static IReadOnlyList<TimedCommand> LiftScript() =>
+    [
+        .. DemoLiftNetwork(),
+        new(600, new SetLiftBikeAccessCommand(1, 2)), // starts at the next opening (day 1)
+        new(1500, new SetEntryFeeCommand(2000)),
+        new(1600, new SetLiftBikeAccessCommand(1, 9)), // rejected: no such tier
+        new(2500, new SetLiftBikeAccessCommand(1, 0)), // no bikes from day 2: riders pedal up
+    ];
+
+    public static Simulation RunLift(ulong seed, long ticks, IEnumerable<TimedCommand>? commands = null)
+    {
+        var sim = new Simulation(ScenarioLoader.CreateWorld(LiftScenario(seed)));
+        foreach (var c in commands ?? [])
+            sim.Commands.Enqueue(c.Command, c.Tick);
+        sim.RunTicks(ticks);
+        return sim;
+    }
+
     /// <summary>A fixed command script used by determinism tests.</summary>
     public static IReadOnlyList<TimedCommand> Script() =>
     [
