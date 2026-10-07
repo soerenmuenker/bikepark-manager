@@ -14,7 +14,8 @@ namespace Bikepark.Game;
 /// read <see cref="Sim"/>.State, subscribe to <see cref="Sim"/>.Events, and change the world only via
 /// <see cref="Enqueue"/>. Views that animate between ticks use <see cref="BeforeStep"/> and
 /// <see cref="InterpolationAlpha"/>.
-/// Command-line user args (after <c>--</c>): <c>--demo</c> builds the demo network, <c>--speed=N</c> picks a speed index,
+/// Command-line user args (after <c>--</c>): <c>--demo</c> builds the demo network, <c>--demo-features</c> then puts the
+/// demo features on it (simulates the first minute so the trails exist), <c>--speed=N</c> picks a speed index,
 /// <c>--report</c> prints a KPI line every game hour (for headless checks), <c>--advance=N</c> simulates N ticks at start
 /// (after <c>--demo</c>, e.g. 720 = noon on day 1).
 /// </summary>
@@ -34,6 +35,8 @@ public partial class SimHost : Node
     [Export] public string SavePath { get; set; } = "user://savegame.json";
 
     [Export] public string DemoNetworkFile { get; set; } = "data/scripts/demo_lift_network.json";
+
+    [Export] public string DemoFeaturesFile { get; set; } = "data/scripts/demo_features.json";
 
     /// <summary>Game minutes per real second while turbo-skipping towards closing time.</summary>
     [Export] public double TurboTicksPerSecond { get; set; } = 120;
@@ -69,6 +72,11 @@ public partial class SimHost : Node
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             if (arg == "--demo") LoadDemoNetwork();
+            else if (arg == "--demo-features")
+            {
+                Sim.Step();
+                LoadDemoFeatures();
+            }
             else if (arg == "--report") _report = true;
             else if (arg.StartsWith("--speed=", StringComparison.Ordinal) && int.TryParse(arg[8..], out int speed)) SetSpeedIndex(speed);
             else if (arg.StartsWith("--advance=", StringComparison.Ordinal) && long.TryParse(arg[10..], out long ticks)) Sim.RunTicks(ticks);
@@ -114,6 +122,31 @@ public partial class SimHost : Node
         foreach (var timed in script)
             Enqueue(timed.Command);
     }
+
+    /// <summary>
+    /// Queues the demo features (data/scripts/demo_features.json) on the demo trails. The script's way ids are those of a
+    /// fresh world; they are mapped, in order, to the demo network's trails by name. Returns false if those aren't built.
+    /// </summary>
+    public bool LoadDemoFeatures()
+    {
+        var names = ReadScript(DemoNetworkFile).Select(t => t.Command).OfType<BuildWayCommand>().Select(c => c.Name).ToList();
+        var script = ReadScript(DemoFeaturesFile);
+        var scriptIds = script.Select(t => t.Command).OfType<PlaceTrailFeatureCommand>().Select(c => c.WayId).Distinct().Order().ToList();
+        var ids = new Dictionary<int, int>();
+        for (int i = 0; i < scriptIds.Count && i < names.Count; i++)
+        {
+            var way = Sim.State.Ways.FirstOrDefault(w => w.Name == names[i]);
+            if (way is null) return false;
+            ids[scriptIds[i]] = way.Id;
+        }
+        foreach (var command in script.Select(t => t.Command).OfType<PlaceTrailFeatureCommand>())
+            if (ids.TryGetValue(command.WayId, out int wayId))
+                Enqueue(command with { WayId = wayId });
+        return true;
+    }
+
+    private List<TimedCommand> ReadScript(string file) =>
+        JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(ResolveContentPath(file)), SimJson.Indented) ?? [];
 
     public long Enqueue(ICommand command) => Sim.Commands.Enqueue(command);
 

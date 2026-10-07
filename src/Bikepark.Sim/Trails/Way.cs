@@ -43,6 +43,9 @@ public sealed class Way
 
     public WayOrigin Origin { get; set; }
 
+    /// <summary>Features placed on a trail (berms, jumps, wood features), sorted by distance. Empty on access paths.</summary>
+    public List<TrailFeature> Features { get; set; } = [];
+
     public WayStats Stats { get; set; } = new();
 }
 
@@ -91,6 +94,15 @@ public sealed class TrailRules
     public int PathCorridorCm { get; set; } = 400;
     public int TrailCorridorCm { get; set; } = 200;
 
+    // Trail features.
+    public int FeatureStartMarginMeters { get; set; } = 10;
+    public int FeatureEndMarginMeters { get; set; } = 15;
+
+    /// <summary>Minimum free distance between two features on a trail.</summary>
+    public int FeatureGapMeters { get; set; } = 5;
+
+    public int MaxFeaturesPerTrail { get; set; } = 40;
+
     // Riders. Speeds in cm per second, energy on a 0..1000 scale.
     public int ClimbSpeedMinCmPerS { get; set; } = 110;
     public int ClimbSpeedMaxCmPerS { get; set; } = 300;
@@ -119,6 +131,8 @@ public sealed class TrailRules
                 errors.Add($"trailRules {name} gradients must satisfy 0 < steep <= max <= {Gradient.MaxTenths}");
         }
         if (PathCorridorCm <= 0 || TrailCorridorCm <= 0) errors.Add("trailRules corridor widths must be positive");
+        if (FeatureStartMarginMeters < 0 || FeatureEndMarginMeters < 0 || FeatureGapMeters < 0 || MaxFeaturesPerTrail < 0)
+            errors.Add("trailRules feature margins, gap and count must be >= 0");
         if (ClimbSpeedMinCmPerS <= 0 || ClimbSpeedMaxCmPerS < ClimbSpeedMinCmPerS) errors.Add("trailRules climb speeds are inconsistent");
         if (DescentSpeedMinCmPerS <= 0 || DescentSpeedMaxCmPerS < DescentSpeedMinCmPerS) errors.Add("trailRules descent speeds are inconsistent");
         if (ClimbEnergyPerMeterGain < 0 || DescentEnergyPer100Meters < 0 || TiredEnergy is < 0 or > 1000)

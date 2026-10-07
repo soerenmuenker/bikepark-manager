@@ -47,6 +47,9 @@ public sealed class WorldState
     /// <summary>Incremented whenever <see cref="Ways"/> changes; invalidates the derived network.</summary>
     public int WaysRevision { get; set; }
 
+    /// <summary>Trail feature models (content, copied from <c>data/trail_features.json</c>).</summary>
+    public List<TrailFeatureType> TrailFeatureTypes { get; set; } = [];
+
     /// <summary>Lift models (content, copied from <c>data/lift_types.json</c>).</summary>
     public List<LiftType> LiftTypes { get; set; } = [];
 

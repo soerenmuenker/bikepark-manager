@@ -91,7 +91,7 @@ public sealed class Simulation
                 var (hubs, links) = LiftNetwork.Build(State);
                 _network = State.Ways.Count == 0 && hubs.Count == 0
                     ? WayNetwork.Empty
-                    : WayNetwork.Build(State.Ways, hubs, links, Terrain, State.TrailRules);
+                    : WayNetwork.Build(State.Ways, hubs, links, Terrain, State.TrailRules, State.TrailFeatureTypes);
                 _networkRevision = revision;
             }
             return _network;

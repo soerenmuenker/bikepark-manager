@@ -9,17 +9,19 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks),
     `TerrainEdit`/`TerrainEditor` (stored flattened pads applied on top of the generated grid)
   - `Trails/` – `Way` (player-built access paths and trails), `WayGeometry` (integer spline, segments, rating),
-    `WayPlanner` (validation, shared by command and preview), `WayNetwork` (derived graph, routing, corridors)
+    `WayPlanner` (validation, shared by command and preview), `WayNetwork` (derived graph, routing, corridors),
+    `TrailFeature` (feature catalog types + placed features), `FeaturePlanner` (feature placement validation)
   - `Lifts/` – `LiftType`/`LiftOperator`/`LiftRules` (content), `Lift`/`ParkingLot` (state), `LiftMath` (bike carriers,
     throughput), `StructurePlanner` (validation of lifts, parking, pads), `LiftNetwork` (hubs + links for the network)
-  - `Systems/RiderSystem.cs` – riders choose a trail and the cheaper way up (walk + lift queue, or pedal the paths), ride down, score fun
+  - `Systems/RiderSystem.cs` – riders choose a trail and the cheaper way up (walk + lift queue, or pedal the paths), ride down, score fun (segments + features)
   - `Systems/LiftSystem.cs` – booked bike access tiers at opening, carrier dispatch, boarding bike cabins from the FIFO queue
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus, drawn icons, theme in code),
-  `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool,
+  `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `shaders/`)
-- `data/` – JSON content (`scenarios/`, `lift_types.json`, `scripts/` command scripts such as `demo_lift_network.json`)
+- `data/` – JSON content (`scenarios/`, `lift_types.json`, `trail_features.json`, `scripts/` command scripts such as
+  `demo_lift_network.json`, `demo_features.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
 ## Commands
@@ -29,12 +31,14 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 ```bash
 dotnet build Bikepark.sln
 dotnet test Bikepark.sln
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json] [--daily] [--save out.json]
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json]... [--daily] [--save out.json]
 # Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
 # Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json
+# ... with the demo trail features (per-trail feature list, rating and fun change)
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json
 # Godot (from game/): compile, then run headless with the demo trails at 60x, printing KPIs (incl. queues) every game hour
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --build-solutions --quit
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --fixed-fps 60 --quit-after 2400 -- --demo --speed=4 --report
@@ -77,6 +81,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     `TerrainRevision`), the terrain/network are re-derived. Stations and parking lots are network hubs; all
     structure validation lives in `StructurePlanner`. Bike access: `LiftMath.IsBikeCarrier` decides which carriers take
     bikes (sim and view); tier changes apply at the next opening; fees are charged by `FinanceSystem`.
+13. **Trail features** store only `{typeId, distanceCm}` on `Way.Features`; their effect (segment difficulty, rating
+    floor) is derived in `WayGeometry`/`WayNetwork`. All placement validation lives in `FeaturePlanner`.
 
 ## Game controls (debug build)
 
@@ -85,10 +91,12 @@ closes) and headline stats (click to open their menu) · Space pause, 1–4 spee
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter build, Esc cancel; preview colored
 by gradient; ends snap onto plateaus) · L place lift (valley, then top) · K place parking lot (centre, then direction) ·
-[ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · F follow next rider ·
+[ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
+Build, point at a trail, click to place, Delete removes the one under the cursor (also ✕ in the Trails menu) · F follow next rider ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
-`--panel=<menu>`, `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes).
+`--demo-features` (after `--demo`), `--panel=<menu>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
+`--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes).
 
 ## Conventions
 

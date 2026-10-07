@@ -50,7 +50,7 @@ public static class Program
         var state = ScenarioLoader.CreateWorld(scenario, options.Seed);
         var sim = new Simulation(state);
 
-        if (options.CommandsPath is { } commandsPath)
+        foreach (string commandsPath in options.CommandsPaths)
         {
             var script = JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(commandsPath), SimJson.Indented) ?? [];
             foreach (var timed in script)
@@ -98,6 +98,7 @@ public static class Program
             w.Id, w.Name, w.Kind,
             trail ? geometry.Rating : null,
             trail ? geometry.DifficultyScore : null,
+            trail ? sim.Network.FeaturesOn(w.Id).Select(f => $"{f.Type.Id}@{f.StartCm / 100}m").ToList() : null,
             geometry.LengthCm / 100,
             Math.Abs(geometry.StartHeightCm - geometry.EndHeightCm) / 100,
             Gradient.Format(-geometry.MaxDropGradient),
@@ -154,6 +155,7 @@ internal sealed record WayReport(
     WayKind Kind,
     TrailRating? Rating,
     int? Difficulty,
+    List<string>? Features,
     long LengthMeters,
     long DropMeters,
     string? MaxDropGradient,
@@ -184,19 +186,19 @@ internal sealed record RunnerOptions(
     string ScenarioPath,
     int Days,
     ulong? Seed,
-    string? CommandsPath,
+    IReadOnlyList<string> CommandsPaths,
     bool IncludeDaily,
     string? SavePath)
 {
     public const string Usage =
-        "usage: Bikepark.SimRunner --scenario <path> [--days N=30] [--seed S] [--commands <path>] [--daily] [--save <path>]";
+        "usage: Bikepark.SimRunner --scenario <path> [--days N=30] [--seed S] [--commands <path>]... [--daily] [--save <path>]";
 
     public static RunnerOptions Parse(string[] args)
     {
         string? scenario = null;
         int days = 30;
         ulong? seed = null;
-        string? commands = null;
+        var commands = new List<string>();
         bool daily = false;
         string? save = null;
 
@@ -213,7 +215,7 @@ internal sealed record RunnerOptions(
                 case "--seed":
                     seed = ulong.TryParse(Next(), out var s) ? s : throw new ArgumentException("--seed must be an unsigned integer");
                     break;
-                case "--commands": commands = Next(); break;
+                case "--commands": commands.Add(Next()); break;
                 case "--daily": daily = true; break;
                 case "--save": save = Next(); break;
                 case "-h" or "--help": throw new ArgumentException("help requested");

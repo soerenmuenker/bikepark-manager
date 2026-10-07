@@ -12,6 +12,7 @@ namespace Bikepark.Game.Camera;
 ///   <item>Orbit: Q / E, or right-mouse drag (horizontal = rotate, vertical = tilt).</item>
 /// </list>
 /// The focus stays on the map and the camera never goes below the terrain.
+/// Debug: <c>--look=&lt;x&gt;,&lt;z&gt;,&lt;distance&gt;</c> (meters) starts focused there, e.g. for <c>--screenshot</c> checks.
 /// </summary>
 public partial class RtsCamera : Node3D
 {
@@ -58,6 +59,16 @@ public partial class RtsCamera : Node3D
         _yaw = _targetYaw = Mathf.DegToRad(-35f);
         _pitch = _targetPitch = Mathf.DegToRad(40f);
         _distance = _targetDistance = StartDistance;
+        foreach (string arg in OS.GetCmdlineUserArgs())
+        {
+            if (!arg.StartsWith("--look=", StringComparison.Ordinal)) continue;
+            var parts = arg[7..].Split(',');
+            if (parts.Length >= 2 && float.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out float x)
+                && float.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out float z))
+                _focus = _targetFocus = new Vector2(x, z);
+            if (parts.Length >= 3 && float.TryParse(parts[2], System.Globalization.CultureInfo.InvariantCulture, out float d))
+                _distance = _targetDistance = Mathf.Clamp(d, MinDistance, MaxDistance);
+        }
         UpdateTransform();
     }
 

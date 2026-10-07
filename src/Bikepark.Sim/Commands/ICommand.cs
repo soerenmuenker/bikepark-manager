@@ -18,6 +18,8 @@ namespace Bikepark.Sim.Commands;
 [JsonDerivedType(typeof(SetLiftBikeAccessCommand), "setLiftBikeAccess")]
 [JsonDerivedType(typeof(DeleteLiftCommand), "deleteLift")]
 [JsonDerivedType(typeof(DeleteParkingLotCommand), "deleteParkingLot")]
+[JsonDerivedType(typeof(PlaceTrailFeatureCommand), "placeTrailFeature")]
+[JsonDerivedType(typeof(RemoveTrailFeatureCommand), "removeTrailFeature")]
 public interface ICommand
 {
     /// <summary>Returns null if the command can be applied, otherwise a human-readable rejection reason.</summary>

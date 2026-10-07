@@ -39,6 +39,7 @@ public partial class Hud : CanvasLayer
     [Export] public NodePath WayToolPath { get; set; } = "../WayTool";
     [Export] public NodePath RiderViewPath { get; set; } = "../RiderView";
     [Export] public NodePath StructureToolPath { get; set; } = "../StructureTool";
+    [Export] public NodePath FeatureToolPath { get; set; } = "../FeatureTool";
 
     private HudContext _ctx = null!;
     private Control _root = null!;
@@ -74,6 +75,7 @@ public partial class Hud : CanvasLayer
             Ways = GetNode<WayTool>(WayToolPath),
             Riders = GetNode<RiderView>(RiderViewPath),
             Structures = GetNode<StructureTool>(StructureToolPath),
+            Features = GetNode<FeatureTool>(FeatureToolPath),
         };
         _ctx.Kpi = KpiReport.From(_ctx.Sim.State, includeHash: false);
         BuildUi();
@@ -267,6 +269,7 @@ public partial class Hud : CanvasLayer
         {
             _ctx.Ways.SetMode(WayTool.ToolMode.None);
             _ctx.Structures.SetMode(StructureTool.ToolMode.None);
+            _ctx.Features.SetType(null);
         }
     }
 
@@ -370,7 +373,22 @@ public partial class Hud : CanvasLayer
         var lines = new List<string>();
         var structures = _ctx.Structures;
         var ways = _ctx.Ways;
-        if (structures.Mode != StructureTool.ToolMode.None)
+        var features = _ctx.Features;
+        if (features.Active)
+        {
+            lines.Add(features.Status);
+            if (features.Hovered is { } hovered)
+                lines.Add($"{hovered.Feature.Type.Name} at {hovered.Feature.StartCm / 100} m · Delete removes it");
+            else if (features.Plan is { } fp)
+            {
+                string trail = _ctx.Sim.Network.FindWay(fp.WayId)?.Name ?? "";
+                lines.Add($"{trail} · {fp.StartCm / 100}–{fp.EndCm / 100} m");
+                lines.AddRange(fp.Issues.Where(i => i.Severity == IssueSeverity.Error).Take(2).Select(i => $"✗ {i.Message}"));
+                if (fp.IsValid) lines.Add("✓ Click to place");
+            }
+            else lines.Add("Point at a trail · Esc to stop");
+        }
+        else if (structures.Mode != StructureTool.ToolMode.None)
         {
             lines.Add(structures.Status);
             if (structures.LiftPlan is { } lp)
@@ -408,7 +426,7 @@ public partial class Hud : CanvasLayer
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is not InputEventKey { Pressed: true, Echo: false } key) return;
-        bool toolActive = _ctx.Ways.Mode != WayTool.ToolMode.None || _ctx.Structures.Mode != StructureTool.ToolMode.None;
+        bool toolActive = _ctx.Ways.Mode != WayTool.ToolMode.None || _ctx.Structures.Mode != StructureTool.ToolMode.None || _ctx.Features.Active;
         // Bike tier keys go by character: on e.g. German layouts the "+" key sits where US "]" is.
         if (key.Keycode is Key.Bracketleft or Key.Bracketright)
         {
@@ -456,10 +474,20 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<ParkClosed>(_ => Toast("The park has closed", UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<CommandRejected>(e => Toast(e.Reason, UiTheme.Bad)));
         _subscriptions.Add(events.Subscribe<WayBuilt>(e => Toast($"Built {_ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId)?.Name}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<TrailFeaturePlaced>(e => Toast(FeatureText(e.WayId, e.FeatureId), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<LiftBuilt>(e => Toast($"Built {_ctx.Sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name}", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<ParkingLotBuilt>(_ => Toast("Built a parking lot", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessBooked>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: true), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessChanged>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: false), UiTheme.Accent)));
+    }
+
+    private string FeatureText(int wayId, int featureId)
+    {
+        var state = _ctx.Sim.State;
+        var way = state.Ways.FirstOrDefault(w => w.Id == wayId);
+        var feature = way?.Features.FirstOrDefault(f => f.Id == featureId);
+        var type = feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId);
+        return $"Built a {type?.Name.ToLowerInvariant() ?? "feature"} on {way?.Name} at {feature?.DistanceCm / 100} m";
     }
 
     private string TierText(int liftId, int tierIndex, bool booked)

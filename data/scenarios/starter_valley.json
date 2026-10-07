@@ -57,6 +57,7 @@
   },
   // Lift models come from the shared catalog.
   "liftTypesFile": "../lift_types.json",
+  "trailFeaturesFile": "../trail_features.json",
   // The gondola belongs to a lift company; the park rents bike access in tiers (share of cabins equipped for bikes),
   // paying the tier's daily fee at the end of each day. A booked tier starts at the next opening.
   "operators": [

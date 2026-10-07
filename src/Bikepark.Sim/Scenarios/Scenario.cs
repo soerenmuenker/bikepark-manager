@@ -36,6 +36,12 @@ public sealed class ScenarioDefinition
 
     public LiftRules LiftRules { get; set; } = new();
 
+    /// <summary>Trail feature catalog file, relative to the scenario file; loaded into <see cref="TrailFeatureTypes"/>.</summary>
+    public string? TrailFeaturesFile { get; set; }
+
+    /// <summary>Trail features available in this scenario (inline, plus those from <see cref="TrailFeaturesFile"/>).</summary>
+    public List<Trails.TrailFeatureType> TrailFeatureTypes { get; set; } = [];
+
     /// <summary>Optional scripted commands (e.g. tutorial events), queued when the scenario starts.</summary>
     public List<TimedCommand> Commands { get; set; } = [];
 }
@@ -46,20 +52,30 @@ public static class ScenarioLoader
         JsonSerializer.Deserialize<ScenarioDefinition>(json, SimJson.Indented)
         ?? throw new InvalidDataException("Scenario file is empty.");
 
-    /// <summary>Loads a scenario and the lift catalog it references.</summary>
+    /// <summary>Loads a scenario and the lift and trail feature catalogs it references.</summary>
     public static ScenarioDefinition LoadFile(string path)
     {
         var scenario = Parse(File.ReadAllText(path));
+        string directory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
         if (scenario.LiftTypesFile is { Length: > 0 } catalog)
         {
-            string catalogPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".", catalog);
-            var types = JsonSerializer.Deserialize<List<LiftType>>(File.ReadAllText(catalogPath), SimJson.Indented)
-                        ?? throw new InvalidDataException($"Lift catalog '{catalog}' is empty.");
-            scenario.LiftTypes = [.. scenario.LiftTypes, .. types];
+            scenario.LiftTypes = [.. scenario.LiftTypes, .. LoadCatalog<LiftType>(Path.Combine(directory, catalog), "Lift")];
             scenario.LiftTypesFile = null;
+        }
+        if (scenario.TrailFeaturesFile is { Length: > 0 } features)
+        {
+            scenario.TrailFeatureTypes = [.. scenario.TrailFeatureTypes, .. LoadFeatureCatalog(Path.Combine(directory, features))];
+            scenario.TrailFeaturesFile = null;
         }
         return scenario;
     }
+
+    /// <summary>Loads a trail feature catalog (<c>data/trail_features.json</c>).</summary>
+    public static List<Trails.TrailFeatureType> LoadFeatureCatalog(string path) => LoadCatalog<Trails.TrailFeatureType>(path, "Trail feature");
+
+    private static List<T> LoadCatalog<T>(string path, string what) =>
+        JsonSerializer.Deserialize<List<T>>(File.ReadAllText(path), SimJson.Indented)
+        ?? throw new InvalidDataException($"{what} catalog '{path}' is empty.");
 
     /// <summary>Builds the initial world for a scenario. <paramref name="seedOverride"/> replaces the scenario's seed.</summary>
     public static WorldState CreateWorld(ScenarioDefinition scenario, ulong? seedOverride = null)
@@ -79,6 +95,7 @@ public static class ScenarioLoader
             LiftTypes = scenario.LiftTypes,
             Operators = scenario.Operators,
             LiftRules = scenario.LiftRules,
+            TrailFeatureTypes = scenario.TrailFeatureTypes,
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
         };
 
@@ -109,6 +126,10 @@ public static class ScenarioLoader
         if (s.LiftTypes.Select(t => t.Id).Distinct().Count() != s.LiftTypes.Count) errors.Add("liftTypes: ids must be unique");
         foreach (var op in s.Operators) errors.AddRange(op.Validate());
         if (s.Operators.Select(o => o.Id).Distinct().Count() != s.Operators.Count) errors.Add("operators: ids must be unique");
+
+        if (s.TrailFeaturesFile is { Length: > 0 }) errors.Add("trailFeaturesFile can only be resolved when loading from a file");
+        foreach (var type in s.TrailFeatureTypes) errors.AddRange(type.Validate());
+        if (s.TrailFeatureTypes.Select(t => t.Id).Distinct().Count() != s.TrailFeatureTypes.Count) errors.Add("trailFeatureTypes: ids must be unique");
 
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid scenario '{s.Id}': {string.Join("; ", errors)}");

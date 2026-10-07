@@ -1,6 +1,6 @@
 # Bikepark Manager – Architecture
 
-Status: living document. Last updated 2026-10-06.
+Status: living document. Last updated 2026-10-07.
 
 Bikepark Manager is a park-management game in the spirit of RollerCoaster Tycoon. The core decision
 is a **hard split between a deterministic simulation and the presentation layer**:
@@ -159,7 +159,8 @@ Rules:
 - Time scale in the client: 1x = one game minute per 8 real seconds; the view interpolates rider progress between
   ticks (`SimHost.BeforeStep` + `InterpolationAlpha`).
 - Building is instant and free in Phase 2; trees and rocks in a way's corridor disappear (derived, not saved).
-  Phase 3 adds lifts and queues next to climbing (§12), Phase 4 adds crews, cutting and build time.
+  Phase 3 adds lifts and queues next to climbing (§12), Phase 4.1 trail features (§13), Phase 4.2 crews, cutting and
+  build time.
 
 ## 12. Lifts, stations, parking and queues (Phase 3)
 
@@ -186,6 +187,25 @@ Design note: [lifts.md](lifts.md).
   `deleteParkingLot` (rejected while ways attach). `buildWay` gained `origin` (`scenario` ways can't be deleted).
 - **Saves**: all additions are new properties with defaults. Version-2 saves without them still load (tested), so
   the version stays 2.
+
+## 13. Trail features (Phase 4.1)
+
+Design note: [trail_features.md](trail_features.md).
+
+- **Content**: `data/trail_features.json` (via `trailFeaturesFile` in the scenario) → `WorldState.TrailFeatureTypes`:
+  material (dirt/wood), kind (drives the mesh), length, difficulty, gradient window and minimum turn of the covered
+  segments, flow/technical affinity, fun weight. Placement margins, gap and count limit are in `TrailRules`.
+- **State**: `Way.Features` stores only `{id, typeId, distanceCm}` per feature, sorted by distance; trails are never
+  reshaped, so distances stay valid. Deleting a trail deletes its features.
+- **Derived**: `WayNetwork.Build` resolves features (`FeaturesOn(wayId)`) and passes them to `WayGeometry.Build`;
+  a covered segment's `Difficulty` = max(terrain, feature) and `FeatureDifficulty` keeps the feature's part. The
+  trail's `DifficultyScore` = max(90th percentile, hardest feature), so one black drop makes the trail black.
+- **Validation**: `FeaturePlanner` only (command and in-game ghost). **Commands**: `placeTrailFeature`,
+  `removeTrailFeature` (bump `WaysRevision`; routes stay valid, riders are not reset). **Events**:
+  `TrailFeaturePlaced`, `TrailFeatureRemoved`.
+- **Riders**: each feature crossed on a run adds `funWeight` fun samples (`RiderSystem.FeatureFun`: skill match +
+  style affinity, halved if scary). Trail choice already follows the raised `DifficultyScore`.
+- **Saves**: new properties with defaults; version 2 saves without them load (empty catalog), so the version stays 2.
 
 ## Open questions / next steps
 

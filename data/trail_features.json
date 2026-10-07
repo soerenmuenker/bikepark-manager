@@ -1,0 +1,101 @@
+// Trail feature catalog (TrailFeatureType). Copied into the world when a scenario starts, so saves are self-contained.
+// A feature covers lengthMeters of a trail from where it is placed. Every covered ~10 m segment must lie within the
+// gradient window (tenths of the -10..+10 score along the direction of travel: -50 = -5.0 = 45° down), and at least one
+// must turn by minTurn (segment turn permille: 100 ≈ 37°). Difficulty (0..1000) raises the covered segments and sets a
+// floor for the trail's rating (green < 250 <= blue < 480 <= red < 700 <= black). Affinities (0..1000) say how much
+// flow and technical riders enjoy it; funWeight is how many fun samples one pass counts as (a segment counts one).
+[
+  {
+    "id": "berm",
+    "name": "Berm",
+    "material": "dirt",
+    "kind": "berm",
+    "lengthMeters": 12,
+    "difficulty": 200,
+    "minGradient": -50,
+    "maxGradient": 5,
+    "minTurn": 100,
+    "flowAffinity": 950,
+    "techAffinity": 400,
+    "funWeight": 2
+  },
+  {
+    "id": "rollers",
+    "name": "Rollers",
+    "material": "dirt",
+    "kind": "rollers",
+    "lengthMeters": 15,
+    "difficulty": 250,
+    "minGradient": -40,
+    "maxGradient": 0,
+    "flowAffinity": 850,
+    "techAffinity": 350,
+    "funWeight": 2
+  },
+  {
+    "id": "table",
+    "name": "Tabletop",
+    "material": "dirt",
+    "kind": "table",
+    "lengthMeters": 10,
+    "difficulty": 450,
+    "minGradient": -35,
+    "maxGradient": -5,
+    "flowAffinity": 900,
+    "techAffinity": 600,
+    "funWeight": 3
+  },
+  {
+    "id": "double",
+    "name": "Double",
+    "material": "dirt",
+    "kind": "double",
+    "lengthMeters": 12,
+    "difficulty": 650,
+    "minGradient": -35,
+    "maxGradient": -5,
+    "flowAffinity": 850,
+    "techAffinity": 750,
+    "funWeight": 3
+  },
+  {
+    "id": "wall_ride",
+    "name": "Wall-ride",
+    "material": "wood",
+    "kind": "wallRide",
+    "lengthMeters": 8,
+    "difficulty": 550,
+    "minGradient": -40,
+    "maxGradient": 5,
+    "minTurn": 100,
+    "flowAffinity": 700,
+    "techAffinity": 850,
+    "funWeight": 3
+  },
+  {
+    "id": "kicker",
+    "name": "Wooden kicker",
+    "material": "wood",
+    "kind": "kicker",
+    "lengthMeters": 6,
+    "difficulty": 500,
+    "minGradient": -40,
+    "maxGradient": -5,
+    "flowAffinity": 650,
+    "techAffinity": 800,
+    "funWeight": 2
+  },
+  {
+    "id": "drop",
+    "name": "Drop",
+    "material": "wood",
+    "kind": "drop",
+    "lengthMeters": 5,
+    "difficulty": 700,
+    "minGradient": -60,
+    "maxGradient": -20,
+    "flowAffinity": 400,
+    "techAffinity": 950,
+    "funWeight": 3
+  }
+]

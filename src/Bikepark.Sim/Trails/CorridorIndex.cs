@@ -45,7 +45,7 @@ internal sealed class CorridorIndex
     }
 
     /// <summary>The closest way sample within the radius (ties: lower way id, then lower sample index).</summary>
-    public (int WayId, long DistanceCm, PointCm Point)? Nearest(int xCm, int zCm, int radiusCm)
+    public (int WayId, long DistanceCm, PointCm Point)? Nearest(int xCm, int zCm, int radiusCm, Func<int, bool>? include = null)
     {
         int reach = radiusCm / BucketCm + 1;
         int bx = xCm / BucketCm, bz = zCm / BucketCm;
@@ -58,6 +58,7 @@ internal sealed class CorridorIndex
                 foreach (var (entry, sample) in list)
                 {
                     var (wayId, geometry, _) = _entries[entry];
+                    if (include is not null && !include(wayId)) continue;
                     long ex = geometry.Xs[sample] - xCm, ez = geometry.Zs[sample] - zCm;
                     long d2 = ex * ex + ez * ez;
                     bool better = d2 < bestD2

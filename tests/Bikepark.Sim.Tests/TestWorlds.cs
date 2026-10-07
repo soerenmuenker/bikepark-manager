@@ -4,6 +4,7 @@ using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Scenarios;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Terrain;
+using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Tests;
 
@@ -20,7 +21,12 @@ internal static class TestWorlds
         Rules = new ParkRules(),
         // Same terrain for every world seed (Starter Valley's), so the demo network is valid everywhere.
         Terrain = new TerrainSettings { Seed = 1337 },
+        TrailFeatureTypes = FeatureCatalog(),
     };
+
+    /// <summary>The shipped trail feature catalog (data/trail_features.json).</summary>
+    public static List<TrailFeatureType> FeatureCatalog() =>
+        ScenarioLoader.LoadFeatureCatalog(Path.Combine(RepoRoot(), "data", "trail_features.json"));
 
     /// <summary>The demo network (gravel path + Blue and Red trail) from data/scripts, built at tick 0.</summary>
     public static IReadOnlyList<TimedCommand> DemoNetwork() =>
@@ -75,6 +81,14 @@ internal static class TestWorlds
     public static IReadOnlyList<TimedCommand> Script() =>
     [
         .. DemoNetwork(),
+        // Demo network ids: path 1, Blue Line 2, Red Rocket 3; features get ids 4.. in order.
+        new(10, new PlaceTrailFeatureCommand(2, "berm", 18_000)),
+        new(10, new PlaceTrailFeatureCommand(2, "double", 4_000)),
+        new(10, new PlaceTrailFeatureCommand(1, "berm", 5_000)), // rejected: a gravel path
+        new(10, new PlaceTrailFeatureCommand(3, "drop", 15_000)),
+        new(11, new PlaceTrailFeatureCommand(3, "table", 1_000)),
+        new(11, new PlaceTrailFeatureCommand(3, "kicker", 1_200)), // rejected: overlaps the table
+        new(900, new RemoveTrailFeatureCommand(2, 5)), // the double, while riders are out
         new(600, new SetEntryFeeCommand(2500)),
         new(1500, new RenameParkCommand("Gravity Hill")),
         new(2000, new SetEntryFeeCommand(99_999)), // rejected: above max

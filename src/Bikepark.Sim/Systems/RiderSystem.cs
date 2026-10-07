@@ -255,10 +255,21 @@ internal sealed class RiderSystem : ISimSystem
                 guest.Energy -= (int)(move * rules.DescentEnergyPer100Meters / 10_000);
             guest.Energy = Math.Max(0, guest.Energy);
 
-            if (isRun && move == toBoundary)
+            if (isRun)
             {
-                guest.RunFun += SegmentFun(guest, rules, segment, gradeAlong, speed);
-                guest.RunSegments++;
+                // Features whose start the rider passed in this move.
+                foreach (var feature in network.FeaturesOn(leg.WayId))
+                {
+                    if (feature.StartCm <= position) continue;
+                    if (feature.StartCm > position + move) break;
+                    guest.RunFun += (long)FeatureFun(guest, feature.Type) * feature.Type.FunWeight;
+                    guest.RunSegments += feature.Type.FunWeight;
+                }
+                if (move == toBoundary)
+                {
+                    guest.RunFun += SegmentFun(guest, rules, segment, gradeAlong, speed);
+                    guest.RunSegments++;
+                }
             }
         }
     }
@@ -376,6 +387,22 @@ internal sealed class RiderSystem : ISimSystem
             v = v * (1000 - Math.Clamp(segment.TurnPermille - 80, 0, 450)) / 1000; // gentle bends are free
         }
         return (int)Math.Max(MinSpeedCmPerS, v);
+    }
+
+    /// <summary>How much a rider enjoyed riding a trail feature, 0..1000: skill match plus the type's appeal for the style.</summary>
+    internal static int FeatureFun(Guest guest, TrailFeatureType type)
+    {
+        int target = guest.Skill * 85 / 100;
+        int match = Math.Clamp(1000 - Math.Abs(type.Difficulty - target) * 2, 0, 1000);
+        int style = guest.Style switch
+        {
+            RiderStyle.Flow => type.FlowAffinity,
+            RiderStyle.Technical => type.TechAffinity,
+            _ => Math.Clamp(1000 - type.Difficulty, 0, 1000),
+        };
+        int fun = (match * 50 + style * 50) / 100;
+        if (type.Difficulty > guest.Skill + 200) fun /= 2; // scared
+        return fun;
     }
 
     /// <summary>How much a rider enjoyed a trail segment, 0..1000.</summary>

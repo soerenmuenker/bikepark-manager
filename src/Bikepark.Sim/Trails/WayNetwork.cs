@@ -58,15 +58,19 @@ public sealed class WayNetwork
     private readonly List<List<Edge>> _edges = [];
     private readonly CorridorIndex _corridors = new();
     private readonly CorridorIndex _centerlines = new();
+    private readonly Dictionary<int, List<PlacedFeature>> _features;
 
     private readonly record struct Edge(int To, LegKind Kind, int Id, long FromCm, long ToCm, long Cost);
 
-    public static WayNetwork Empty { get; } = new([], [], [], [], new TrailRules());
+    public static WayNetwork Empty { get; } = new([], [], [], [], [], new TrailRules());
 
-    private WayNetwork(List<Way> ways, Dictionary<int, WayGeometry> geometries, List<NetworkHub> hubs, List<NetworkLink> links, TrailRules rules)
+    private WayNetwork(
+        List<Way> ways, Dictionary<int, WayGeometry> geometries, Dictionary<int, List<PlacedFeature>> features,
+        List<NetworkHub> hubs, List<NetworkLink> links, TrailRules rules)
     {
         _ways = ways;
         _geometries = geometries;
+        _features = features;
         _hubs = hubs;
         _links = links;
         foreach (var way in ways)
@@ -86,15 +90,22 @@ public sealed class WayNetwork
     /// <summary>Builds the network for the given ways (in id order), hubs and links on the terrain.</summary>
     public static WayNetwork Build(IReadOnlyList<Way> ways, TerrainGrid grid, TrailRules rules) => Build(ways, [], [], grid, rules);
 
+    /// <summary>Builds the network; trail features are resolved against <paramref name="featureTypes"/> (unknown types are ignored).</summary>
     public static WayNetwork Build(
-        IReadOnlyList<Way> ways, IReadOnlyList<NetworkHub> hubs, IReadOnlyList<NetworkLink> links, TerrainGrid grid, TrailRules rules)
+        IReadOnlyList<Way> ways, IReadOnlyList<NetworkHub> hubs, IReadOnlyList<NetworkLink> links, TerrainGrid grid, TrailRules rules,
+        IReadOnlyList<TrailFeatureType>? featureTypes = null)
     {
         if (ways.Count == 0 && hubs.Count == 0) return Empty;
         var ordered = ways.OrderBy(w => w.Id).ToList();
         var geometries = new Dictionary<int, WayGeometry>();
+        var features = new Dictionary<int, List<PlacedFeature>>();
         foreach (var way in ordered)
-            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
-        return new WayNetwork(ordered, geometries, hubs.OrderBy(h => h.Id).ToList(), links.ToList(), rules);
+        {
+            var placed = way.Kind == WayKind.Trail ? TrailFeatures.Resolve(way, featureTypes ?? []) : [];
+            features[way.Id] = placed;
+            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, placed);
+        }
+        return new WayNetwork(ordered, geometries, features, hubs.OrderBy(h => h.Id).ToList(), links.ToList(), rules);
     }
 
     /// <summary>All ways in id order.</summary>
@@ -127,6 +138,9 @@ public sealed class WayNetwork
     public bool TryGetGeometry(int wayId, out WayGeometry geometry) => _geometries.TryGetValue(wayId, out geometry!);
 
     public Way? FindWay(int wayId) => _ways.FirstOrDefault(w => w.Id == wayId);
+
+    /// <summary>The trail's features as of this build, resolved and in distance order (empty for paths and unknown ways).</summary>
+    public IReadOnlyList<PlacedFeature> FeaturesOn(int wayId) => _features.TryGetValue(wayId, out var list) ? list : [];
 
     public NetworkHub? FindHub(int hubId) => _hubs.FirstOrDefault(h => h.Id == hubId);
 
@@ -163,6 +177,10 @@ public sealed class WayNetwork
     /// <summary>Closest point on any way's centerline within the radius.</summary>
     public (int WayId, long DistanceCm, PointCm Point)? Nearest(int xCm, int zCm, int radiusCm) =>
         _centerlines.Nearest(xCm, zCm, radiusCm);
+
+    /// <summary>Closest point on any trail's centerline within the radius (access paths are skipped).</summary>
+    public (int WayId, long DistanceCm, PointCm Point)? NearestTrail(int xCm, int zCm, int radiusCm) =>
+        _centerlines.Nearest(xCm, zCm, radiusCm, id => FindWay(id)?.Kind == WayKind.Trail);
 
     /// <summary>The hub whose flat area is closest to (x, z), within the radius (0 = inside). Ties: lower id.</summary>
     public NetworkHub? HubAt(int xCm, int zCm, int radiusCm)

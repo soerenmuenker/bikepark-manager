@@ -21,6 +21,7 @@ internal sealed class HudContext
     public required SimHost Host { get; init; }
     public required WayTool Ways { get; init; }
     public required StructureTool Structures { get; init; }
+    public required FeatureTool Features { get; init; }
     public required RiderView Riders { get; init; }
     public required TerrainView Terrain { get; init; }
     public required RtsCamera Camera { get; init; }
@@ -152,6 +153,8 @@ public partial class ToolCard : PanelContainer
 public partial class BuildPanel : HudPanel
 {
     private ToolCard _path = null!, _trail = null!, _lift = null!, _parking = null!;
+    private readonly List<(string TypeId, ToolCard Card)> _features = [];
+    private Label _demoStatus = null!;
 
     public override string Title => "Build";
 
@@ -168,18 +171,91 @@ public partial class BuildPanel : HudPanel
         _parking = new ToolCard(UiIcon.Parking, "Parking lot", "K", "Parking next to a valley station (debug, free)",
             () => ToggleStructure(StructureTool.ToolMode.Parking));
         var demo = new ToolCard(UiIcon.Demo, "Demo trails", "", "Builds two example trails from the plateau", Ctx.Host.LoadDemoNetwork);
-        foreach (var card in new[] { _path, _trail, _lift, _parking, demo }) cards.AddChild(card);
+        var demoFeatures = new ToolCard(UiIcon.Demo, "Demo features", "", "Puts berms, jumps and wood features on the demo trails",
+            () =>
+            {
+                _demoStatus.Text = Ctx.Host.LoadDemoFeatures() ? "" : "Build the demo trails first.";
+                _demoStatus.Visible = _demoStatus.Text.Length > 0;
+            });
+        foreach (var card in new[] { _path, _trail, _lift, _parking, demo, demoFeatures }) cards.AddChild(card);
+        _demoStatus = UiTheme.Label("", 12, UiTheme.Warn);
+        _demoStatus.Visible = false;
+        Body.AddChild(_demoStatus);
         Body.AddChild(UiTheme.Label("Click or drag to place points · Backspace undo · Enter build · Esc cancel", 12, UiTheme.TextDim));
+
+        Body.AddChild(UiTheme.Separator());
+        Body.AddChild(UiTheme.Label("TRAIL FEATURES", 13, UiTheme.Accent, bold: true));
+        var types = Ctx.Sim.State.TrailFeatureTypes;
+        if (types.Count == 0)
+        {
+            Body.AddChild(UiTheme.Label("No trail features in this scenario.", 12, UiTheme.TextDim));
+            return;
+        }
+        var groups = Row(22);
+        Body.AddChild(groups);
+        foreach (var (material, caption) in new[] { (FeatureMaterial.Dirt, "Dirt"), (FeatureMaterial.Wood, "Wood") })
+        {
+            var group = new VBoxContainer();
+            group.AddThemeConstantOverride("separation", 4);
+            group.AddChild(UiTheme.Label(caption, 12, UiTheme.TextDim, bold: true));
+            var row = Row(8);
+            group.AddChild(row);
+            foreach (var type in types.Where(t => t.Material == material))
+            {
+                string id = type.Id;
+                var card = new ToolCard(FeatureIcon(type.Kind), type.Name, $"{type.LengthMeters} m · {DifficultyWord(type.Difficulty)}",
+                    FeatureTooltip(type), () => ToggleFeature(id)) { CustomMinimumSize = new Vector2(100, 104) };
+                row.AddChild(card);
+                _features.Add((id, card));
+            }
+            if (row.GetChildCount() > 0) groups.AddChild(group);
+        }
+        Body.AddChild(UiTheme.Label("Point at a trail and click to place · Delete removes the feature under the cursor · Esc stops", 12, UiTheme.TextDim));
+    }
+
+    internal static UiIcon FeatureIcon(FeatureKind kind) => kind switch
+    {
+        FeatureKind.Berm => UiIcon.Berm,
+        FeatureKind.Rollers => UiIcon.Rollers,
+        FeatureKind.Table => UiIcon.Table,
+        FeatureKind.Double => UiIcon.Double,
+        FeatureKind.WallRide => UiIcon.WallRide,
+        FeatureKind.Kicker => UiIcon.Kicker,
+        _ => UiIcon.Drop,
+    };
+
+    private static string DifficultyWord(int difficulty) => difficulty switch
+    {
+        < WayGeometry.GreenMaxDifficulty => "green",
+        < WayGeometry.BlueMaxDifficulty => "blue",
+        < WayGeometry.RedMaxDifficulty => "red",
+        _ => "black",
+    };
+
+    private static string FeatureTooltip(TrailFeatureType type)
+    {
+        string where = type.MaxGradient < 0
+            ? $"needs a drop between {Gradient.Format(type.MaxGradient)} and {Gradient.Format(type.MinGradient)}"
+            : $"gradient {Gradient.Format(type.MinGradient)} to {Gradient.Format(type.MaxGradient)}";
+        string bend = type.MinTurn > 0 ? ", on a bend" : "";
+        return $"{type.Name}: {type.LengthMeters} m, difficulty {type.Difficulty} ({DifficultyWord(type.Difficulty)}); {where}{bend}. " +
+               $"Flow riders {type.FlowAffinity / 10}%, technical riders {type.TechAffinity / 10}%.";
     }
 
     private void ToggleWay(WayTool.ToolMode mode)
     {
         Ctx.Structures.SetMode(StructureTool.ToolMode.None);
+        Ctx.Features.SetType(null);
         Ctx.Ways.SetMode(Ctx.Ways.Mode == mode ? WayTool.ToolMode.None : mode);
     }
 
-    private void ToggleStructure(StructureTool.ToolMode mode) =>
+    private void ToggleStructure(StructureTool.ToolMode mode)
+    {
+        Ctx.Features.SetType(null);
         Ctx.Structures.SetMode(Ctx.Structures.Mode == mode ? StructureTool.ToolMode.None : mode);
+    }
+
+    private void ToggleFeature(string typeId) => Ctx.Features.SetType(Ctx.Features.TypeId == typeId ? null : typeId);
 
     public override void Refresh()
     {
@@ -187,6 +263,8 @@ public partial class BuildPanel : HudPanel
         _trail.Active = Ctx.Ways.Mode == WayTool.ToolMode.Trail;
         _lift.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Lift;
         _parking.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Parking;
+        foreach (var (id, card) in _features)
+            card.Active = Ctx.Features.TypeId == id;
     }
 }
 
@@ -196,6 +274,7 @@ public partial class TrailsPanel : HudPanel
 {
     private VBoxContainer _list = null!;
     private readonly List<(int Id, Label Main, Label Detail)> _rows = [];
+    private const int MaxListHeight = 420;
     private string _signature = "";
 
     public override string Title => "Trails & paths";
@@ -212,10 +291,9 @@ public partial class TrailsPanel : HudPanel
     public override void Refresh()
     {
         var ways = Ctx.Sim.State.Ways;
-        string signature = string.Join(',', ways.Select(w => w.Id));
-        if (signature != _signature) Rebuild(ways);
+        if (Signature(ways) != _signature) Rebuild(ways);
         var scroll = (ScrollContainer)_list.GetParent();
-        scroll.CustomMinimumSize = new Vector2(560, Math.Min(400, Math.Max(40, ways.Count * 76)));
+        scroll.CustomMinimumSize = new Vector2(560, Math.Min(MaxListHeight, Math.Max(40, _list.GetCombinedMinimumSize().Y)));
 
         var network = Ctx.Sim.Network;
         foreach (var (id, main, detail) in _rows)
@@ -233,13 +311,26 @@ public partial class TrailsPanel : HudPanel
             string avg = s.Runs == 0 ? "no runs yet" : $"{(double)s.SumRunMinutes / s.Runs:F1} min · fun {s.SumFun / s.Runs / 10}%";
             main.Text = way.Name;
             detail.Text = $"{g.Rating} · {g.LengthCm / 100} m · -{(g.StartHeightCm - g.EndHeightCm) / 100} m · steepest {Gradient.Format(-g.MaxDropGradient)}\n" +
-                          $"{s.Runs} runs ({s.RunsToday} today) · {avg}";
+                          $"{s.Runs} runs ({s.RunsToday} today) · {avg}\n" +
+                          FeatureSummary(network.FeaturesOn(id));
         }
     }
 
+    /// <summary>"2 berms · Tabletop · Drop" (in the order types first appear along the trail).</summary>
+    private static string FeatureSummary(IReadOnlyList<PlacedFeature> features)
+    {
+        if (features.Count == 0) return "No features yet (Build → trail features)";
+        var parts = features.GroupBy(f => f.Type.Id).Select(g => g.Count() == 1 ? g.First().Type.Name : $"{g.Count()} × {g.First().Type.Name}");
+        return $"Features: {string.Join(" · ", parts)}";
+    }
+
+    /// <summary>Ways and their features; the list is rebuilt when it changes.</summary>
+    private static string Signature(List<Way> ways) =>
+        string.Join(';', ways.Select(w => $"{w.Id}:{string.Join(',', w.Features.Select(f => f.Id))}"));
+
     private void Rebuild(List<Way> ways)
     {
-        _signature = string.Join(',', ways.Select(w => w.Id));
+        _signature = Signature(ways);
         foreach (var child in _list.GetChildren()) child.QueueFree();
         _rows.Clear();
         if (ways.Count == 0)
@@ -267,6 +358,23 @@ public partial class TrailsPanel : HudPanel
             texts.AddChild(detail);
             h.AddChild(texts);
             int id = way.Id;
+            var placed = network.FeaturesOn(id);
+            if (placed.Count > 0)
+            {
+                // One small chip per feature; clicking removes it.
+                var chips = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                chips.AddThemeConstantOverride("h_separation", 4);
+                chips.AddThemeConstantOverride("v_separation", 4);
+                foreach (var feature in placed)
+                {
+                    int featureId = feature.Feature.Id;
+                    var chip = UiTheme.Button($"{feature.Type.Name} {feature.StartCm / 100} m  ✕",
+                        () => Ctx.Host.Enqueue(new RemoveTrailFeatureCommand(id, featureId)), "Remove this feature");
+                    chip.AddThemeFontSizeOverride("font_size", 11);
+                    chips.AddChild(chip);
+                }
+                texts.AddChild(chips);
+            }
             if (way.Origin == WayOrigin.Player)
             {
                 var delete = UiTheme.Button("Delete", () => Ctx.Host.Enqueue(new DeleteWayCommand(id)), "Remove this way (not while others attach to it)");

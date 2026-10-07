@@ -7,7 +7,7 @@ using Godot;
 namespace Bikepark.Game.Ways;
 
 /// <summary>
-/// Draws the built way network: gravel paths, dirt trails with a rating stripe, name labels and the base marker.
+/// Draws the built way network: gravel paths, dirt trails with a rating stripe and their features, name labels and the base marker.
 /// Rebuilds when ways, structures or the terrain change and tells the terrain to clear trees and rocks from the corridors. Pure view.
 /// </summary>
 public partial class WayView : Node3D
@@ -18,6 +18,7 @@ public partial class WayView : Node3D
     private SimHost _host = null!;
     private TerrainView _terrain = null!;
     private ShaderMaterial _material = null!;
+    private ShaderMaterial _featureMaterial = null!;
     private Node3D? _content;
     private readonly List<IDisposable> _subscriptions = [];
     private bool _dirty = true;
@@ -27,6 +28,7 @@ public partial class WayView : Node3D
         _host = GetNode<SimHost>(SimHostPath);
         _terrain = GetNode<TerrainView>(TerrainPath);
         _material = WayMeshes.CreateMaterial();
+        _featureMaterial = FeatureMeshes.CreateMaterial();
         _terrain.TerrainBuilt += _ => _dirty = true;
         _host.SimulationReplaced += OnSimulationReplaced;
         OnSimulationReplaced(_host.Sim);
@@ -51,6 +53,8 @@ public partial class WayView : Node3D
         _subscriptions.Clear();
         _subscriptions.Add(sim.Events.Subscribe<WayBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<WayDeleted>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<TrailFeaturePlaced>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<TrailFeatureRemoved>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<LiftBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<LiftDeleted>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<ParkingLotBuilt>(_ => _dirty = true));
@@ -82,6 +86,14 @@ public partial class WayView : Node3D
                 var stripe = WayMeshes.RatingColor(g.Rating);
                 AddRibbon(WayMeshes.Ribbon(grid, g, 0.35f, 0.09f, followGround: true, _ => stripe), way.Name + " stripe");
                 AddLabel($"{way.Name}\n{g.Rating} · {g.LengthCm / 100} m", WayMeshes.ToWorld(g.PositionAt(0)) + Vector3.Up * 4f, stripe);
+                foreach (var feature in network.FeaturesOn(way.Id))
+                    _content.AddChild(new MeshInstance3D
+                    {
+                        Name = $"{way.Name} {feature.Type.Name} {feature.Feature.Id}",
+                        Mesh = FeatureMeshes.Build(grid, g, feature.Type, feature.StartCm, FeatureMeshes.BaseColor(feature.Type.Material)),
+                        MaterialOverride = _featureMaterial,
+                        CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, // the depth bias would self-shadow
+                    });
             }
         }
 

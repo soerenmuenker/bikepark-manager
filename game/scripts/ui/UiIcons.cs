@@ -29,6 +29,13 @@ public enum UiIcon
     Follow,
     ZoomIn,
     ZoomOut,
+    Berm,
+    Rollers,
+    Table,
+    Double,
+    WallRide,
+    Kicker,
+    Drop,
 }
 
 /// <summary>Line icons drawn with canvas primitives (no image assets), scaled to any square.</summary>
@@ -156,6 +163,39 @@ internal static class UiIcons
                 Line(0.60f, 0.60f, 0.82f, 0.82f);
                 Line(0.31f, 0.42f, 0.53f, 0.42f);
                 if (icon == UiIcon.ZoomIn) Line(0.42f, 0.31f, 0.42f, 0.53f);
+                break;
+            case UiIcon.Berm: // banked turn seen from above: a curved wall around a bend
+                ci.DrawArc(P(0.5f, 0.62f), 0.30f * s, Mathf.Pi, Mathf.Tau, 24, color, w * 2.2f, true);
+                ci.DrawArc(P(0.5f, 0.62f), 0.14f * s, Mathf.Pi, Mathf.Tau, 16, color, w, true);
+                Line(0.14f, 0.86f, 0.86f, 0.86f);
+                break;
+            case UiIcon.Rollers: // three bumps
+                Polyline(0.08f, 0.70f, 0.18f, 0.48f, 0.30f, 0.70f, 0.40f, 0.48f, 0.52f, 0.70f, 0.62f, 0.48f, 0.74f, 0.70f, 0.84f, 0.48f, 0.92f, 0.70f);
+                Line(0.06f, 0.80f, 0.94f, 0.80f);
+                break;
+            case UiIcon.Table: // trapezoid
+                Poly(0.08f, 0.78f, 0.34f, 0.42f, 0.66f, 0.42f, 0.92f, 0.78f);
+                break;
+            case UiIcon.Double: // takeoff, gap, landing
+                Poly(0.06f, 0.78f, 0.36f, 0.40f, 0.40f, 0.78f);
+                Poly(0.58f, 0.78f, 0.62f, 0.40f, 0.94f, 0.78f);
+                break;
+            case UiIcon.WallRide: // planks standing up on a curve
+                for (int i = 0; i < 5; i++)
+                {
+                    float x = 0.16f + i * 0.17f;
+                    float top = 0.20f + Math.Abs(i - 2) * 0.06f;
+                    ci.DrawRect(new Rect2(P(x, top), new Vector2(0.12f, 0.80f - top) * s), color);
+                }
+                break;
+            case UiIcon.Kicker: // curved ramp with a rider's arc
+                Poly(0.10f, 0.82f, 0.50f, 0.74f, 0.70f, 0.56f, 0.70f, 0.82f);
+                ci.DrawArc(P(0.86f, 0.56f), 0.18f * s, -Mathf.Pi * 0.95f, -Mathf.Pi * 0.35f, 12, color, w, true);
+                break;
+            case UiIcon.Drop: // raised deck and a step down
+                Poly(0.08f, 0.82f, 0.30f, 0.38f, 0.62f, 0.38f, 0.62f, 0.82f);
+                Line(0.62f, 0.82f, 0.94f, 0.82f);
+                Polyline(0.70f, 0.30f, 0.80f, 0.40f, 0.84f, 0.62f);
                 break;
             case UiIcon.Follow: // target
                 Circle(0.5f, 0.5f, 0.30f);

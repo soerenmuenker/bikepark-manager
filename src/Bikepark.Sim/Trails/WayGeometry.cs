@@ -15,7 +15,8 @@ public enum TrailRating : byte
 /// <summary>
 /// One ~10 m piece of a way. Grade is signed along the way's direction (+ = uphill), in permille of horizontal
 /// distance. Turn is the heading change from the previous segment (0 = straight, 500 = 90°, 1000 = reversal).
-/// Layer values are averages of the terrain samples along the segment (0..255). Difficulty is 0..1000.
+/// Layer values are averages of the terrain samples along the segment (0..255). Difficulty is 0..1000: the terrain's,
+/// or the hardest feature's on the segment (<see cref="FeatureDifficulty"/>, 0 = no feature) if that is higher.
 /// </summary>
 public readonly record struct WaySegment(
     int Index,
@@ -27,7 +28,8 @@ public readonly record struct WaySegment(
     int Roots,
     int Trees,
     TerrainSurface Surface,
-    int Difficulty)
+    int Difficulty,
+    int FeatureDifficulty = 0)
 {
     /// <summary>Gradient score in tenths (-100..100) along the way's direction; see <see cref="Trails.Gradient"/>.</summary>
     public int GradientTenths => Trails.Gradient.FromPermille(GradePermille);
@@ -64,8 +66,10 @@ public sealed class WayGeometry
         _distance = distance;
         _segments = segments;
 
+        // A feature on the line is mandatory: the hardest one is a floor for the rating.
         var sorted = segments.Select(s => s.Difficulty).Order().ToArray();
-        DifficultyScore = sorted.Length == 0 ? 0 : sorted[Math.Min(sorted.Length - 1, sorted.Length * 9 / 10)];
+        int percentile = sorted.Length == 0 ? 0 : sorted[Math.Min(sorted.Length - 1, sorted.Length * 9 / 10)];
+        DifficultyScore = Math.Max(percentile, segments.Length == 0 ? 0 : segments.Max(s => s.FeatureDifficulty));
         Rating = DifficultyScore switch
         {
             < GreenMaxDifficulty => TrailRating.Green,
@@ -87,7 +91,7 @@ public sealed class WayGeometry
     public int StartHeightCm => _y[0];
     public int EndHeightCm => _y[^1];
 
-    /// <summary>90th-percentile segment difficulty (0..1000).</summary>
+    /// <summary>90th-percentile segment difficulty, at least the hardest feature's (0..1000).</summary>
     public int DifficultyScore { get; }
 
     public TrailRating Rating { get; }
@@ -134,8 +138,13 @@ public sealed class WayGeometry
         return i >= 0 ? Math.Min(i, _distance.Length - 2) : ~i - 1;
     }
 
+    /// <summary>
+    /// Builds the geometry of a way. <paramref name="features"/> (placed trail features, see <see cref="TrailFeatures.Resolve"/>)
+    /// raise the difficulty of the segments they cover; the shape does not depend on them.
+    /// </summary>
     public static WayGeometry Build(
-        TerrainGrid grid, WayKind kind, IReadOnlyList<PointCm> points, int segmentLengthCm, int gradingMeters = DefaultGradingMeters)
+        TerrainGrid grid, WayKind kind, IReadOnlyList<PointCm> points, int segmentLengthCm, int gradingMeters = DefaultGradingMeters,
+        IReadOnlyList<PlacedFeature>? features = null)
     {
         if (points.Count < 2) throw new ArgumentException("A way needs at least two points.", nameof(points));
 
@@ -159,6 +168,8 @@ public sealed class WayGeometry
         var x = xs.ToArray();
         var z = zs.ToArray();
         var segments = BuildSegments(grid, kind, x, y, z, distance, segmentLengthCm);
+        if (features is { Count: > 0 })
+            ApplyFeatures(segments, features);
         return new WayGeometry(kind, x, y, z, distance, segments);
     }
 
@@ -313,6 +324,20 @@ public sealed class WayGeometry
             start = end;
         }
         return segments.ToArray();
+    }
+
+    private static void ApplyFeatures(WaySegment[] segments, IReadOnlyList<PlacedFeature> features)
+    {
+        for (int i = 0; i < segments.Length; i++)
+        {
+            var s = segments[i];
+            int hardest = 0;
+            foreach (var f in features)
+                if (f.StartCm < s.EndCm && f.EndCm > s.StartCm)
+                    hardest = Math.Max(hardest, f.Type.Difficulty);
+            if (hardest > 0)
+                segments[i] = s with { FeatureDifficulty = hardest, Difficulty = Math.Max(s.Difficulty, hardest) };
+        }
     }
 
     /// <summary>Heading change between two direction vectors: (1 - cos) / 2, scaled to 0..1000.</summary>
