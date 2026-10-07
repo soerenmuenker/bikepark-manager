@@ -37,9 +37,26 @@ increasing, `dailyFeeCents`). `liftRules` (`LiftRules`, all optional): walking s
 size per space, station reach, pad cut/fill limit and embankment gradient, queue grace/mood penalty, rest energy,
 and the routing costs of a lift minute and a queue minute.
 
+`toolsFile` (e.g. `../tools.json`) loads the tool catalog; `toolTypes` can also be given inline. `crewRules`
+(`CrewRules`, all optional): `wagePerDayCents`, `maxCrew`, `maxWorkersPerJob`, `workStartMinute`/`workEndMinute`,
+`trailWorkMinutesPerMeter`/`pathWorkMinutesPerMeter` (crew-minutes at base speed), `steepExtraPermille`,
+`fellMinutesPerTree`, `woodPerTree`, `woodPriceCents`, `min/maxClearingRadiusMeters`. `startingWood`: wood in stock at
+the start.
+
 Starter Valley's tick-0 `commands` build what is already there: the gondola (`buildLift` with
 `operatorId`/`initialTier`), the valley parking (`buildParkingLot`) and the old hiking route (`buildWay` with
-`"origin": "scenario"`).
+`"origin": "scenario"`), and hire two workers (`hireCrew`). Ways built by players are planned and built by crew
+jobs; `"instant": true` on `buildWay`/`placeTrailFeature` builds at once (debug and demo scripts).
+
+## tools.json
+
+Tool catalog (`ToolType`): `id`, `name`, `workType` (`digging`, `carpentry`, `felling`), `priceCents`,
+`speedBonusPermille` (added to the base speed of 1000; per work type only the best owned tool counts).
+
+## trail_features.json
+
+Trail feature catalog (`TrailFeatureType`), see `docs/design/trail_features.md`; `workMinutes` and `wood` are what the
+crew job needs to build one (`docs/design/crew_and_jobs.md`).
 
 ## lift_types.json
 
@@ -51,7 +68,9 @@ Lift catalog (`LiftType`): carrier capacity, `bikesPerCarrier`, `intervalSeconds
 Command scripts: a JSON list of `{tick, command}` (same format as scenario `commands`), used with
 `--commands <file>` (SimRunner run and `terrain`), by tests, and by the game's "Demo trails" button.
 `demo_lift_network.json` builds two trails (Flow Country, Red Rocket) from Starter Valley's plateau down to the
-valley station. `demo_network.json` (Phase 2, for worlds without a lift; used by tests) builds a 2.7 km switchback gravel path from the base up to ~1010 m and two trails
+valley station, at once (`"instant": true`). `demo_features.json` plans 19 features on them (ways 11 and 12 of a fresh
+world). `demo_crew.json` hires a third worker, buys the shovel set and the chainsaw and marks a felling area
+(`fellTrees`) east of the plateau. `demo_network.json` (Phase 2, for worlds without a lift; used by tests) builds a 2.7 km switchback gravel path from the base up to ~1010 m and two trails
 (Blue Line, Red Rocket) on Starter Valley. Coordinates are in cm:
 
 ```json

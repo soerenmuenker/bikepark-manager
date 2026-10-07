@@ -45,6 +45,7 @@ public sealed class Simulation
             new RiderSystem(),
             new LiftSystem(),
             new GuestSystem(),
+            new JobSystem(),
             new FinanceSystem(),
         ];
     }

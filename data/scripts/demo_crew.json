@@ -1,0 +1,8 @@
+// Demo crew setup for Starter Valley (use with demo_features.json): a third worker, the shovel set and the chainsaw,
+// and a 30 m felling area in the forest east of the plateau (~80 trees, ~160 wood) for the wood features.
+[
+  { "tick": 0, "command": { "type": "hireCrew" } },
+  { "tick": 0, "command": { "type": "buyTool", "toolId": "shovel_set" } },
+  { "tick": 0, "command": { "type": "buyTool", "toolId": "chainsaw" } },
+  { "tick": 0, "command": { "type": "fellTrees", "center": { "x": 72000, "z": 52000 }, "radiusCm": 3000 } }
+]

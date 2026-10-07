@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Bikepark.Sim;
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Core;
+using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Persistence;
@@ -65,6 +67,8 @@ public static class Program
         sim.Events.Subscribe<GuestLeft>(e => leftReasons.Add(e.Reason));
         var turnedAway = new List<TurnAwayReason>();
         sim.Events.Subscribe<GuestTurnedAway>(e => turnedAway.Add(e.Reason));
+        var completed = new List<string>();
+        sim.Events.Subscribe<JobCompleted>(e => completed.Add($"{GameTime.Format(e.Tick)} {e.Title}"));
 
         for (int day = 0; day < options.Days; day++)
         {
@@ -82,6 +86,7 @@ public static class Program
             Kpis: KpiReport.From(state),
             Ways: WayReports(sim),
             Lifts: LiftReports(sim),
+            Crew: CrewReport(sim, completed),
             GuestsLeft: leaveReasons,
             TurnedAway: turnedAway.GroupBy(r => r).OrderBy(g => g.Key).ToDictionary(g => g.Key.ToString(), g => g.Count()),
             RejectedCommands: rejections.Select(r => new RejectedCommand(r.Tick, r.Command, r.Reason)).ToList(),
@@ -96,9 +101,10 @@ public static class Program
         bool trail = w.Kind == WayKind.Trail;
         return new WayReport(
             w.Id, w.Name, w.Kind,
+            w.Built ? null : true,
             trail ? geometry.Rating : null,
             trail ? geometry.DifficultyScore : null,
-            trail ? sim.Network.FeaturesOn(w.Id).Select(f => $"{f.Type.Id}@{f.StartCm / 100}m").ToList() : null,
+            trail ? sim.Network.FeaturesOn(w.Id).Select(f => $"{f.Type.Id}@{f.StartCm / 100}m{(f.Feature.Built ? "" : " (planned)")}").ToList() : null,
             geometry.LengthCm / 100,
             Math.Abs(geometry.StartHeightCm - geometry.EndHeightCm) / 100,
             Gradient.Format(-geometry.MaxDropGradient),
@@ -107,6 +113,28 @@ public static class Program
             w.Stats.Runs == 0 ? null : Math.Round((double)w.Stats.SumRunMinutes / w.Stats.Runs, 1),
             w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs));
     }).ToList();
+
+    private static CrewReport? CrewReport(Simulation sim, List<string> completed)
+    {
+        var state = sim.State;
+        if (state.Crew.Count == 0 && state.Jobs.Count == 0 && completed.Count == 0) return null;
+        var stats = state.CrewStats;
+        var rules = state.CrewRules;
+        return new CrewReport(
+            state.Crew.Count,
+            state.OwnedToolIds,
+            state.WoodStock,
+            stats.TreesFelled,
+            stats.WoodFelled,
+            stats.WoodBought,
+            stats.WoodUsed,
+            Math.Round(stats.CrewMinutesWorked / 60.0, 1),
+            state.Finance.TotalWagesCents,
+            state.Finance.TotalToolsCents + state.Finance.TotalWoodCents,
+            completed,
+            state.Jobs.Select(j => $"{Jobs.Title(state, j)}: {WorkCosts.ProgressPermille(rules, j) / 10} %" +
+                                   (Bikepark.Sim.Systems.JobSystem.IsWorkable(state, j) ? "" : " (waiting)")).ToList());
+    }
 
     private static List<LiftReport> LiftReports(Simulation sim)
     {
@@ -149,10 +177,25 @@ internal sealed record LiftReport(
 
 internal sealed record RejectedCommand(long Tick, ICommand Command, string Reason);
 
+internal sealed record CrewReport(
+    int Workers,
+    List<string> Tools,
+    int WoodStock,
+    long TreesFelled,
+    long WoodFelled,
+    long WoodBought,
+    long WoodUsed,
+    double CrewHoursWorked,
+    long WagesCents,
+    long ToolsAndWoodCents,
+    List<string> JobsCompleted,
+    List<string> JobsOpen);
+
 internal sealed record WayReport(
     int Id,
     string Name,
     WayKind Kind,
+    bool? Planned,
     TrailRating? Rating,
     int? Difficulty,
     List<string>? Features,
@@ -169,6 +212,7 @@ internal sealed record RunnerOutput(
     KpiReport Kpis,
     List<WayReport> Ways,
     List<LiftReport> Lifts,
+    CrewReport? Crew,
     Dictionary<string, int> GuestsLeft,
     Dictionary<string, int> TurnedAway,
     List<RejectedCommand> RejectedCommands,

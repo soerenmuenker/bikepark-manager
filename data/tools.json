@@ -1,0 +1,10 @@
+// Tool catalog (ToolType). Copied into the world when a scenario starts. A tool is bought once (priceCents) and from
+// then on speeds up one kind of work for the whole crew: workType digging (trails, paths, dirt features), carpentry
+// (wood features) or felling (cutting trees). speedBonusPermille is added to the base speed of 1000; for each kind of
+// work only the best owned tool counts.
+[
+  { "id": "shovel_set", "name": "Shovel & rake set", "workType": "digging", "priceCents": 150000, "speedBonusPermille": 250 },
+  { "id": "mini_excavator", "name": "Mini excavator", "workType": "digging", "priceCents": 1800000, "speedBonusPermille": 1000 },
+  { "id": "chainsaw", "name": "Chainsaw", "workType": "felling", "priceCents": 90000, "speedBonusPermille": 500 },
+  { "id": "cordless_kit", "name": "Cordless tool kit", "workType": "carpentry", "priceCents": 120000, "speedBonusPermille": 400 }
+]

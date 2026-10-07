@@ -52,6 +52,12 @@ public sealed class TrailFeatureType
     /// <summary>How many fun samples riding it counts as (a trail segment counts as one).</summary>
     public int FunWeight { get; set; } = 1;
 
+    /// <summary>Crew-minutes to build it at base speed (digging for dirt, carpentry for wood).</summary>
+    public int WorkMinutes { get; set; } = 480;
+
+    /// <summary>Wood used to build it.</summary>
+    public int Wood { get; set; }
+
     public long LengthCm => LengthMeters * 100L;
 
     public List<string> Validate()
@@ -67,6 +73,8 @@ public sealed class TrailFeatureType
         if (MinTurn is < 0 or > 1000) errors.Add($"{p}.minTurn must be within 0..1000");
         if (FlowAffinity is < 0 or > 1000 || TechAffinity is < 0 or > 1000) errors.Add($"{p}: affinities must be within 0..1000");
         if (FunWeight is < 1 or > 10) errors.Add($"{p}.funWeight must be within 1..10");
+        if (WorkMinutes is < 1 or > 100_000) errors.Add($"{p}.workMinutes must be within 1..100000");
+        if (Wood is < 0 or > 1000) errors.Add($"{p}.wood must be within 0..1000");
         return errors;
     }
 }
@@ -79,6 +87,9 @@ public sealed class TrailFeature
 
     /// <summary>Distance along the trail where the feature starts.</summary>
     public long DistanceCm { get; set; }
+
+    /// <summary>False while the feature is only planned (a crew job builds it); only built features count.</summary>
+    public bool Built { get; set; } = true;
 }
 
 /// <summary>A placed feature resolved against the catalog: the stretch of trail it covers.</summary>

@@ -10,7 +10,7 @@ namespace Bikepark.Game.Ways;
 /// <summary>
 /// Places trail features (picked in the Build menu). A ghost of the feature follows the nearest trail under the
 /// cursor, centred on it and validated every frame with the Sim's <see cref="FeaturePlanner"/> (green = can go here,
-/// red = see the tool panel). Left-click places it (enqueues a <see cref="PlaceTrailFeatureCommand"/>), Delete removes
+/// red = see the tool panel). Left-click plans it for the crew (enqueues a <see cref="PlaceTrailFeatureCommand"/>), Delete removes
 /// the feature under the cursor, Esc leaves the tool. Picking a path, trail or structure tool ends it.
 /// </summary>
 public partial class FeatureTool : Node3D
@@ -175,9 +175,9 @@ public partial class FeatureTool : Node3D
             Status = plan.FirstError ?? "Not valid here.";
             return;
         }
-        _host.Enqueue(new PlaceTrailFeatureCommand(plan.WayId, plan.Type!.Id, plan.StartCm));
+        _host.Enqueue(new PlaceTrailFeatureCommand(plan.WayId, plan.Type!.Id, plan.StartCm, _host.InstantBuild));
         string trail = _host.Sim.Network.FindWay(plan.WayId)?.Name ?? "the trail";
-        Status = $"Placed a {plan.Type.Name.ToLowerInvariant()} on {trail} at {plan.StartCm / 100} m";
+        Status = $"{(_host.InstantBuild ? "Built" : "Planned")} a {plan.Type.Name.ToLowerInvariant()} on {trail} at {plan.StartCm / 100} m";
     }
 
     private PointCm? CursorPoint()

@@ -12,9 +12,10 @@ namespace Bikepark.Sim.Tests;
 
 public class FeatureTests
 {
-    // Starter Valley + demo_lift_network.json: Flow Country = way 9, Red Rocket = way 10, Old Hiking Route = way 8.
-    private const int FlowCountry = 9;
-    private const int RedRocket = 10;
+    // Starter Valley (two workers hired at tick 0) + demo_lift_network.json: Flow Country = way 11, Red Rocket = way 12,
+    // Old Hiking Route = way 8. Features here are placed instantly (debug); building them by the crew is in CrewTests.
+    private const int FlowCountry = 11;
+    private const int RedRocket = 12;
     private const int HikingRoute = 8;
 
     // ---------------------------------------------------------------- catalog
@@ -66,7 +67,7 @@ public class FeatureTests
         Assert.Equal("tooFlat", Plan(FlowCountry, "drop", 600)); // only -1.0 there
         Assert.Equal("tooSteep", Plan(FlowCountry, "table", 140)); // -5.0 segment
 
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(FlowCountry, "table", 22_000));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(FlowCountry, "table", 22_000, Instant: true));
         sim.Step();
         Assert.Equal("overlaps", Plan(FlowCountry, "kicker", 228)); // within 5 m of the table's end (232 m)
         Assert.Equal("ok", Plan(FlowCountry, "kicker", 237));
@@ -76,7 +77,7 @@ public class FeatureTests
     public void PlaceCommand_UsesThePlanner()
     {
         var sim = DemoWorld();
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(FlowCountry, "berm", 60_000));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(FlowCountry, "berm", 60_000, Instant: true));
         sim.Step();
         var rejected = Assert.Single(sim.Events.Pending.OfType<CommandRejected>());
         Assert.Equal("A berm needs a bend in the trail.", rejected.Reason);
@@ -89,8 +90,8 @@ public class FeatureTests
     {
         var sim = DemoWorld();
         int revision = sim.State.WaysRevision;
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 30_000));
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 30_000, Instant: true));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000, Instant: true));
         sim.Step();
 
         var way = sim.State.Ways.Single(w => w.Id == RedRocket);
@@ -113,7 +114,7 @@ public class FeatureTests
     public void DeletingATrail_TakesItsFeatures()
     {
         var sim = DemoWorld();
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000, Instant: true));
         sim.Commands.Enqueue(new DeleteWayCommand(RedRocket));
         sim.Step();
         Assert.DoesNotContain(sim.State.Ways, w => w.Id == RedRocket);
@@ -129,8 +130,8 @@ public class FeatureTests
         Assert.NotEmpty(descending);
         var before = descending.Select(g => (g.Id, g.TrailId, g.RouteProgressCm, g.Route.Count)).ToList();
 
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "kicker", 17_000));
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(FlowCountry, "rollers", 50_000));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "kicker", 17_000, Instant: true));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(FlowCountry, "rollers", 50_000, Instant: true));
         sim.Step();
         Assert.DoesNotContain(sim.Events.Pending, e => e is CommandRejected);
 
@@ -156,7 +157,7 @@ public class FeatureTests
         var before = sim.Network.Geometry(RedRocket);
         Assert.Equal(TrailRating.Red, before.Rating);
 
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000, Instant: true));
         sim.Step();
         var after = sim.Network.Geometry(RedRocket);
 
@@ -205,7 +206,7 @@ public class FeatureTests
     public void Features_SurviveSaveAndLoad()
     {
         var sim = DemoWorld();
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000, Instant: true));
         sim.Step();
         var loaded = new Simulation(SaveGame.Deserialize(SaveGame.Serialize(sim.State)));
         Assert.Equal(StateHash.Compute(sim.State), StateHash.Compute(loaded.State));
@@ -241,9 +242,12 @@ public class FeatureTests
 
     // ---------------------------------------------------------------- helpers
 
-    private static IReadOnlyList<TimedCommand> DemoFeatures() =>
+    /// <summary>The demo features, placed instantly.</summary>
+    internal static IReadOnlyList<TimedCommand> DemoFeatures(bool instant = true) =>
         JsonSerializer.Deserialize<List<TimedCommand>>(
-            File.ReadAllText(Path.Combine(TestWorlds.RepoRoot(), "data", "scripts", "demo_features.json")), SimJson.Indented)!;
+                File.ReadAllText(Path.Combine(TestWorlds.RepoRoot(), "data", "scripts", "demo_features.json")), SimJson.Indented)!
+            .Select(c => instant && c.Command is PlaceTrailFeatureCommand place ? c with { Command = place with { Instant = true } } : c)
+            .ToList();
 
     /// <summary>Starter Valley with the demo trails built (after tick 0).</summary>
     private static Simulation DemoWorld()

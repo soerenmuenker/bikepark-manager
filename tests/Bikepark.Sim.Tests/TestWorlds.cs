@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Crew;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Scenarios;
 using Bikepark.Sim.State;
@@ -22,7 +23,12 @@ internal static class TestWorlds
         // Same terrain for every world seed (Starter Valley's), so the demo network is valid everywhere.
         Terrain = new TerrainSettings { Seed = 1337 },
         TrailFeatureTypes = FeatureCatalog(),
+        ToolTypes = ToolCatalog(),
     };
+
+    /// <summary>The shipped tool catalog (data/tools.json).</summary>
+    public static List<ToolType> ToolCatalog() =>
+        ScenarioLoader.LoadToolCatalog(Path.Combine(RepoRoot(), "data", "tools.json"));
 
     /// <summary>The shipped trail feature catalog (data/trail_features.json).</summary>
     public static List<TrailFeatureType> FeatureCatalog() =>
@@ -81,14 +87,26 @@ internal static class TestWorlds
     public static IReadOnlyList<TimedCommand> Script() =>
     [
         .. DemoNetwork(),
-        // Demo network ids: path 1, Blue Line 2, Red Rocket 3; features get ids 4.. in order.
+        // Demo network ids: path 1, Blue Line 2, Red Rocket 3 (built at once). Planned features and their jobs get ids
+        // 4.. in pairs (feature, job): berm 4/5, double 6/7, drop 8/9, table 10/11.
         new(10, new PlaceTrailFeatureCommand(2, "berm", 18_000)),
         new(10, new PlaceTrailFeatureCommand(2, "double", 4_000)),
         new(10, new PlaceTrailFeatureCommand(1, "berm", 5_000)), // rejected: a gravel path
         new(10, new PlaceTrailFeatureCommand(3, "drop", 15_000)),
         new(11, new PlaceTrailFeatureCommand(3, "table", 1_000)),
         new(11, new PlaceTrailFeatureCommand(3, "kicker", 1_200)), // rejected: overlaps the table
-        new(900, new RemoveTrailFeatureCommand(2, 5)), // the double, while riders are out
+        // Crew 12, 13; felling job 14 (forest east of the plateau).
+        new(20, new HireCrewCommand()),
+        new(20, new HireCrewCommand("Alex")),
+        new(20, new BuyToolCommand("chainsaw")),
+        new(20, new BuyToolCommand("chainsaw")), // rejected: already owned
+        new(20, new FellTreesCommand(new PointCm(72_000, 52_000), 2_000)),
+        new(30, new PrioritizeJobCommand(9)), // the drop: waits for wood, so the crew skips it
+        new(30, new PrioritizeJobCommand(14)), // the felling first (it yields the drop's wood)
+        new(700, new CancelJobCommand(14)), // trees cut so far stay cut
+        new(900, new RemoveTrailFeatureCommand(2, 6)), // the double, while riders are out
+        new(1100, new BuyWoodCommand(10)),
+        new(2000, new DismissCrewCommand(13)),
         new(600, new SetEntryFeeCommand(2500)),
         new(1500, new RenameParkCommand("Gravity Hill")),
         new(2000, new SetEntryFeeCommand(99_999)), // rejected: above max

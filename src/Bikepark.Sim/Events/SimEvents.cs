@@ -1,4 +1,6 @@
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Crew;
+using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Events;
 
@@ -44,6 +46,24 @@ public sealed record TrailFeaturePlaced(long Tick, int WayId, int FeatureId) : I
 
 public sealed record TrailFeatureRemoved(long Tick, int WayId, int FeatureId) : ISimEvent;
 
+public sealed record CrewHired(long Tick, int CrewId) : ISimEvent;
+
+public sealed record CrewDismissed(long Tick, int CrewId) : ISimEvent;
+
+public sealed record ToolBought(long Tick, string ToolId) : ISimEvent;
+
+public sealed record WoodBought(long Tick, int Amount) : ISimEvent;
+
+public sealed record JobQueued(long Tick, int JobId, JobKind Kind) : ISimEvent;
+
+/// <summary>A job is done: its way or feature (if any) is built now. Title: what it was (<see cref="Jobs.Title"/>).</summary>
+public sealed record JobCompleted(long Tick, int JobId, JobKind Kind, int WayId, int FeatureId, string Title) : ISimEvent;
+
+public sealed record JobCancelled(long Tick, int JobId, JobKind Kind) : ISimEvent;
+
+/// <summary>The crew cut a tree (it is gone now) and added its wood to the stock.</summary>
+public sealed record TreeFelled(long Tick, int JobId, PointCm Tree, int Wood) : ISimEvent;
+
 public sealed record RunStarted(long Tick, int GuestId, int TrailId) : ISimEvent;
 
 /// <summary>A rider reached the end of a trail. Fun is the run's average, 0..1000.</summary>
@@ -77,6 +97,9 @@ public sealed record DayReport(
     long ExpensesCents,
     long MoneyCents,
     long LiftFeesCents = 0,
-    int LiftRides = 0);
+    int LiftRides = 0,
+    long WagesCents = 0,
+    int WoodStock = 0,
+    int Jobs = 0);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;

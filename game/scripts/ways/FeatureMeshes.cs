@@ -19,6 +19,21 @@ internal static class FeatureMeshes
     /// <summary>Lit material for built features (feature.gdshader: both sides, drawn over the trail ribbon).</summary>
     public static ShaderMaterial CreateMaterial() => new() { Shader = GD.Load<Shader>("res://shaders/feature.gdshader") };
 
+    /// <summary>Planned features: light blue, see-through; turns towards the material color as the crew builds it.</summary>
+    public static readonly Color PlannedColor = new(0.55f, 0.85f, 1f, 0.45f);
+
+    public static Color ProgressColor(FeatureMaterial material, float progress) =>
+        PlannedColor.Lerp(BaseColor(material), progress * 0.8f) with { A = 0.45f + 0.45f * progress };
+
+    /// <summary>See-through material for planned features (depth-tested, unlike the ghost).</summary>
+    public static StandardMaterial3D CreatePlannedMaterial() => new()
+    {
+        VertexColorUseAsAlbedo = true,
+        CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+    };
+
     /// <summary>See-through unshaded material for the placement ghost.</summary>
     public static StandardMaterial3D CreateGhostMaterial() => new()
     {

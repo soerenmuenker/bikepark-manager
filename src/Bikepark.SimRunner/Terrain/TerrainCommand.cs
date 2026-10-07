@@ -4,6 +4,7 @@ using Bikepark.Sim;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Scenarios;
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
@@ -46,7 +47,8 @@ internal static class TerrainCommand
         var grid = sim.Terrain;
         var network = sim.Network;
 
-        var scatter = TerrainScatter.CollectAll(grid).Where(s => !network.IsInCorridor(s.XCm, s.ZCm)).ToList();
+        var gone = Forest.GoneFilter(network, state);
+        var scatter = TerrainScatter.CollectAll(grid).Where(s => !gone(s.XCm, s.ZCm)).ToList();
         var images = new List<string>();
         if (options.OutPath is { } outPath)
         {

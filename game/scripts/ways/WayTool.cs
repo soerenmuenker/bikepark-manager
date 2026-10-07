@@ -1,6 +1,9 @@
 using Bikepark.Game.Camera;
 using Bikepark.Game.Terrain;
+using Bikepark.Sim;
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Crew;
+using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
 using Godot;
 
@@ -9,7 +12,7 @@ namespace Bikepark.Game.Ways;
 /// <summary>
 /// Drawing tool for access paths (P) and trails (T). Left-click places a point; holding the button and dragging
 /// places points continuously. A live preview is validated every frame with the Sim's <see cref="WayPlanner"/>
-/// (red = invalid section). Backspace removes the last point, Enter builds (enqueues a <see cref="BuildWayCommand"/>),
+/// (red = invalid section). Backspace removes the last point, Enter plans it for the crew (enqueues a <see cref="BuildWayCommand"/>),
 /// Esc cancels. Camera controls stay as they are (right-drag orbit, middle-drag pan).
 /// </summary>
 public partial class WayTool : Node3D
@@ -44,6 +47,9 @@ public partial class WayTool : Node3D
     public WayPlan? Plan { get; private set; }
 
     public int PointCount => _points.Count;
+
+    /// <summary>Crew work the planned way would take (felling its corridor, then digging); null without a valid plan.</summary>
+    public WorkEstimate? Estimate { get; private set; }
 
     /// <summary>Last action result, for the HUD ("Built Trail 2", "Too steep ...").</summary>
     public string Status { get; private set; } = "";
@@ -145,12 +151,32 @@ public partial class WayTool : Node3D
         Plan = candidate.Count >= 2
             ? WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, candidate)
             : null;
+        UpdateEstimate(sim, grid, candidate);
 
         UpdatePreview(grid);
         UpdateMarkers(grid, candidate);
     }
 
     private WayKind Kind => Mode == ToolMode.Trail ? WayKind.Trail : WayKind.AccessPath;
+
+    private string _estimateKey = "";
+
+    /// <summary>Recomputes the work estimate when the plan's points (or the world) changed.</summary>
+    private void UpdateEstimate(Simulation sim, TerrainGrid grid, List<PointCm> candidate)
+    {
+        if (Plan is not { IsValid: true, Geometry: { } g } plan)
+        {
+            Estimate = null;
+            _estimateKey = "";
+            return;
+        }
+        var state = sim.State;
+        string key = $"{Kind}:{state.WaysRevision}:{state.Jobs.Count}:{state.FelledTrees.Count}:{string.Join(';', plan.Points)}";
+        if (key == _estimateKey) return;
+        _estimateKey = key;
+        var trees = Forest.TreesAlong(grid, sim.Network, Forest.Taken(state), g, WayNetwork.CorridorWidth(state.TrailRules, Kind));
+        Estimate = WorkCosts.Way(state.CrewRules, state.TrailRules, Kind, g, trees.Count);
+    }
 
     private void Build()
     {
@@ -167,8 +193,11 @@ public partial class WayTool : Node3D
             Status = plan.FirstError ?? "Not valid.";
             return;
         }
-        _host.Enqueue(new BuildWayCommand(Kind, "", _points.ToList()));
-        Status = $"Built ({plan.LengthCm / 100} m{(Kind == WayKind.Trail ? $", {plan.Geometry!.Rating}" : "")}). Draw the next one or press Esc.";
+        _host.Enqueue(new BuildWayCommand(Kind, "", _points.ToList(), Instant: _host.InstantBuild));
+        string what = $"{plan.LengthCm / 100} m{(Kind == WayKind.Trail ? $", {plan.Geometry!.Rating}" : "")}";
+        Status = _host.InstantBuild
+            ? $"Built ({what}). Draw the next one or press Esc."
+            : $"Planned ({what}): the crew will build it (Crew menu). Draw the next one or press Esc.";
         _points.Clear();
     }
 

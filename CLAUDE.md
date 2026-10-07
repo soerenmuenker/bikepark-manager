@@ -15,13 +15,17 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     throughput), `StructurePlanner` (validation of lifts, parking, pads), `LiftNetwork` (hubs + links for the network)
   - `Systems/RiderSystem.cs` – riders choose a trail and the cheaper way up (walk + lift queue, or pedal the paths), ride down, score fun (segments + features)
   - `Systems/LiftSystem.cs` – booked bike access tiers at opening, carrier dispatch, boarding bike cabins from the FIFO queue
+  - `Crew/` – `CrewRules`/`ToolType` (content), `CrewMember`/`Job` (state), `WorkCosts` (all work/wood/speed numbers),
+    `Forest` (which scatter trees are gone or claimed), `ClearingPlanner` (felling areas), `Jobs` (queue/cancel/complete)
+  - `Systems/JobSystem.cs` – the crew at work: assigns workers to jobs in priority order, fells trees (wood), builds planned ways and features
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus, drawn icons, theme in code),
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
-  `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `shaders/`)
-- `data/` – JSON content (`scenarios/`, `lift_types.json`, `trail_features.json`, `scripts/` command scripts such as
-  `demo_lift_network.json`, `demo_features.json`)
+  `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
+  felling tool, `shaders/`)
+- `data/` – JSON content (`scenarios/`, `lift_types.json`, `trail_features.json`, `tools.json`, `scripts/` command
+  scripts such as `demo_lift_network.json`, `demo_features.json`, `demo_crew.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
 ## Commands
@@ -37,8 +41,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
 # Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json
-# ... with the demo trail features (per-trail feature list, rating and fun change)
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json
+# ... with the demo trail features (planned, built by the crew: per-trail feature list, crew block with completed jobs, wood, wages)
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json
 # Godot (from game/): compile, then run headless with the demo trails at 60x, printing KPIs (incl. queues) every game hour
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --build-solutions --quit
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --fixed-fps 60 --quit-after 2400 -- --demo --speed=4 --report
@@ -83,19 +87,25 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     bikes (sim and view); tier changes apply at the next opening; fees are charged by `FinanceSystem`.
 13. **Trail features** store only `{typeId, distanceCm}` on `Way.Features`; their effect (segment difficulty, rating
     floor) is derived in `WayGeometry`/`WayNetwork`. All placement validation lives in `FeaturePlanner`.
+14. **Crew jobs build things.** Player ways and features are planned (`Built = false`) and built by a `Job` (unless the
+    debug `instant` flag is set; scenario ways are always built). Only built ways are routed/ridden and only built
+    features count. All work, wood and speed numbers come from `WorkCosts`; which trees stand comes only from `Forest`
+    (scatter trees are identified by position; felled ones are stored in `FelledTrees`).
 
 ## Game controls (debug build)
 
-HUD: bottom bar with clock/speed, category menus (B build · V trails · R riders · G lifts · M finances · O map; Esc
+HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · O map; Esc
 closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
-P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter build, Esc cancel; preview colored
-by gradient; ends snap onto plateaus) · L place lift (valley, then top) · K place parking lot (centre, then direction) ·
+P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter plans it for the crew, Esc cancel;
+preview colored by gradient, tool panel shows trees to fell and crew-hours; ends snap onto plateaus) · L place lift (valley, then top) · K place parking lot (centre, then direction) ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
-Build, point at a trail, click to place, Delete removes the one under the cursor (also ✕ in the Trails menu) · F follow next rider ·
+Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Build →
+Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire/dismiss, tools, buy wood, job queue (↑ first,
+✕ cancel) · System menu: Instant build (debug) · F follow next rider ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
-`--demo-features` (after `--demo`), `--panel=<menu>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
+`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
 `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes).
 
 ## Conventions

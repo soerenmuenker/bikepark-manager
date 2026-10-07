@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Crew;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.State;
@@ -42,6 +43,16 @@ public sealed class ScenarioDefinition
     /// <summary>Trail features available in this scenario (inline, plus those from <see cref="TrailFeaturesFile"/>).</summary>
     public List<Trails.TrailFeatureType> TrailFeatureTypes { get; set; } = [];
 
+    public CrewRules CrewRules { get; set; } = new();
+
+    /// <summary>Tool catalog file, relative to the scenario file; loaded into <see cref="ToolTypes"/>.</summary>
+    public string? ToolsFile { get; set; }
+
+    /// <summary>Tools for sale in this scenario (inline, plus those from <see cref="ToolsFile"/>).</summary>
+    public List<ToolType> ToolTypes { get; set; } = [];
+
+    public int StartingWood { get; set; }
+
     /// <summary>Optional scripted commands (e.g. tutorial events), queued when the scenario starts.</summary>
     public List<TimedCommand> Commands { get; set; } = [];
 }
@@ -67,11 +78,19 @@ public static class ScenarioLoader
             scenario.TrailFeatureTypes = [.. scenario.TrailFeatureTypes, .. LoadFeatureCatalog(Path.Combine(directory, features))];
             scenario.TrailFeaturesFile = null;
         }
+        if (scenario.ToolsFile is { Length: > 0 } tools)
+        {
+            scenario.ToolTypes = [.. scenario.ToolTypes, .. LoadToolCatalog(Path.Combine(directory, tools))];
+            scenario.ToolsFile = null;
+        }
         return scenario;
     }
 
     /// <summary>Loads a trail feature catalog (<c>data/trail_features.json</c>).</summary>
     public static List<Trails.TrailFeatureType> LoadFeatureCatalog(string path) => LoadCatalog<Trails.TrailFeatureType>(path, "Trail feature");
+
+    /// <summary>Loads a tool catalog (<c>data/tools.json</c>).</summary>
+    public static List<ToolType> LoadToolCatalog(string path) => LoadCatalog<ToolType>(path, "Tool");
 
     private static List<T> LoadCatalog<T>(string path, string what) =>
         JsonSerializer.Deserialize<List<T>>(File.ReadAllText(path), SimJson.Indented)
@@ -96,6 +115,9 @@ public static class ScenarioLoader
             Operators = scenario.Operators,
             LiftRules = scenario.LiftRules,
             TrailFeatureTypes = scenario.TrailFeatureTypes,
+            CrewRules = scenario.CrewRules,
+            ToolTypes = scenario.ToolTypes,
+            WoodStock = scenario.StartingWood,
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
         };
 
@@ -130,6 +152,12 @@ public static class ScenarioLoader
         if (s.TrailFeaturesFile is { Length: > 0 }) errors.Add("trailFeaturesFile can only be resolved when loading from a file");
         foreach (var type in s.TrailFeatureTypes) errors.AddRange(type.Validate());
         if (s.TrailFeatureTypes.Select(t => t.Id).Distinct().Count() != s.TrailFeatureTypes.Count) errors.Add("trailFeatureTypes: ids must be unique");
+
+        errors.AddRange(s.CrewRules.Validate());
+        if (s.ToolsFile is { Length: > 0 }) errors.Add("toolsFile can only be resolved when loading from a file");
+        foreach (var tool in s.ToolTypes) errors.AddRange(tool.Validate());
+        if (s.ToolTypes.Select(t => t.Id).Distinct().Count() != s.ToolTypes.Count) errors.Add("toolTypes: ids must be unique");
+        if (s.StartingWood < 0) errors.Add("startingWood must be >= 0");
 
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid scenario '{s.Id}': {string.Join("; ", errors)}");

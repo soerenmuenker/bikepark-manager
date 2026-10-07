@@ -1,10 +1,12 @@
 using Bikepark.Game.Camera;
+using Bikepark.Game.Crew;
 using Bikepark.Game.Lifts;
 using Bikepark.Game.Riders;
 using Bikepark.Game.Terrain;
 using Bikepark.Game.Ways;
 using Bikepark.Sim;
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reporting;
@@ -17,19 +19,19 @@ namespace Bikepark.Game.Ui;
 
 /// <summary>
 /// The game HUD, laid out like SimCity's: a bar along the bottom with the clock and speed (left), round category
-/// buttons that open menus above the bar (centre: Build, Trails, Riders, Lifts, Finances, Map) and the headline stats
-/// (right: money, guests, mood, lift queue; clicking one opens its menu). While a build tool is active a compact tool
+/// buttons that open menus above the bar (centre: Build, Trails, Crew, Riders, Lifts, Finances, Map) and the headline
+/// stats (right: money, guests, mood, lift queue, crew, wood; clicking one opens its menu). While a build tool is active a compact tool
 /// panel shows at the top; events appear as short toasts. Pure view: reads the simulation, issues commands.
 /// <para>
-/// Keys: Space pause · 1–4 speed · B V R G M O open menus · Esc closes the menu · [ ] bike access tier · +/− zoom
+/// Keys: Space pause · 1–4 speed · B V C R G M O open menus · Esc closes the menu · [ ] bike access tier · +/− zoom
 /// (also the zoom buttons next to the stats).
 /// Debug: <c>--screenshot=&lt;file.png&gt;</c> saves a screenshot after a few seconds and quits; <c>--panel=build</c>
-/// opens a menu at start.
+/// opens a menu at start; <c>--tool=trail</c> (path, fell, lift, parking or a feature id) starts a build tool.
 /// </para>
 /// </summary>
 public partial class Hud : CanvasLayer
 {
-    private enum Menu { None, Build, Trails, Riders, Lifts, Finance, Map, System }
+    private enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Map, System }
 
     private const int MaxToasts = 4;
 
@@ -40,6 +42,7 @@ public partial class Hud : CanvasLayer
     [Export] public NodePath RiderViewPath { get; set; } = "../RiderView";
     [Export] public NodePath StructureToolPath { get; set; } = "../StructureTool";
     [Export] public NodePath FeatureToolPath { get; set; } = "../FeatureTool";
+    [Export] public NodePath ClearingToolPath { get; set; } = "../ClearingTool";
 
     private HudContext _ctx = null!;
     private Control _root = null!;
@@ -52,11 +55,14 @@ public partial class Hud : CanvasLayer
     private readonly List<IDisposable> _subscriptions = [];
 
     private Label _parkName = null!, _clock = null!, _openState = null!;
-    private Label _moneyValue = null!, _guestsValue = null!, _moodValue = null!, _queueValue = null!;
+    private Label _moneyValue = null!, _guestsValue = null!, _moodValue = null!, _queueValue = null!, _crewValue = null!, _woodValue = null!;
     private IconView _moodIcon = null!;
     private Control _queueChip = null!;
 
     private PanelContainer _toolPanel = null!;
+    private PanelContainer _toolChip = null!;
+    private IconView _toolChipIcon = null!;
+    private Label _toolChipText = null!;
     private Label _toolText = null!;
     private PanelContainer _followChip = null!;
     private Label _followText = null!;
@@ -76,6 +82,7 @@ public partial class Hud : CanvasLayer
             Riders = GetNode<RiderView>(RiderViewPath),
             Structures = GetNode<StructureTool>(StructureToolPath),
             Features = GetNode<FeatureTool>(FeatureToolPath),
+            Clearing = GetNode<ClearingTool>(ClearingToolPath),
         };
         _ctx.Kpi = KpiReport.From(_ctx.Sim.State, includeHash: false);
         BuildUi();
@@ -86,6 +93,7 @@ public partial class Hud : CanvasLayer
         {
             if (arg.StartsWith("--screenshot=", StringComparison.Ordinal)) _screenshotPath = arg[13..];
             else if (arg.StartsWith("--panel=", StringComparison.Ordinal) && Enum.TryParse<Menu>(arg[8..], true, out var menu)) Toggle(menu);
+            else if (arg.StartsWith("--tool=", StringComparison.Ordinal)) StartTool(arg[7..]);
         }
     }
 
@@ -120,8 +128,9 @@ public partial class Hud : CanvasLayer
         menus.AddThemeConstantOverride("separation", 10);
         foreach (var (menu, icon, caption, tooltip) in new[]
                  {
-                     (Menu.Build, UiIcon.Build, "Build", "Build paths, trails, lifts, parking  [B]"),
+                     (Menu.Build, UiIcon.Build, "Build", "Plan paths, trails, features; fell trees; lifts, parking  [B]"),
                      (Menu.Trails, UiIcon.Trails, "Trails", "Your trails and paths  [V]"),
+                     (Menu.Crew, UiIcon.Crew, "Crew", "Workers, jobs, wood and tools  [C]"),
                      (Menu.Riders, UiIcon.Riders, "Riders", "Guests, mood and fun  [R]"),
                      (Menu.Lifts, UiIcon.Lift, "Lifts", "Queues and bike access  [G]"),
                      (Menu.Finance, UiIcon.Finance, "Finances", "Money, fees, daily results  [M]"),
@@ -149,6 +158,7 @@ public partial class Hud : CanvasLayer
         // Menus.
         AddPanel(Menu.Build, new BuildPanel());
         AddPanel(Menu.Trails, new TrailsPanel());
+        AddPanel(Menu.Crew, new CrewPanel());
         AddPanel(Menu.Riders, new RidersPanel());
         AddPanel(Menu.Lifts, new LiftsPanel());
         AddPanel(Menu.Finance, new FinancePanel());
@@ -156,6 +166,24 @@ public partial class Hud : CanvasLayer
         AddPanel(Menu.System, new SystemPanel());
 
         // Floating: tool panel (top centre), follow chip, toasts (top right).
+        // While a build tool is active the Build menu folds into this narrow chip above the bar.
+        _toolChip = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
+        var chipStyle = UiTheme.Box(UiTheme.Panel, 14, 14, 6, new Color(UiTheme.Accent, 0.6f), 1);
+        _toolChip.AddThemeStyleboxOverride("panel", chipStyle);
+        var chipRow = new HBoxContainer();
+        chipRow.AddThemeConstantOverride("separation", 10);
+        _toolChipIcon = new IconView(UiIcon.Build, 24, UiTheme.Accent) { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        chipRow.AddChild(_toolChipIcon);
+        _toolChipText = UiTheme.Label("", 14, bold: true);
+        _toolChipText.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        chipRow.AddChild(_toolChipText);
+        var chipHint = UiTheme.Label("Esc or ✕ to stop", 12, UiTheme.TextDim);
+        chipHint.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        chipRow.AddChild(chipHint);
+        chipRow.AddChild(new RoundButton(UiIcon.Close, 24, "", "Stop building (Esc)", EndTools) { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter });
+        _toolChip.AddChild(chipRow);
+        _root.AddChild(_toolChip);
+
         _toolPanel = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
         _toolPanel.AddThemeStyleboxOverride("panel", UiTheme.Box(UiTheme.Panel, 12, 16, 10, new Color(UiTheme.Accent, 0.4f), 1));
         _toolText = UiTheme.Label("", 13);
@@ -215,6 +243,8 @@ public partial class Hud : CanvasLayer
         box.AddChild(Chip(UiIcon.Mood, "Mood", Menu.Riders, out _moodValue, out _moodIcon));
         _queueChip = Chip(UiIcon.Queue, "Queue", Menu.Lifts, out _queueValue, out _);
         box.AddChild(_queueChip);
+        box.AddChild(Chip(UiIcon.Crew, "Crew", Menu.Crew, out _crewValue, out _));
+        box.AddChild(Chip(UiIcon.Wood, "Wood", Menu.Crew, out _woodValue, out _));
         return box;
     }
 
@@ -240,7 +270,7 @@ public partial class Hud : CanvasLayer
         texts.AddThemeConstantOverride("separation", -2);
         texts.AddChild(UiTheme.Label(caption.ToUpperInvariant(), 10, UiTheme.TextDim, bold: true));
         value = UiTheme.Label("", 18, bold: true);
-        value.CustomMinimumSize = new Vector2(caption == "Money" ? 84 : 44, 0);
+        value.CustomMinimumSize = new Vector2(caption switch { "Money" => 84, "Crew" => 60, _ => 44 }, 0);
         texts.AddChild(value);
         row.AddChild(texts);
         return chip;
@@ -270,6 +300,7 @@ public partial class Hud : CanvasLayer
             _ctx.Ways.SetMode(WayTool.ToolMode.None);
             _ctx.Structures.SetMode(StructureTool.ToolMode.None);
             _ctx.Features.SetType(null);
+            if (_open != Menu.Crew) _ctx.Clearing.SetActive(false); // the crew menu can start felling too
         }
     }
 
@@ -284,6 +315,13 @@ public partial class Hud : CanvasLayer
             var size = panel.GetCombinedMinimumSize();
             panel.Size = size;
             panel.Position = new Vector2(MathF.Round((view.X - size.X) / 2), view.Y - UiTheme.BarHeight - UiTheme.Gap - size.Y);
+        }
+
+        if (_toolChip.Visible)
+        {
+            var size = _toolChip.GetCombinedMinimumSize();
+            _toolChip.Size = size;
+            _toolChip.Position = new Vector2(MathF.Round((view.X - size.X) / 2), view.Y - UiTheme.BarHeight - UiTheme.Gap - size.Y);
         }
 
         float top = 14;
@@ -321,6 +359,7 @@ public partial class Hud : CanvasLayer
         }
         UpdateClock();
         UpdateToolPanel();
+        UpdateToolChip();
         _followText.Text = _ctx.Riders.FollowedRider ?? "";
         _followChip.Visible = _ctx.Riders.FollowedRider is not null;
         Layout();
@@ -358,6 +397,12 @@ public partial class Hud : CanvasLayer
         _moodValue.Text = mood == 0 ? "–" : $"{mood / 10}%";
         _moodIcon.Set(UiIcon.Mood, mood == 0 ? UiTheme.TextDim : UiTheme.MoodColor(mood), mood == 0 ? 500 : mood);
 
+        _crewValue.Text = $"{state.Crew.Count} · {state.Jobs.Count}";
+        _crewValue.TooltipText = $"{state.Crew.Count} workers, {state.Jobs.Count} jobs";
+        _woodValue.Text = $"{state.WoodStock}";
+        bool waiting = state.Jobs.Any(j => j.Wood > 0 && !j.WoodTaken && j.Wood > state.WoodStock);
+        _woodValue.AddThemeColorOverride("font_color", waiting ? UiTheme.Warn : UiTheme.Text);
+
         var lift = state.Lifts.FirstOrDefault();
         _queueChip.Visible = lift is not null;
         if (lift is not null && LiftNetwork.FindType(state, lift.TypeId) is { } type)
@@ -368,13 +413,78 @@ public partial class Hud : CanvasLayer
         }
     }
 
+    private bool ToolActive => _ctx.Ways.Mode != WayTool.ToolMode.None || _ctx.Structures.Mode != StructureTool.ToolMode.None
+                               || _ctx.Features.Active || _ctx.Clearing.Active;
+
+    /// <summary>
+    /// While a build tool is active the open menu (Build, or Crew for felling) is folded away so the map is free to work
+    /// on, and the chip above the bar names the tool; when the tool ends (Esc, ✕) the menu comes back.
+    /// </summary>
+    private void UpdateToolChip()
+    {
+        bool active = ToolActive;
+        if (_open != Menu.None && _panels[_open].Visible == active)
+        {
+            _panels[_open].Visible = !active;
+            if (!active) _panels[_open].Refresh();
+        }
+        _toolChip.Visible = active;
+        if (!active) return;
+
+        var (icon, name) = _ctx.Clearing.Active ? (UiIcon.Felling, "Fell trees")
+            : _ctx.Features.Active && TrailFeatures.FindType(_ctx.Sim.State.TrailFeatureTypes, _ctx.Features.TypeId!) is { } type
+                ? (BuildPanel.FeatureIcon(type.Kind), $"Feature: {type.Name}")
+            : _ctx.Structures.Mode == StructureTool.ToolMode.Lift ? (UiIcon.Lift, "Lift")
+            : _ctx.Structures.Mode == StructureTool.ToolMode.Parking ? (UiIcon.Parking, "Parking lot")
+            : _ctx.Ways.Mode == WayTool.ToolMode.AccessPath ? (UiIcon.Path, "Gravel path")
+            : (UiIcon.Trail, "Trail");
+        _toolChipIcon.Set(icon, UiTheme.Accent);
+        _toolChipText.Text = $"Building: {name}";
+    }
+
+    /// <summary>Debug (<c>--tool=trail|path|fell|lift|parking|&lt;feature id&gt;</c>): opens Build with that tool active.</summary>
+    private void StartTool(string tool)
+    {
+        if (_open != Menu.Build) Toggle(Menu.Build);
+        switch (tool)
+        {
+            case "trail": _ctx.Ways.SetMode(WayTool.ToolMode.Trail); break;
+            case "path": _ctx.Ways.SetMode(WayTool.ToolMode.AccessPath); break;
+            case "fell": _ctx.Clearing.SetActive(true); break;
+            case "lift": _ctx.Structures.SetMode(StructureTool.ToolMode.Lift); break;
+            case "parking": _ctx.Structures.SetMode(StructureTool.ToolMode.Parking); break;
+            default: _ctx.Features.SetType(tool); break;
+        }
+    }
+
+    /// <summary>Ends every build tool (the chip's ✕).</summary>
+    private void EndTools()
+    {
+        _ctx.Ways.SetMode(WayTool.ToolMode.None);
+        _ctx.Structures.SetMode(StructureTool.ToolMode.None);
+        _ctx.Features.SetType(null);
+        _ctx.Clearing.SetActive(false);
+    }
+
     private void UpdateToolPanel()
     {
         var lines = new List<string>();
         var structures = _ctx.Structures;
         var ways = _ctx.Ways;
         var features = _ctx.Features;
-        if (features.Active)
+        var clearing = _ctx.Clearing;
+        if (clearing.Active)
+        {
+            lines.Add(clearing.Status);
+            if (clearing.Plan is { } cp)
+            {
+                lines.Add($"Radius {cp.RadiusCm / 100} m · {cp.Trees.Count} trees · +{cp.Estimate.WoodGained} wood · {HudContext.CrewTime(cp.Estimate.TotalMinutes)}");
+                lines.AddRange(cp.Issues.Where(i => i.Severity == IssueSeverity.Error).Take(2).Select(i => $"✗ {i.Message}"));
+                if (cp.IsValid) lines.Add("✓ Click to mark the area");
+            }
+            else lines.Add("Esc to stop");
+        }
+        else if (features.Active)
         {
             lines.Add(features.Status);
             if (features.Hovered is { } hovered)
@@ -384,7 +494,11 @@ public partial class Hud : CanvasLayer
                 string trail = _ctx.Sim.Network.FindWay(fp.WayId)?.Name ?? "";
                 lines.Add($"{trail} · {fp.StartCm / 100}–{fp.EndCm / 100} m");
                 lines.AddRange(fp.Issues.Where(i => i.Severity == IssueSeverity.Error).Take(2).Select(i => $"✗ {i.Message}"));
-                if (fp.IsValid) lines.Add("✓ Click to place");
+                if (fp.IsValid && fp.Type is { } type)
+                {
+                    lines.Add(_ctx.EstimateText(WorkCosts.Feature(type)));
+                    lines.Add(_ctx.Host.InstantBuild ? "✓ Click to build" : "✓ Click to plan it for the crew");
+                }
             }
             else lines.Add("Point at a trail · Esc to stop");
         }
@@ -414,7 +528,11 @@ public partial class Hud : CanvasLayer
                 foreach (var issue in plan.Issues.Where(i => i.Severity == IssueSeverity.Error).Take(2))
                     lines.Add($"✗ {issue.Message}");
                 if (plan.IsValid)
-                    lines.Add(plan.Issues.FirstOrDefault(i => i.Severity == IssueSeverity.Warning) is { } warning ? $"! {warning.Message}   ✓ Enter to build" : "✓ Enter to build");
+                {
+                    if (ways.Estimate is { } estimate) lines.Add(_ctx.EstimateText(estimate));
+                    string enter = _ctx.Host.InstantBuild ? "✓ Enter to build" : "✓ Enter to plan it for the crew";
+                    lines.Add(plan.Issues.FirstOrDefault(i => i.Severity == IssueSeverity.Warning) is { } warning ? $"! {warning.Message}   {enter}" : enter);
+                }
             }
         }
         _toolPanel.Visible = lines.Count > 0;
@@ -426,7 +544,7 @@ public partial class Hud : CanvasLayer
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is not InputEventKey { Pressed: true, Echo: false } key) return;
-        bool toolActive = _ctx.Ways.Mode != WayTool.ToolMode.None || _ctx.Structures.Mode != StructureTool.ToolMode.None || _ctx.Features.Active;
+        bool toolActive = ToolActive;
         // Bike tier keys go by character: on e.g. German layouts the "+" key sits where US "]" is.
         if (key.Keycode is Key.Bracketleft or Key.Bracketright)
         {
@@ -438,6 +556,7 @@ public partial class Hud : CanvasLayer
         {
             case Key.B: Toggle(Menu.Build); break;
             case Key.V: Toggle(Menu.Trails); break;
+            case Key.C: Toggle(Menu.Crew); break;
             case Key.R: Toggle(Menu.Riders); break;
             case Key.G: Toggle(Menu.Lifts); break;
             case Key.M: Toggle(Menu.Finance); break;
@@ -473,8 +592,26 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<ParkOpened>(_ => Toast("The park is open", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<ParkClosed>(_ => Toast("The park has closed", UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<CommandRejected>(e => Toast(e.Reason, UiTheme.Bad)));
-        _subscriptions.Add(events.Subscribe<WayBuilt>(e => Toast($"Built {_ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId)?.Name}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<WayBuilt>(e =>
+        {
+            var way = _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId);
+            Toast(way is { Built: false } ? $"Planned {way.Name}: the crew will build it" : $"Built {way?.Name}", UiTheme.Accent);
+        }));
         _subscriptions.Add(events.Subscribe<TrailFeaturePlaced>(e => Toast(FeatureText(e.WayId, e.FeatureId), UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<JobCompleted>(e => Toast(e.Kind switch
+        {
+            JobKind.BuildWay => $"{e.Title} is built and open",
+            JobKind.BuildFeature => $"Built: {e.Title}",
+            _ => $"Done: {e.Title.ToLowerInvariant().Replace("fell ", "felled ")}",
+        }, UiTheme.Good)));
+        _subscriptions.Add(events.Subscribe<CrewHired>(e => Toast($"Hired {_ctx.Sim.State.Crew.FirstOrDefault(m => m.Id == e.CrewId)?.Name}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<ToolBought>(e => Toast($"Bought: {_ctx.Sim.State.ToolTypes.FirstOrDefault(t => t.Id == e.ToolId)?.Name}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<WoodBought>(e => Toast($"Bought {e.Amount} wood", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<JobQueued>(e =>
+        {
+            if (e.Kind == JobKind.FellTrees && Jobs.Find(_ctx.Sim.State, e.JobId) is { } job)
+                Toast($"Marked {job.Trees.Count} trees for felling", UiTheme.Accent);
+        }));
         _subscriptions.Add(events.Subscribe<LiftBuilt>(e => Toast($"Built {_ctx.Sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name}", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<ParkingLotBuilt>(_ => Toast("Built a parking lot", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessBooked>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: true), UiTheme.Accent)));
@@ -487,7 +624,8 @@ public partial class Hud : CanvasLayer
         var way = state.Ways.FirstOrDefault(w => w.Id == wayId);
         var feature = way?.Features.FirstOrDefault(f => f.Id == featureId);
         var type = feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId);
-        return $"Built a {type?.Name.ToLowerInvariant() ?? "feature"} on {way?.Name} at {feature?.DistanceCm / 100} m";
+        string verb = feature is { Built: false } ? "Planned" : "Built";
+        return $"{verb} a {type?.Name.ToLowerInvariant() ?? "feature"} on {way?.Name} at {feature?.DistanceCm / 100} m";
     }
 
     private string TierText(int liftId, int tierIndex, bool booked)

@@ -14,8 +14,10 @@ namespace Bikepark.Game;
 /// read <see cref="Sim"/>.State, subscribe to <see cref="Sim"/>.Events, and change the world only via
 /// <see cref="Enqueue"/>. Views that animate between ticks use <see cref="BeforeStep"/> and
 /// <see cref="InterpolationAlpha"/>.
-/// Command-line user args (after <c>--</c>): <c>--demo</c> builds the demo network, <c>--demo-features</c> then puts the
-/// demo features on it (simulates the first minute so the trails exist), <c>--speed=N</c> picks a speed index,
+/// Command-line user args (after <c>--</c>): <c>--demo</c> builds the demo network (<c>--demo-planned</c>: as crew jobs),
+/// <c>--demo-features</c> then plans the
+/// demo features on it (simulates the first minute so the trails exist), <c>--demo-crew</c> adds a worker, tools and a
+/// felling area (data/scripts/demo_crew.json), <c>--instant</c> turns on instant building (debug), <c>--speed=N</c> picks a speed index,
 /// <c>--report</c> prints a KPI line every game hour (for headless checks), <c>--advance=N</c> simulates N ticks at start
 /// (after <c>--demo</c>, e.g. 720 = noon on day 1).
 /// </summary>
@@ -37,6 +39,11 @@ public partial class SimHost : Node
     [Export] public string DemoNetworkFile { get; set; } = "data/scripts/demo_lift_network.json";
 
     [Export] public string DemoFeaturesFile { get; set; } = "data/scripts/demo_features.json";
+
+    [Export] public string DemoCrewFile { get; set; } = "data/scripts/demo_crew.json";
+
+    /// <summary>Debug: the build tools build ways and features at once instead of planning crew jobs.</summary>
+    public bool InstantBuild { get; set; }
 
     /// <summary>Game minutes per real second while turbo-skipping towards closing time.</summary>
     [Export] public double TurboTicksPerSecond { get; set; } = 120;
@@ -72,11 +79,14 @@ public partial class SimHost : Node
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             if (arg == "--demo") LoadDemoNetwork();
+            else if (arg == "--demo-planned") LoadDemoNetwork(planned: true);
             else if (arg == "--demo-features")
             {
                 Sim.Step();
                 LoadDemoFeatures();
             }
+            else if (arg == "--demo-crew") LoadDemoCrew();
+            else if (arg == "--instant") InstantBuild = true;
             else if (arg == "--report") _report = true;
             else if (arg.StartsWith("--speed=", StringComparison.Ordinal) && int.TryParse(arg[8..], out int speed)) SetSpeedIndex(speed);
             else if (arg.StartsWith("--advance=", StringComparison.Ordinal) && long.TryParse(arg[10..], out long ticks)) Sim.RunTicks(ticks);
@@ -115,12 +125,16 @@ public partial class SimHost : Node
                  $"maxQueue={k.MaxQueue} money={k.MoneyCents / 100}");
     }
 
-    /// <summary>Queues the demo trails from the plateau (data/scripts/demo_lift_network.json).</summary>
-    public void LoadDemoNetwork()
+    /// <summary>
+    /// Queues the demo trails from the plateau (data/scripts/demo_lift_network.json), built at once, or
+    /// <paramref name="planned"/> as crew jobs (debug: <c>--demo-planned</c>).
+    /// </summary>
+    public void LoadDemoNetwork() => LoadDemoNetwork(planned: false);
+
+    public void LoadDemoNetwork(bool planned)
     {
-        var script = JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(ResolveContentPath(DemoNetworkFile)), SimJson.Indented) ?? [];
-        foreach (var timed in script)
-            Enqueue(timed.Command);
+        foreach (var timed in ReadScript(DemoNetworkFile))
+            Enqueue(planned && timed.Command is BuildWayCommand build ? build with { Instant = false } : timed.Command);
     }
 
     /// <summary>
@@ -141,8 +155,15 @@ public partial class SimHost : Node
         }
         foreach (var command in script.Select(t => t.Command).OfType<PlaceTrailFeatureCommand>())
             if (ids.TryGetValue(command.WayId, out int wayId))
-                Enqueue(command with { WayId = wayId });
+                Enqueue(command with { WayId = wayId, Instant = InstantBuild });
         return true;
+    }
+
+    /// <summary>Queues the demo crew setup (data/scripts/demo_crew.json): a worker, tools and a felling area.</summary>
+    public void LoadDemoCrew()
+    {
+        foreach (var timed in ReadScript(DemoCrewFile))
+            Enqueue(timed.Command);
     }
 
     private List<TimedCommand> ReadScript(string file) =>

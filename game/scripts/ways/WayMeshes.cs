@@ -107,6 +107,12 @@ internal static class WayMeshes
         return material;
     }
 
+    /// <summary>Blueprint blue for planned ways (see-through, dashed by alpha).</summary>
+    public static readonly Color Blueprint = new(0.55f, 0.85f, 1f);
+
+    /// <summary>See-through material for planned ways (blueprint.gdshader); alpha comes from the vertex colors.</summary>
+    public static ShaderMaterial CreateBlueprintMaterial() => new() { Shader = GD.Load<Shader>("res://shaders/blueprint.gdshader") };
+
     /// <summary>A world position on a way geometry, in meters.</summary>
     public static Vector3 ToWorld(WayPoint p) => new(p.X / 100f, p.Y / 100f, p.Z / 100f);
 }

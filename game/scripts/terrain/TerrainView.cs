@@ -43,17 +43,18 @@ public partial class TerrainView : Node3D
     public OverlayMode Overlay { get; private set; } = OverlayMode.Natural;
 
     /// <summary>
-    /// Hides trees and rocks for which <paramref name="cleared"/>(xCm, zCm) is true (way corridors) and rebuilds the
-    /// instance meshes.
+    /// Hides trees and rocks for which <paramref name="cleared"/>(xCm, zCm) is true (built way corridors, felled trees)
+    /// and rebuilds the instance meshes: of every chunk, or only of the chunks overlapping <paramref name="area"/> (meters).
     /// </summary>
-    public void SetScatterFilter(Func<int, int, bool>? cleared)
+    public void SetScatterFilter(Func<int, int, bool>? cleared, Rect2? area = null)
     {
         _cleared = cleared;
         if (Grid is null) return;
         var scatter = new List<ScatterInstance>();
-        _treeCount = _rockCount = 0;
+        if (area is null) _treeCount = _rockCount = 0;
         foreach (var (node, x0, z0, sizeX, sizeZ) in _chunkInfo)
         {
+            if (area is { } a && !a.Intersects(new Rect2(x0, z0, sizeX, sizeZ), includeBorders: true)) continue;
             foreach (var child in node.GetChildren().OfType<MultiMeshInstance3D>().ToList())
             {
                 node.RemoveChild(child);

@@ -4,6 +4,8 @@
 // must turn by minTurn (segment turn permille: 100 ≈ 37°). Difficulty (0..1000) raises the covered segments and sets a
 // floor for the trail's rating (green < 250 <= blue < 480 <= red < 700 <= black). Affinities (0..1000) say how much
 // flow and technical riders enjoy it; funWeight is how many fun samples one pass counts as (a segment counts one).
+// Building one is a crew job: workMinutes crew-minutes at base speed (digging for dirt, carpentry for wood) and wood
+// units taken from the stock when work starts.
 [
   {
     "id": "berm",
@@ -17,7 +19,9 @@
     "minTurn": 100,
     "flowAffinity": 950,
     "techAffinity": 400,
-    "funWeight": 2
+    "funWeight": 2,
+    "workMinutes": 480,
+    "wood": 0
   },
   {
     "id": "rollers",
@@ -30,7 +34,9 @@
     "maxGradient": 0,
     "flowAffinity": 850,
     "techAffinity": 350,
-    "funWeight": 2
+    "funWeight": 2,
+    "workMinutes": 600,
+    "wood": 0
   },
   {
     "id": "table",
@@ -43,7 +49,9 @@
     "maxGradient": -5,
     "flowAffinity": 900,
     "techAffinity": 600,
-    "funWeight": 3
+    "funWeight": 3,
+    "workMinutes": 720,
+    "wood": 0
   },
   {
     "id": "double",
@@ -56,7 +64,9 @@
     "maxGradient": -5,
     "flowAffinity": 850,
     "techAffinity": 750,
-    "funWeight": 3
+    "funWeight": 3,
+    "workMinutes": 960,
+    "wood": 0
   },
   {
     "id": "wall_ride",
@@ -70,7 +80,9 @@
     "minTurn": 100,
     "flowAffinity": 700,
     "techAffinity": 850,
-    "funWeight": 3
+    "funWeight": 3,
+    "workMinutes": 600,
+    "wood": 30
   },
   {
     "id": "kicker",
@@ -83,7 +95,9 @@
     "maxGradient": -5,
     "flowAffinity": 650,
     "techAffinity": 800,
-    "funWeight": 2
+    "funWeight": 2,
+    "workMinutes": 360,
+    "wood": 15
   },
   {
     "id": "drop",
@@ -96,6 +110,8 @@
     "maxGradient": -20,
     "flowAffinity": 400,
     "techAffinity": 950,
-    "funWeight": 3
+    "funWeight": 3,
+    "workMinutes": 480,
+    "wood": 25
   }
 ]

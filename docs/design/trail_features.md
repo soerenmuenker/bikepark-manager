@@ -1,7 +1,9 @@
 # Trail features (Phase 4.1)
 
-Status: implemented 2026-10-07. Rules that must not break are in `architecture.md` §13. Phase 4.2 (crew, wood, build
-time) builds on this; nothing here costs money or time yet.
+Status: implemented 2026-10-07. Rules that must not break are in `architecture.md` §13. Since Phase 4.2
+([crew_and_jobs.md](crew_and_jobs.md)), placing a feature plans it and a crew job builds it, using wood for wood
+features. The KPI below was measured with instant placement (now `"instant": true` on the command). The demo trails
+are now ways 11 and 12, because the scenario hires two workers first.
 
 ## What the player sees
 
@@ -123,6 +125,6 @@ features, at most `maxFeaturesPerTrail` (40).
 
 ## Not in Phase 4.1
 
-- Cost, wood, crew and build time (4.2: a placed feature becomes a job and is "planned" until built).
+- Cost, wood, crew and build time: done in 4.2 ([crew_and_jobs.md](crew_and_jobs.md)).
 - Wear on features and closures (5), crash chance per feature (6).
 - Free-form placement off the trail line, feature size variants, editing a trail's shape under its features.

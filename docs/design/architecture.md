@@ -207,9 +207,37 @@ Design note: [trail_features.md](trail_features.md).
   style affinity, halved if scary). Trail choice already follows the raised `DifficultyScore`.
 - **Saves**: new properties with defaults; version 2 saves without them load (empty catalog), so the version stays 2.
 
+## 14. Crew, jobs and wood (Phase 4.2)
+
+Design note: [crew_and_jobs.md](crew_and_jobs.md).
+
+- **Content**: `data/tools.json` (via `toolsFile`) → `WorldState.ToolTypes` (work type, price, speed bonus);
+  `crewRules` (wage, work hours, max crew and workers per job, work minutes per meter, steep extra, felling minutes and
+  wood per tree, wood price, clearing radius) and `startingWood` in the scenario; features gain `workMinutes`, `wood`.
+- **State**: `Crew` (generic workers: id, name, current `JobId`), `Jobs` (priority order), `WoodStock`,
+  `OwnedToolIds`, `FelledTrees` (positions of scatter trees cut outside built corridors), `CrewStats`; `Way.Built`
+  and `TrailFeature.Built` (default `true`, so older saves load fully built).
+- **Jobs**: `BuildWay`, `BuildFeature`, `FellTrees`. A job first fells its `Trees` (fixed list, in order; each tree
+  adds wood at once), then does `WorkMinutes` of `MainWorkType` work. Progress is permille crew-minutes; speed is
+  `1000 + best owned tool bonus` for the work type needed now. `Crew/Jobs.cs` queues, cancels and completes jobs;
+  `Crew/WorkCosts.cs` is the only place that computes work and wood (commands, previews, reports).
+- **Trees**: derived from `TerrainScatter` and identified by position. `Crew/Forest.cs` decides which are gone
+  (built corridors, `FelledTrees`) or claimed (listed in a job) — the sim's wood and the view's trees can't disagree.
+  A planned way's corridor trees are listed in its job and felled before digging; when the way is finished its
+  corridor covers them and they are dropped from `FelledTrees`.
+- **`JobSystem`** (between `GuestSystem` and `FinanceSystem`, no RNG): during work hours free workers (hiring order)
+  take the first workable job with room; a feature waits for its trail and for its wood (taken when work starts).
+  A finished job sets `Built` and bumps `WaysRevision`. `FinanceSystem` charges wages at the end of the day.
+- **Network**: planned ways keep geometry and nodes (snapping, features, drawing) but get no edges, aren't in
+  `Trails` and don't clear their corridor; planned features don't change segment difficulty and give no fun.
+- **Commands**: `buildWay`/`placeTrailFeature` plan (unless `instant`, debug; scenario ways are always built);
+  `hireCrew`, `dismissCrew`, `buyTool`, `buyWood`, `fellTrees` (validated by `ClearingPlanner`), `prioritizeJob`,
+  `cancelJob`; deleting a planned way or feature cancels its job and refunds wood. **Events**: `CrewHired`,
+  `CrewDismissed`, `ToolBought`, `WoodBought`, `JobQueued`, `JobCompleted` (with a title), `JobCancelled`, `TreeFelled`.
+
 ## Open questions / next steps
 
-- Further terrain edits (cut/fill by the player, cleared trees as wood) as saved changes, like the pads.
+- Further terrain edits (cut/fill by the player) as saved changes, like the pads.
 - Water features (ponds, streams) using the reserved water layer, if gameplay needs them.
 - Guest pathfinding and needs model; keep allocation-free and integer-based.
 - Export pipeline for `/data`; possibly embed content as resources.

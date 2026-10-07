@@ -1,5 +1,6 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Crew;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
@@ -63,6 +64,31 @@ public sealed class WorldState
 
     public List<ParkingLot> ParkingLots { get; set; } = [];
 
+    public CrewRules CrewRules { get; set; } = new();
+
+    /// <summary>Tool models (content, copied from <c>data/tools.json</c>).</summary>
+    public List<ToolType> ToolTypes { get; set; } = [];
+
+    /// <summary>Ids of the tools the park owns, in purchase order.</summary>
+    public List<string> OwnedToolIds { get; set; } = [];
+
+    /// <summary>Workers in hiring order.</summary>
+    public List<CrewMember> Crew { get; set; } = [];
+
+    /// <summary>Crew jobs in priority order (the crew works on the first workable ones).</summary>
+    public List<Job> Jobs { get; set; } = [];
+
+    /// <summary>Wood in stock (units; a felled tree gives <see cref="CrewRules.WoodPerTree"/>).</summary>
+    public int WoodStock { get; set; }
+
+    /// <summary>
+    /// Scatter trees cut down outside the corridors of built ways, in felling order (position = tree identity). Trees in
+    /// a built way's corridor are gone anyway and are dropped from this list when the way is finished.
+    /// </summary>
+    public List<PointCm> FelledTrees { get; set; } = [];
+
+    public CrewStats CrewStats { get; set; } = new();
+
     public FinanceState Finance { get; set; } = new();
 
     public ParkStats Stats { get; set; } = new();
@@ -113,6 +139,12 @@ public sealed class FinanceState
     /// <summary>Bike access fees paid to lift companies (included in the expenses).</summary>
     public long TotalLiftFeesCents { get; set; }
     public long LiftFeesTodayCents { get; set; }
+
+    /// <summary>Crew wages, tool and wood purchases (included in the expenses).</summary>
+    public long TotalWagesCents { get; set; }
+    public long WagesTodayCents { get; set; }
+    public long TotalToolsCents { get; set; }
+    public long TotalWoodCents { get; set; }
 
     public void Earn(long cents)
     {

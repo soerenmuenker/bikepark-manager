@@ -76,14 +76,15 @@ public sealed class WayNetwork
         foreach (var way in ways)
         {
             var geometry = geometries[way.Id];
-            _corridors.Add(way.Id, geometry, way.Kind == WayKind.AccessPath ? rules.PathCorridorCm : rules.TrailCorridorCm);
+            if (way.Built) // a planned way's trees are still standing
+                _corridors.Add(way.Id, geometry, CorridorWidth(rules, way.Kind));
             _centerlines.Add(way.Id, geometry, 0);
         }
         BuildGraph();
 
         var baseHub = hubs.FirstOrDefault(h => h.Kind == HubKind.Parking) ?? hubs.FirstOrDefault(h => h.Kind == HubKind.ValleyStation);
         BaseHub = baseHub;
-        BaseWay = baseHub is null ? ways.FirstOrDefault(w => w.Kind == WayKind.AccessPath) : null;
+        BaseWay = baseHub is null ? ways.FirstOrDefault(w => w.Kind == WayKind.AccessPath && w.Built) : null;
         BaseNode = baseHub is not null ? HubNode(baseHub.Id) : BaseWay is null ? -1 : NodeAt(BaseWay.Id, 0);
     }
 
@@ -103,7 +104,9 @@ public sealed class WayNetwork
         {
             var placed = way.Kind == WayKind.Trail ? TrailFeatures.Resolve(way, featureTypes ?? []) : [];
             features[way.Id] = placed;
-            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, placed);
+            // Only built features shape the trail (difficulty, rating); planned ones are listed but have no effect.
+            var built = placed.Where(f => f.Feature.Built).ToList();
+            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, built);
         }
         return new WayNetwork(ordered, geometries, features, hubs.OrderBy(h => h.Id).ToList(), links.ToList(), rules);
     }
@@ -111,7 +114,8 @@ public sealed class WayNetwork
     /// <summary>All ways in id order.</summary>
     public IReadOnlyList<Way> Ways => _ways;
 
-    public IEnumerable<Way> Trails => _ways.Where(w => w.Kind == WayKind.Trail);
+    /// <summary>Built trails in id order (what riders can choose).</summary>
+    public IEnumerable<Way> Trails => _ways.Where(w => w.Kind == WayKind.Trail && w.Built);
 
     /// <summary>Hubs in id order.</summary>
     public IReadOnlyList<NetworkHub> Hubs => _hubs;
@@ -139,7 +143,10 @@ public sealed class WayNetwork
 
     public Way? FindWay(int wayId) => _ways.FirstOrDefault(w => w.Id == wayId);
 
-    /// <summary>The trail's features as of this build, resolved and in distance order (empty for paths and unknown ways).</summary>
+    /// <summary>
+    /// The trail's features as of this build, resolved and in distance order (empty for paths and unknown ways),
+    /// planned ones included (<see cref="TrailFeature.Built"/>).
+    /// </summary>
     public IReadOnlyList<PlacedFeature> FeaturesOn(int wayId) => _features.TryGetValue(wayId, out var list) ? list : [];
 
     public NetworkHub? FindHub(int hubId) => _hubs.FirstOrDefault(h => h.Id == hubId);
@@ -160,7 +167,7 @@ public sealed class WayNetwork
     /// <summary>A position of the node: the way and distance it was first created at (hubs: negative id, 0).</summary>
     public (int WayId, long DistanceCm) NodePosition(int node) => _nodes[node];
 
-    /// <summary>True if (x, z) lies inside the cleared corridor of any way or lift line.</summary>
+    /// <summary>True if (x, z) lies inside the cleared corridor of any built way or lift line.</summary>
     public bool IsInCorridor(int xCm, int zCm)
     {
         if (_corridors.Contains(xCm, zCm)) return true;
@@ -324,6 +331,7 @@ public sealed class WayNetwork
 
         foreach (var way in _ways)
         {
+            if (!way.Built) continue; // planned ways have nodes (others can join them) but can't be travelled yet
             var geometry = _geometries[way.Id];
             long[] d = stops[way.Id].ToArray();
             for (int i = 0; i + 1 < d.Length; i++)
@@ -345,6 +353,10 @@ public sealed class WayNetwork
                 _edges[b].Add(new Edge(a, link.Kind, link.Id, link.LengthCm, 0, link.Cost));
         }
     }
+
+    /// <summary>Full width cleared of trees along a way of this kind.</summary>
+    public static int CorridorWidth(TrailRules rules, WayKind kind) =>
+        kind == WayKind.AccessPath ? rules.PathCorridorCm : rules.TrailCorridorCm;
 
     /// <summary>Travel cost: distance plus 10x the height gained (climbing is slow).</summary>
     private static long Cost(WayGeometry geometry, long from, long to)

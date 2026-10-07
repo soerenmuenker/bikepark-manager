@@ -262,6 +262,7 @@ internal sealed class RiderSystem : ISimSystem
                 {
                     if (feature.StartCm <= position) continue;
                     if (feature.StartCm > position + move) break;
+                    if (!feature.Feature.Built) continue; // planned: nothing there to ride yet
                     guest.RunFun += (long)FeatureFun(guest, feature.Type) * feature.Type.FunWeight;
                     guest.RunSegments += feature.Type.FunWeight;
                 }

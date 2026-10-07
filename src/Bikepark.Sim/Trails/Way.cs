@@ -46,6 +46,9 @@ public sealed class Way
     /// <summary>Features placed on a trail (berms, jumps, wood features), sorted by distance. Empty on access paths.</summary>
     public List<TrailFeature> Features { get; set; } = [];
 
+    /// <summary>False while the way is only planned (a crew job builds it); riders only use built ways.</summary>
+    public bool Built { get; set; } = true;
+
     public WayStats Stats { get; set; } = new();
 }
 

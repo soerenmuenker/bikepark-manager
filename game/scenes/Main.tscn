@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scripts/SimHost.cs" id="1_simhost"]
 [ext_resource type="Script" path="res://scripts/ui/Hud.cs" id="2_hud"]
@@ -10,6 +10,8 @@
 [ext_resource type="Script" path="res://scripts/lifts/LiftView.cs" id="8_lifts"]
 [ext_resource type="Script" path="res://scripts/lifts/StructureTool.cs" id="9_structuretool"]
 [ext_resource type="Script" path="res://scripts/ways/FeatureTool.cs" id="10_featuretool"]
+[ext_resource type="Script" path="res://scripts/crew/ClearingTool.cs" id="11_clearingtool"]
+[ext_resource type="Script" path="res://scripts/crew/CrewView.cs" id="12_crewview"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_material"]
 sky_horizon_color = Color(0.68, 0.76, 0.86, 1)
@@ -62,6 +64,12 @@ script = ExtResource("9_structuretool")
 
 [node name="FeatureTool" type="Node3D" parent="."]
 script = ExtResource("10_featuretool")
+
+[node name="ClearingTool" type="Node3D" parent="."]
+script = ExtResource("11_clearingtool")
+
+[node name="CrewView" type="Node3D" parent="."]
+script = ExtResource("12_crewview")
 
 [node name="RiderView" type="Node3D" parent="."]
 script = ExtResource("7_riders")

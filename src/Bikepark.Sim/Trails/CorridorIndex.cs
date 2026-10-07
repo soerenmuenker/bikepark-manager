@@ -26,8 +26,8 @@ internal sealed class CorridorIndex
 
     public bool IsEmpty => _entries.Count == 0;
 
-    /// <summary>True if the point lies within half the corridor width of any sample of any way.</summary>
-    public bool Contains(int xCm, int zCm)
+    /// <summary>True if the point lies within half the corridor width of any sample of any (included) way.</summary>
+    public bool Contains(int xCm, int zCm, Func<int, bool>? include = null)
     {
         int bx = xCm / BucketCm, bz = zCm / BucketCm;
         for (int dz = -1; dz <= 1; dz++)
@@ -36,7 +36,8 @@ internal sealed class CorridorIndex
                 if (!_buckets.TryGetValue(Key(bx + dx, bz + dz), out var list)) continue;
                 foreach (var (entry, sample) in list)
                 {
-                    var (_, geometry, half) = _entries[entry];
+                    var (wayId, geometry, half) = _entries[entry];
+                    if (include is not null && !include(wayId)) continue;
                     long ex = geometry.Xs[sample] - xCm, ez = geometry.Zs[sample] - zCm;
                     if (ex * ex + ez * ez <= half * half) return true;
                 }

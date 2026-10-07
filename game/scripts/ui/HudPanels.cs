@@ -1,14 +1,17 @@
 using Bikepark.Game.Camera;
+using Bikepark.Game.Crew;
 using Bikepark.Game.Lifts;
 using Bikepark.Game.Riders;
 using Bikepark.Game.Terrain;
 using Bikepark.Game.Ways;
 using Bikepark.Sim;
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reporting;
 using Bikepark.Sim.State;
+using Bikepark.Sim.Systems;
 using Bikepark.Sim.Trails;
 using Godot;
 using Gradient = Bikepark.Sim.Trails.Gradient;
@@ -22,6 +25,7 @@ internal sealed class HudContext
     public required WayTool Ways { get; init; }
     public required StructureTool Structures { get; init; }
     public required FeatureTool Features { get; init; }
+    public required ClearingTool Clearing { get; init; }
     public required RiderView Riders { get; init; }
     public required TerrainView Terrain { get; init; }
     public required RtsCamera Camera { get; init; }
@@ -34,6 +38,20 @@ internal sealed class HudContext
     public KpiReport Kpi { get; set; } = null!;
 
     public const int FeeStepCents = 250;
+
+    /// <summary>"≈ 14 crew-h" / "≈ 45 crew-min" for crew-minutes of work.</summary>
+    public static string CrewTime(long minutes) => minutes >= 90 ? $"≈ {(minutes + 30) / 60} crew-h" : $"≈ {minutes} crew-min";
+
+    /// <summary>The crew part of a build preview: trees to fell first, wood, work.</summary>
+    public string EstimateText(WorkEstimate e)
+    {
+        var parts = new List<string>();
+        if (e.Trees > 0) parts.Add($"{e.Trees} trees to fell first (+{e.WoodGained} wood)");
+        parts.Add(CrewTime(e.TotalMinutes));
+        if (e.WoodNeeded > 0)
+            parts.Add($"{e.WoodNeeded} wood (have {Sim.State.WoodStock})");
+        return (Host.InstantBuild ? "Instant build (debug) · would take " : "Crew: ") + string.Join(" · ", parts);
+    }
 
     public void ChangeFee(long delta) => Host.Enqueue(new SetEntryFeeCommand(Math.Max(0, Sim.State.Park.EntryFeeCents + delta)));
 
@@ -152,7 +170,7 @@ public partial class ToolCard : PanelContainer
 
 public partial class BuildPanel : HudPanel
 {
-    private ToolCard _path = null!, _trail = null!, _lift = null!, _parking = null!;
+    private ToolCard _path = null!, _trail = null!, _lift = null!, _parking = null!, _fell = null!;
     private readonly List<(string TypeId, ToolCard Card)> _features = [];
     private Label _demoStatus = null!;
 
@@ -162,26 +180,28 @@ public partial class BuildPanel : HudPanel
     {
         var cards = Row(10);
         Body.AddChild(cards);
-        _path = new ToolCard(UiIcon.Path, "Gravel path", "P", "Two-way access path riders can pedal up (max gradient ±4.0)",
+        _path = new ToolCard(UiIcon.Path, "Gravel path", "P", "Two-way access path riders can pedal up (max gradient ±4.0); the crew builds it",
             () => ToggleWay(WayTool.ToolMode.AccessPath));
-        _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "One-way downhill trail; start it on a plateau or path",
+        _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "One-way downhill trail; start it on a plateau or path. The crew fells the trees in the way, then digs it",
             () => ToggleWay(WayTool.ToolMode.Trail));
         _lift = new ToolCard(UiIcon.Lift, "Lift", "L", "Gondola: click the valley station, then the top (debug, free)",
             () => ToggleStructure(StructureTool.ToolMode.Lift));
         _parking = new ToolCard(UiIcon.Parking, "Parking lot", "K", "Parking next to a valley station (debug, free)",
             () => ToggleStructure(StructureTool.ToolMode.Parking));
-        var demo = new ToolCard(UiIcon.Demo, "Demo trails", "", "Builds two example trails from the plateau", Ctx.Host.LoadDemoNetwork);
-        var demoFeatures = new ToolCard(UiIcon.Demo, "Demo features", "", "Puts berms, jumps and wood features on the demo trails",
+        _fell = new ToolCard(UiIcon.Felling, "Fell trees", "area", "Mark an area of forest: the crew cuts the trees, each gives wood",
+            () => Ctx.Clearing.SetActive(!Ctx.Clearing.Active));
+        var demo = new ToolCard(UiIcon.Demo, "Demo trails", "", "Builds two example trails from the plateau (at once)", Ctx.Host.LoadDemoNetwork);
+        var demoFeatures = new ToolCard(UiIcon.Demo, "Demo features", "", "Plans berms, jumps and wood features on the demo trails",
             () =>
             {
                 _demoStatus.Text = Ctx.Host.LoadDemoFeatures() ? "" : "Build the demo trails first.";
                 _demoStatus.Visible = _demoStatus.Text.Length > 0;
             });
-        foreach (var card in new[] { _path, _trail, _lift, _parking, demo, demoFeatures }) cards.AddChild(card);
+        foreach (var card in new[] { _path, _trail, _fell, _lift, _parking, demo, demoFeatures }) cards.AddChild(card);
         _demoStatus = UiTheme.Label("", 12, UiTheme.Warn);
         _demoStatus.Visible = false;
         Body.AddChild(_demoStatus);
-        Body.AddChild(UiTheme.Label("Click or drag to place points · Backspace undo · Enter build · Esc cancel", 12, UiTheme.TextDim));
+        Body.AddChild(UiTheme.Label("Click or drag to place points · Backspace undo · Enter plans it for the crew · Esc cancel", 12, UiTheme.TextDim));
 
         Body.AddChild(UiTheme.Separator());
         Body.AddChild(UiTheme.Label("TRAIL FEATURES", 13, UiTheme.Accent, bold: true));
@@ -203,14 +223,15 @@ public partial class BuildPanel : HudPanel
             foreach (var type in types.Where(t => t.Material == material))
             {
                 string id = type.Id;
-                var card = new ToolCard(FeatureIcon(type.Kind), type.Name, $"{type.LengthMeters} m · {DifficultyWord(type.Difficulty)}",
+                string cost = type.Wood > 0 ? $" · {type.Wood} wood" : "";
+                var card = new ToolCard(FeatureIcon(type.Kind), type.Name, $"{type.LengthMeters} m · {DifficultyWord(type.Difficulty)}{cost}",
                     FeatureTooltip(type), () => ToggleFeature(id)) { CustomMinimumSize = new Vector2(100, 104) };
                 row.AddChild(card);
                 _features.Add((id, card));
             }
             if (row.GetChildCount() > 0) groups.AddChild(group);
         }
-        Body.AddChild(UiTheme.Label("Point at a trail and click to place · Delete removes the feature under the cursor · Esc stops", 12, UiTheme.TextDim));
+        Body.AddChild(UiTheme.Label("Point at a trail and click to plan it · Delete removes the feature under the cursor · Esc stops", 12, UiTheme.TextDim));
     }
 
     internal static UiIcon FeatureIcon(FeatureKind kind) => kind switch
@@ -238,20 +259,23 @@ public partial class BuildPanel : HudPanel
             ? $"needs a drop between {Gradient.Format(type.MaxGradient)} and {Gradient.Format(type.MinGradient)}"
             : $"gradient {Gradient.Format(type.MinGradient)} to {Gradient.Format(type.MaxGradient)}";
         string bend = type.MinTurn > 0 ? ", on a bend" : "";
+        string build = type.Wood > 0 ? $"{HudContext.CrewTime(type.WorkMinutes)} and {type.Wood} wood" : HudContext.CrewTime(type.WorkMinutes);
         return $"{type.Name}: {type.LengthMeters} m, difficulty {type.Difficulty} ({DifficultyWord(type.Difficulty)}); {where}{bend}. " +
-               $"Flow riders {type.FlowAffinity / 10}%, technical riders {type.TechAffinity / 10}%.";
+               $"Flow riders {type.FlowAffinity / 10}%, technical riders {type.TechAffinity / 10}%. Building it takes {build}.";
     }
 
     private void ToggleWay(WayTool.ToolMode mode)
     {
         Ctx.Structures.SetMode(StructureTool.ToolMode.None);
         Ctx.Features.SetType(null);
+        Ctx.Clearing.SetActive(false);
         Ctx.Ways.SetMode(Ctx.Ways.Mode == mode ? WayTool.ToolMode.None : mode);
     }
 
     private void ToggleStructure(StructureTool.ToolMode mode)
     {
         Ctx.Features.SetType(null);
+        Ctx.Clearing.SetActive(false);
         Ctx.Structures.SetMode(Ctx.Structures.Mode == mode ? StructureTool.ToolMode.None : mode);
     }
 
@@ -263,6 +287,7 @@ public partial class BuildPanel : HudPanel
         _trail.Active = Ctx.Ways.Mode == WayTool.ToolMode.Trail;
         _lift.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Lift;
         _parking.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Parking;
+        _fell.Active = Ctx.Clearing.Active;
         foreach (var (id, card) in _features)
             card.Active = Ctx.Features.TypeId == id;
     }
@@ -296,10 +321,23 @@ public partial class TrailsPanel : HudPanel
         scroll.CustomMinimumSize = new Vector2(560, Math.Min(MaxListHeight, Math.Max(40, _list.GetCombinedMinimumSize().Y)));
 
         var network = Ctx.Sim.Network;
+        var state = Ctx.Sim.State;
         foreach (var (id, main, detail) in _rows)
         {
             var way = network.FindWay(id);
             if (way is null || !network.TryGetGeometry(id, out var g)) continue;
+            if (!way.Built)
+            {
+                var job = Jobs.ForWay(state, id);
+                string progress = job is null ? "" : job.IsFelling
+                    ? $" · felling {job.TreesFelled}/{job.Trees.Count} trees"
+                    : $" · {WorkCosts.ProgressPermille(state.CrewRules, job) / 10} % built";
+                main.Text = $"{way.Name}  (planned)";
+                detail.Text = $"{(way.Kind == WayKind.Trail ? $"Trail · {g.Rating}" : "Gravel path")} · {g.LengthCm / 100} m{progress}\n" +
+                              "The crew builds it (Crew menu); riders can't use it yet" +
+                              (way.Kind == WayKind.Trail ? "\n" + FeatureSummary(network.FeaturesOn(id)) : "");
+                continue;
+            }
             if (way.Kind == WayKind.AccessPath)
             {
                 main.Text = $"{way.Name}";
@@ -321,12 +359,13 @@ public partial class TrailsPanel : HudPanel
     {
         if (features.Count == 0) return "No features yet (Build → trail features)";
         var parts = features.GroupBy(f => f.Type.Id).Select(g => g.Count() == 1 ? g.First().Type.Name : $"{g.Count()} × {g.First().Type.Name}");
-        return $"Features: {string.Join(" · ", parts)}";
+        int planned = features.Count(f => !f.Feature.Built);
+        return $"Features: {string.Join(" · ", parts)}{(planned > 0 ? $"  ({planned} planned)" : "")}";
     }
 
     /// <summary>Ways and their features; the list is rebuilt when it changes.</summary>
     private static string Signature(List<Way> ways) =>
-        string.Join(';', ways.Select(w => $"{w.Id}:{string.Join(',', w.Features.Select(f => f.Id))}"));
+        string.Join(';', ways.Select(w => $"{w.Id}{(w.Built ? "" : "p")}:{string.Join(',', w.Features.Select(f => f.Built ? $"{f.Id}" : $"{f.Id}p"))}"));
 
     private void Rebuild(List<Way> ways)
     {
@@ -347,7 +386,8 @@ public partial class TrailsPanel : HudPanel
             row.AddThemeStyleboxOverride("panel", box);
             var h = Row(10);
             row.AddChild(h);
-            var color = way.Kind == WayKind.AccessPath ? new Color(0.8f, 0.8f, 0.8f)
+            var color = !way.Built ? WayMeshes.Blueprint
+                : way.Kind == WayKind.AccessPath ? new Color(0.8f, 0.8f, 0.8f)
                 : network.TryGetGeometry(way.Id, out var g) ? WayMeshes.RatingColor(g.Rating) : Colors.Gray;
             h.AddChild(new ColorRect { Color = color, CustomMinimumSize = new Vector2(6, 38) });
             var texts = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -368,8 +408,9 @@ public partial class TrailsPanel : HudPanel
                 foreach (var feature in placed)
                 {
                     int featureId = feature.Feature.Id;
-                    var chip = UiTheme.Button($"{feature.Type.Name} {feature.StartCm / 100} m  ✕",
-                        () => Ctx.Host.Enqueue(new RemoveTrailFeatureCommand(id, featureId)), "Remove this feature");
+                    var chip = UiTheme.Button($"{feature.Type.Name} {feature.StartCm / 100} m{(feature.Feature.Built ? "" : " (planned)")}  ✕",
+                        () => Ctx.Host.Enqueue(new RemoveTrailFeatureCommand(id, featureId)),
+                        feature.Feature.Built ? "Remove this feature" : "Cancel this planned feature (its wood goes back to the stock)");
                     chip.AddThemeFontSizeOverride("font_size", 11);
                     chips.AddChild(chip);
                 }
@@ -377,7 +418,8 @@ public partial class TrailsPanel : HudPanel
             }
             if (way.Origin == WayOrigin.Player)
             {
-                var delete = UiTheme.Button("Delete", () => Ctx.Host.Enqueue(new DeleteWayCommand(id)), "Remove this way (not while others attach to it)");
+                var delete = UiTheme.Button(way.Built ? "Delete" : "Cancel", () => Ctx.Host.Enqueue(new DeleteWayCommand(id)),
+                    way.Built ? "Remove this way (not while others attach to it)" : "Cancel this planned way and its job");
                 delete.SizeFlagsVertical = SizeFlags.ShrinkCenter;
                 var danger = UiTheme.Box(new Color(UiTheme.Bad, 0.12f), 6, 10, 4, new Color(UiTheme.Bad, 0.7f), 1);
                 danger.ShadowSize = 0;
@@ -392,6 +434,205 @@ public partial class TrailsPanel : HudPanel
             _list.AddChild(row);
             _rows.Add((id, main, detail));
         }
+    }
+}
+
+// ==================================================================== Crew
+
+/// <summary>Workers, tools, wood and the job queue (priority order: free workers take the first job they can work on).</summary>
+public partial class CrewPanel : HudPanel
+{
+    private Label _workers = null!, _wages = null!, _wood = null!, _jobs = null!, _ahead = null!, _hours = null!;
+    private HBoxContainer _tools = null!;
+    private VBoxContainer _list = null!;
+    private Button _buy10 = null!, _buy50 = null!;
+    private string _toolSignature = "", _jobSignature = "";
+    private readonly List<(int JobId, Label Title, Label State, ProgressBar Bar)> _rows = [];
+    private const int MaxListHeight = 300;
+
+    public override string Title => "Crew & jobs";
+
+    protected override void Build()
+    {
+        var tiles = Row(24);
+        tiles.AddChild(UiTheme.StatTile("Workers", out _workers, 24));
+        tiles.AddChild(UiTheme.StatTile("Wages per day", out _wages));
+        tiles.AddChild(UiTheme.StatTile("Wood", out _wood, 24));
+        tiles.AddChild(UiTheme.StatTile("Jobs", out _jobs));
+        tiles.AddChild(UiTheme.StatTile("Work ahead", out _ahead));
+        Body.AddChild(tiles);
+
+        var actions = Row(8);
+        actions.AddChild(UiTheme.Button("Hire a worker", () => Ctx.Host.Enqueue(new HireCrewCommand()), "Paid every evening; works during work hours"));
+        actions.AddChild(UiTheme.Button("Dismiss one", () =>
+        {
+            if (Ctx.Sim.State.Crew.LastOrDefault() is { } last) Ctx.Host.Enqueue(new DismissCrewCommand(last.Id));
+        }, "Let the last hired worker go"));
+        _hours = UiTheme.Label("", 12, UiTheme.TextDim);
+        _hours.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        actions.AddChild(_hours);
+        Body.AddChild(actions);
+        Body.AddChild(UiTheme.Separator());
+
+        Body.AddChild(UiTheme.Label("TOOLS — bought once, speed up one kind of work for the whole crew", 11, UiTheme.TextDim, bold: true));
+        _tools = Row(8);
+        Body.AddChild(_tools);
+
+        var wood = Row(8);
+        wood.AddChild(UiTheme.Label("WOOD", 11, UiTheme.TextDim, bold: true));
+        _buy10 = UiTheme.Button("", () => Ctx.Host.Enqueue(new BuyWoodCommand(10)), "Buying is expensive; felling trees is cheaper");
+        _buy50 = UiTheme.Button("", () => Ctx.Host.Enqueue(new BuyWoodCommand(50)), "Buying is expensive; felling trees is cheaper");
+        wood.AddChild(_buy10);
+        wood.AddChild(_buy50);
+        wood.AddChild(UiTheme.Button("Fell trees…", () => Ctx.Clearing.SetActive(true), "Mark an area of forest for the crew to cut (each tree gives wood)"));
+        Body.AddChild(wood);
+        Body.AddChild(UiTheme.Separator());
+
+        Body.AddChild(UiTheme.Label("JOBS — in priority order", 11, UiTheme.TextDim, bold: true));
+        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(600, 0), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        _list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _list.AddThemeConstantOverride("separation", 6);
+        scroll.AddChild(_list);
+        Body.AddChild(scroll);
+    }
+
+    public override void Refresh()
+    {
+        var state = Ctx.Sim.State;
+        var rules = state.CrewRules;
+        _workers.Text = $"{state.Crew.Count} / {rules.MaxCrew}";
+        _wages.Text = UiTheme.Money(state.Crew.Count * rules.WagePerDayCents);
+        _wood.Text = $"{state.WoodStock}";
+        _jobs.Text = $"{state.Jobs.Count}";
+        long remaining = state.Jobs.Sum(j => WorkCosts.RemainingMinutes(rules, j));
+        int perDay = state.Crew.Count * (rules.WorkEndMinute - rules.WorkStartMinute);
+        _ahead.Text = remaining == 0 ? "–" : perDay == 0 ? HudContext.CrewTime(remaining) : $"{HudContext.CrewTime(remaining)} (~{(remaining + perDay - 1) / perDay} d)";
+        _hours.Text = $"Work hours {rules.WorkStartMinute / 60:00}:00–{rules.WorkEndMinute / 60:00}:00 · {UiTheme.Money(rules.WagePerDayCents)} per worker and day";
+        _buy10.Text = $"Buy 10 ({UiTheme.Money(10 * rules.WoodPriceCents)})";
+        _buy50.Text = $"Buy 50 ({UiTheme.Money(50 * rules.WoodPriceCents)})";
+
+        string toolSignature = string.Join(',', state.OwnedToolIds);
+        if (toolSignature != _toolSignature || _tools.GetChildCount() == 0) RebuildTools();
+
+        string jobSignature = string.Join(',', state.Jobs.Select(j => j.Id));
+        if (jobSignature != _jobSignature) RebuildJobs();
+        foreach (var (jobId, title, stateLabel, bar) in _rows)
+        {
+            if (Jobs.Find(state, jobId) is not { } job) continue;
+            title.Text = Jobs.Title(state, job);
+            stateLabel.Text = JobState(state, job);
+            bar.Value = WorkCosts.ProgressPermille(rules, job);
+        }
+        var scroll = (ScrollContainer)_list.GetParent();
+        scroll.CustomMinimumSize = new Vector2(600, Math.Min(MaxListHeight, Math.Max(30, _list.GetCombinedMinimumSize().Y)));
+    }
+
+    private static string JobState(WorldState state, Job job)
+    {
+        int workers = state.Crew.Count(m => m.JobId == job.Id);
+        var rules = state.CrewRules;
+        string who = workers == 0 ? "" : $" · {workers} worker{(workers == 1 ? "" : "s")}";
+        if (!JobSystem.IsWorkable(state, job))
+        {
+            if (job.Kind == JobKind.BuildFeature && state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Built != true)
+                return "Waiting for the trail to be built";
+            if (job.Wood > 0 && !job.WoodTaken)
+                return $"Waiting for wood: needs {job.Wood}, {state.WoodStock} in stock (fell trees or buy)";
+        }
+        string left = HudContext.CrewTime(WorkCosts.RemainingMinutes(rules, job)) + " left";
+        if (job.IsFelling)
+            return $"Felling {job.TreesFelled}/{job.Trees.Count} trees · {left}{who}";
+        string verb = job.CurrentWorkType == WorkType.Carpentry ? "Carpentry" : "Digging";
+        return workers == 0 ? $"Queued · {left}" : $"{verb} {WorkCosts.ProgressPermille(rules, job) / 10} % · {left}{who}";
+    }
+
+    private void RebuildTools()
+    {
+        var state = Ctx.Sim.State;
+        _toolSignature = string.Join(',', state.OwnedToolIds);
+        foreach (var child in _tools.GetChildren()) child.QueueFree();
+        if (state.ToolTypes.Count == 0)
+        {
+            _tools.AddChild(UiTheme.Label("No tools for sale in this scenario.", 12, UiTheme.TextDim));
+            return;
+        }
+        foreach (var tool in state.ToolTypes)
+        {
+            string id = tool.Id;
+            bool owned = state.OwnedToolIds.Contains(id);
+            var button = new Button
+            {
+                Text = $"{tool.Name}{(owned ? "  ✓" : "")}\n{WorkWord(tool.WorkType)} +{tool.SpeedBonusPermille / 10} % · {(owned ? "owned" : UiTheme.Money(tool.PriceCents))}",
+                Disabled = owned,
+                FocusMode = FocusModeEnum.None,
+                CustomMinimumSize = new Vector2(140, 46),
+                TooltipText = owned ? "You own this tool" : $"Buy for {UiTheme.MoneyExact(tool.PriceCents)}",
+            };
+            button.AddThemeFontSizeOverride("font_size", 12);
+            button.Pressed += () => Ctx.Host.Enqueue(new BuyToolCommand(id));
+            _tools.AddChild(button);
+        }
+    }
+
+    private static string WorkWord(WorkType type) => type switch
+    {
+        WorkType.Digging => "Digging",
+        WorkType.Carpentry => "Carpentry",
+        _ => "Felling",
+    };
+
+    private void RebuildJobs()
+    {
+        var state = Ctx.Sim.State;
+        _jobSignature = string.Join(',', state.Jobs.Select(j => j.Id));
+        foreach (var child in _list.GetChildren()) child.QueueFree();
+        _rows.Clear();
+        if (state.Jobs.Count == 0)
+        {
+            _list.AddChild(UiTheme.Label("No jobs. Plan a trail, a feature or a felling area in Build.", 13, UiTheme.TextDim));
+            return;
+        }
+        for (int i = 0; i < state.Jobs.Count; i++)
+        {
+            var job = state.Jobs[i];
+            int jobId = job.Id;
+            var row = new PanelContainer();
+            var box = UiTheme.Box(UiTheme.Card, 8, 10, 6);
+            box.ShadowSize = 0;
+            row.AddThemeStyleboxOverride("panel", box);
+            var h = Row(10);
+            row.AddChild(h);
+            var icon = job.Kind switch
+            {
+                JobKind.FellTrees => UiIcon.Felling,
+                JobKind.BuildWay => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Kind == WayKind.AccessPath ? UiIcon.Path : UiIcon.Trail,
+                _ => FeatureIconFor(state, job),
+            };
+            h.AddChild(new IconView(icon, 30, UiTheme.Accent) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
+            var texts = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+            texts.AddThemeConstantOverride("separation", 1);
+            var title = UiTheme.Label("", 14, bold: true);
+            var stateLabel = UiTheme.Label("", 12, UiTheme.TextDim);
+            var bar = new ProgressBar { MinValue = 0, MaxValue = 1000, ShowPercentage = false, CustomMinimumSize = new Vector2(0, 6) };
+            texts.AddChild(title);
+            texts.AddChild(stateLabel);
+            texts.AddChild(bar);
+            h.AddChild(texts);
+            if (i > 0)
+                h.AddChild(new RoundButton(UiIcon.Up, 26, "", "Move to the top of the queue", () => Ctx.Host.Enqueue(new PrioritizeJobCommand(jobId))) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
+            h.AddChild(new RoundButton(UiIcon.Close, 26, "", job.Kind == JobKind.FellTrees
+                ? "Cancel (trees cut so far stay cut)"
+                : "Cancel: removes the planned way or feature", () => Ctx.Host.Enqueue(new CancelJobCommand(jobId))) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
+            _list.AddChild(row);
+            _rows.Add((jobId, title, stateLabel, bar));
+        }
+    }
+
+    private static UiIcon FeatureIconFor(WorldState state, Job job)
+    {
+        var feature = state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Features.FirstOrDefault(f => f.Id == job.FeatureId);
+        var type = feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId);
+        return type is null ? UiIcon.Build : BuildPanel.FeatureIcon(type.Kind);
     }
 }
 
@@ -591,7 +832,7 @@ public partial class LiftsPanel : HudPanel
 public partial class FinancePanel : HudPanel
 {
     private Label _money = null!, _revenue = null!, _expenses = null!, _net = null!;
-    private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _fee = null!;
+    private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _fee = null!;
     private DayChart _chart = null!;
 
     public override string Title => "Finances";
@@ -609,6 +850,8 @@ public partial class FinancePanel : HudPanel
         totals.AddChild(UiTheme.StatTile("Total revenue", out _totalRevenue, 16));
         totals.AddChild(UiTheme.StatTile("Total expenses", out _totalExpenses, 16));
         totals.AddChild(UiTheme.StatTile("Lift fees paid", out _liftFees, 16));
+        totals.AddChild(UiTheme.StatTile("Crew wages", out _wages, 16));
+        totals.AddChild(UiTheme.StatTile("Tools & wood", out _materials, 16));
         Body.AddChild(totals);
         Body.AddChild(UiTheme.Separator());
 
@@ -640,6 +883,8 @@ public partial class FinancePanel : HudPanel
         _totalRevenue.Text = UiTheme.Money(f.TotalRevenueCents);
         _totalExpenses.Text = UiTheme.Money(f.TotalExpensesCents);
         _liftFees.Text = UiTheme.Money(f.TotalLiftFeesCents);
+        _wages.Text = UiTheme.Money(f.TotalWagesCents);
+        _materials.Text = UiTheme.Money(f.TotalToolsCents + f.TotalWoodCents);
         _fee.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.EntryFeeCents);
         _chart.Days = Ctx.Days;
         _chart.QueueRedraw();
@@ -742,7 +987,15 @@ public partial class SystemPanel : HudPanel
         files.AddChild(UiTheme.Button("Save", Ctx.Host.Save));
         files.AddChild(UiTheme.Button("Load", () => Ctx.Host.Load()));
         Body.AddChild(files);
-        Body.AddChild(UiTheme.Label("Space pause · 1–4 speed · +/− zoom · B build · V trails · R riders · G lifts · M finances · O map", 11, UiTheme.TextDim));
+        var instant = new CheckButton
+        {
+            Text = "Instant build (debug): ways and features are built at once, no crew job",
+            ButtonPressed = Ctx.Host.InstantBuild,
+            FocusMode = FocusModeEnum.None,
+        };
+        instant.Toggled += on => Ctx.Host.InstantBuild = on;
+        Body.AddChild(instant);
+        Body.AddChild(UiTheme.Label("Space pause · 1–4 speed · +/− zoom · B build · V trails · C crew · R riders · G lifts · M finances · O map", 11, UiTheme.TextDim));
     }
 
     public override void Refresh() { }

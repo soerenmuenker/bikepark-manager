@@ -192,8 +192,8 @@ internal sealed class GuestSystem : ISimSystem
 }
 
 /// <summary>
-/// Charges daily upkeep and the bike access fees of lifts run by lift companies (the tier in effect that day), and
-/// closes the books at the last minute of each day.
+/// Charges daily upkeep, crew wages and the bike access fees of lifts run by lift companies (the tier in effect that
+/// day), and closes the books at the last minute of each day.
 /// </summary>
 internal sealed class FinanceSystem : ISimSystem
 {
@@ -204,6 +204,13 @@ internal sealed class FinanceSystem : ISimSystem
 
         var state = ctx.State;
         state.Finance.Spend(state.Rules.DailyUpkeepCents);
+        long wages = state.Crew.Count * state.CrewRules.WagePerDayCents;
+        if (wages > 0)
+        {
+            state.Finance.Spend(wages);
+            state.Finance.TotalWagesCents += wages;
+            state.Finance.WagesTodayCents += wages;
+        }
         foreach (var lift in state.Lifts)
         {
             if (lift.BikeAccess is not { } access || LiftNetwork.FindOperator(state, lift.OperatorId) is not { } op) continue;
@@ -222,7 +229,10 @@ internal sealed class FinanceSystem : ISimSystem
             ExpensesCents: state.Finance.ExpensesTodayCents,
             MoneyCents: state.Finance.MoneyCents,
             LiftFeesCents: state.Finance.LiftFeesTodayCents,
-            LiftRides: state.Lifts.Sum(l => l.Stats.RidersToday));
+            LiftRides: state.Lifts.Sum(l => l.Stats.RidersToday),
+            WagesCents: state.Finance.WagesTodayCents,
+            WoodStock: state.WoodStock,
+            Jobs: state.Jobs.Count);
         ctx.Publish(new DayEnded(ctx.Tick, report));
 
         foreach (var way in state.Ways)
@@ -233,6 +243,7 @@ internal sealed class FinanceSystem : ISimSystem
             lift.Stats.MaxQueueToday = 0;
         }
         state.Finance.LiftFeesTodayCents = 0;
+        state.Finance.WagesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
         state.Stats.TurnedAwayToday = 0;
         state.Finance.RevenueTodayCents = 0;

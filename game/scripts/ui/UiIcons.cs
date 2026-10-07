@@ -36,6 +36,11 @@ public enum UiIcon
     WallRide,
     Kicker,
     Drop,
+    Crew,
+    Wood,
+    Felling,
+    Tool,
+    Up,
 }
 
 /// <summary>Line icons drawn with canvas primitives (no image assets), scaled to any square.</summary>
@@ -196,6 +201,34 @@ internal static class UiIcons
                 Poly(0.08f, 0.82f, 0.30f, 0.38f, 0.62f, 0.38f, 0.62f, 0.82f);
                 Line(0.62f, 0.82f, 0.94f, 0.82f);
                 Polyline(0.70f, 0.30f, 0.80f, 0.40f, 0.84f, 0.62f);
+                break;
+            case UiIcon.Crew: // worker with a hard hat
+                Circle(0.5f, 0.40f, 0.14f);
+                Poly(0.28f, 0.30f, 0.72f, 0.30f, 0.66f, 0.20f, 0.34f, 0.20f); // hat
+                Line(0.24f, 0.30f, 0.76f, 0.30f);
+                Polyline(0.22f, 0.90f, 0.26f, 0.68f, 0.40f, 0.58f, 0.60f, 0.58f, 0.74f, 0.68f, 0.78f, 0.90f);
+                break;
+            case UiIcon.Wood: // three stacked logs, ends showing
+                Circle(0.32f, 0.70f, 0.15f);
+                Circle(0.68f, 0.70f, 0.15f);
+                Circle(0.50f, 0.40f, 0.15f);
+                Disc(0.32f, 0.70f, 0.04f, color);
+                Disc(0.68f, 0.70f, 0.04f, color);
+                Disc(0.50f, 0.40f, 0.04f, color);
+                break;
+            case UiIcon.Felling: // a tree and an axe
+                Poly(0.30f, 0.12f, 0.52f, 0.62f, 0.08f, 0.62f);
+                Line(0.30f, 0.62f, 0.30f, 0.86f);
+                Line(0.58f, 0.86f, 0.86f, 0.40f);
+                Poly(0.80f, 0.30f, 0.94f, 0.40f, 0.86f, 0.52f, 0.74f, 0.46f);
+                break;
+            case UiIcon.Tool: // wrench
+                Circle(0.34f, 0.34f, 0.16f);
+                Line(0.46f, 0.46f, 0.84f, 0.84f);
+                break;
+            case UiIcon.Up: // arrow up
+                Line(0.5f, 0.82f, 0.5f, 0.2f);
+                Polyline(0.26f, 0.44f, 0.5f, 0.2f, 0.74f, 0.44f);
                 break;
             case UiIcon.Follow: // target
                 Circle(0.5f, 0.5f, 0.30f);

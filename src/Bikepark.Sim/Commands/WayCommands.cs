@@ -1,13 +1,17 @@
+using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Commands;
 
 /// <summary>
-/// Builds an access path or trail instantly (Phase 2 debug build, free). Points are the player's raw clicks;
-/// <see cref="WayPlanner"/> orients them, snaps the ends onto the network and validates.
+/// Plans an access path or trail: it is added unbuilt and a crew job is queued that fells the trees in its corridor and
+/// then digs it (see <see cref="Jobs.QueueWay"/>). Scenario ways and <paramref name="Instant"/> (debug) ways are built
+/// at once. Points are the player's raw clicks; <see cref="WayPlanner"/> orients them, snaps the ends onto the network
+/// and validates.
 /// </summary>
-public sealed record BuildWayCommand(WayKind Kind, string Name, List<PointCm> Points, WayOrigin Origin = WayOrigin.Player) : ICommand
+public sealed record BuildWayCommand(
+    WayKind Kind, string Name, List<PointCm> Points, WayOrigin Origin = WayOrigin.Player, bool Instant = false) : ICommand
 {
     public const int MaxNameLength = 40;
 
@@ -35,7 +39,10 @@ public sealed record BuildWayCommand(WayKind Kind, string Name, List<PointCm> Po
             StartHubId = plan.StartHubId,
             EndHubId = plan.EndHubId,
             Origin = Origin,
+            Built = Instant || Origin == WayOrigin.Scenario,
         };
+        if (!way.Built)
+            Jobs.QueueWay(ctx, way, plan.Geometry!);
         state.Ways.Add(way);
         state.WaysRevision++;
         ctx.Publish(new WayBuilt(ctx.Tick, id));
@@ -46,13 +53,16 @@ public sealed record BuildWayCommand(WayKind Kind, string Name, List<PointCm> Po
 
     // Value equality over the points, so identical commands compare equal (records compare lists by reference).
     public bool Equals(BuildWayCommand? other) =>
-        other is not null && Kind == other.Kind && Name == other.Name && Origin == other.Origin
+        other is not null && Kind == other.Kind && Name == other.Name && Origin == other.Origin && Instant == other.Instant
         && (ReferenceEquals(Points, other.Points) || (Points is not null && other.Points is not null && Points.SequenceEqual(other.Points)));
 
     public override int GetHashCode() => HashCode.Combine(Kind, Name, Points?.Count ?? -1);
 }
 
-/// <summary>Removes a way. Rejected while other ways attach to it. Riders using it start over at the base.</summary>
+/// <summary>
+/// Removes a way (a planned one: cancels its job and those of its planned features). Rejected while other ways attach
+/// to it. Riders using it start over at the base.
+/// </summary>
 public sealed record DeleteWayCommand(int WayId) : ICommand
 {
     public string? Validate(SimContext ctx)
@@ -67,6 +77,8 @@ public sealed record DeleteWayCommand(int WayId) : ICommand
     public void Apply(SimContext ctx)
     {
         var state = ctx.State;
+        foreach (var job in state.Jobs.Where(j => j.WayId == WayId && j.Kind != JobKind.FellTrees).ToList())
+            Jobs.Cancel(ctx, job);
         state.Ways.RemoveAll(w => w.Id == WayId);
         state.WaysRevision++;
         Systems.RiderSystem.ResetRidersUsing(ctx, WayId);
