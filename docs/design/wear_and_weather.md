@@ -54,8 +54,11 @@ Decisions:
   - The player can also close or open a trail. A worn-out trail stays closed until repaired.
   - Riders already on the trail finish their run. Riders still on their way up (walking, in the lift queue, on the
     lift) choose another open trail when they get to the top, so nobody starts a closed trail.
+- **Feature overview.** Clicking a trail in the Trails menu (or its **Features…** button) opens the same pop-up as a status
+  overview: every built feature with its condition, the crew time to repair, the workers stepper and Repair / Repair all.
+  Perfect features show "like new". It doesn't pause the game and stays open until you close it (✕ / Close).
 - **Trails menu**, for each trail: the worst feature and its state ("Worst feature: Tabletop at 220 m, 20 % · worn"),
-  and the buttons **Repair…** (opens the pop-up) and **Close / Open**.
+  and the buttons **Features…** (opens the overview) and **Close / Open**. The whole trail card is clickable.
 - **Crew menu.** "Repair Berm on Flow Country at 40 m" jobs (tool icon) sit at the top of the queue. Cancelling one opens
   the trail again; the feature stays worn.
 

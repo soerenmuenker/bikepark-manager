@@ -96,6 +96,7 @@ public partial class Hud : CanvasLayer
             if (arg.StartsWith("--screenshot=", StringComparison.Ordinal)) _screenshotPath = arg[13..];
             else if (arg.StartsWith("--panel=", StringComparison.Ordinal) && Enum.TryParse<Menu>(arg[8..], true, out var menu)) Toggle(menu);
             else if (arg.StartsWith("--tool=", StringComparison.Ordinal)) StartTool(arg[7..]);
+            else if (arg.StartsWith("--features=", StringComparison.Ordinal) && int.TryParse(arg[11..], out int wayId)) _repairDialog.Open(wayId);
         }
     }
 

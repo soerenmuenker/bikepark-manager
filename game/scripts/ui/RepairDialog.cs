@@ -17,8 +17,12 @@ internal sealed partial class RepairDialog : PanelContainer
     private readonly Queue<int> _waiting = new();
     private readonly HashSet<int> _dismissed = [];
     private bool _pausedByWarning;
+
+    /// <summary>Opened from the Trails menu: shows every built feature (status overview), doesn't pause, stays open.</summary>
+    private bool _overview;
     private int _wayId;
     private int _workers = 3;
+    private Button _later = null!;
     private Label _title = null!, _subtitle = null!, _workersLabel = null!;
     private VBoxContainer _rows = null!;
     private string _signature = "";
@@ -28,7 +32,7 @@ internal sealed partial class RepairDialog : PanelContainer
         _ctx = ctx;
         Visible = false;
         MouseFilter = MouseFilterEnum.Stop;
-        var style = UiTheme.Box(UiTheme.Panel, 12, 16, 12, UiTheme.Warn, 2);
+        var style = UiTheme.Box(new Color(UiTheme.Panel, 1f), 12, 16, 12, UiTheme.Warn, 2);
         AddThemeStyleboxOverride("panel", style);
 
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(430, 0) };
@@ -62,7 +66,8 @@ internal sealed partial class RepairDialog : PanelContainer
         var buttons = new HBoxContainer();
         buttons.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         buttons.AddChild(UiTheme.Button("Repair all", RepairAll, "Send the crew to every worn feature of this trail, the worst first"));
-        buttons.AddChild(UiTheme.Button("Later", () => Close(byPlayer: true), "Decide later (the Trails menu has a Repair… button)"));
+        _later = UiTheme.Button("Later", () => Close(byPlayer: true), "Decide later (click the trail in the Trails menu to open this again)");
+        buttons.AddChild(_later);
         box.AddChild(buttons);
     }
 
@@ -78,13 +83,20 @@ internal sealed partial class RepairDialog : PanelContainer
     {
         if (force) _dismissed.Remove(wayId);
         if (_dismissed.Contains(wayId)) return false;
+        if (Visible && _wayId == wayId && _overview)
+        {
+            _overview = false; // a warning for the trail being looked at: now it counts
+            PauseForWarning();
+            _signature = "";
+            return true;
+        }
         if (Visible && _wayId == wayId || _waiting.Contains(wayId)) return false;
         if (Visible) _waiting.Enqueue(wayId);
         else Open(wayId, fromWarning: true);
         return true;
     }
 
-    /// <summary>Open the pop-up for a trail now (from the Trails menu; warnings pause the game, this doesn't).</summary>
+    /// <summary>Open the status overview of a trail (click on it in the Trails menu); warnings pause the game, this doesn't.</summary>
     public void Open(int wayId) => Open(wayId, fromWarning: false);
 
     private void Open(int wayId, bool fromWarning)
@@ -92,13 +104,17 @@ internal sealed partial class RepairDialog : PanelContainer
         _wayId = wayId;
         _workers = Math.Clamp(_ctx.Sim.State.Crew.Count, 1, Math.Max(1, _ctx.Sim.State.CrewRules.MaxWorkersPerJob));
         _signature = "";
-        if (fromWarning && !_pausedByWarning && _ctx.Host.Speed > 0)
-        {
-            _ctx.Host.SetSpeedIndex(0);
-            _pausedByWarning = true;
-        }
+        _overview = !fromWarning;
+        if (fromWarning) PauseForWarning();
         Visible = true;
         Refresh();
+    }
+
+    private void PauseForWarning()
+    {
+        if (_pausedByWarning || _ctx.Host.Speed == 0) return;
+        _ctx.Host.SetSpeedIndex(0);
+        _pausedByWarning = true;
     }
 
     public void Clear()
@@ -112,7 +128,7 @@ internal sealed partial class RepairDialog : PanelContainer
     /// <summary>Closes the pop-up and shows the next waiting trail; when none is left, a game it paused goes on at 1x.</summary>
     private void Close(bool byPlayer)
     {
-        if (byPlayer) _dismissed.Add(_wayId);
+        if (byPlayer && !_overview) _dismissed.Add(_wayId);
         else _dismissed.Remove(_wayId);
         Visible = false;
         while (_waiting.Count > 0)
@@ -157,19 +173,24 @@ internal sealed partial class RepairDialog : PanelContainer
         if (!Visible) return;
         var state = _ctx.Sim.State;
         var way = state.Ways.FirstOrDefault(w => w.Id == _wayId);
-        if (way is null || !NeedsAttention(_wayId))
+        if (way is null || !_overview && !NeedsAttention(_wayId))
         {
             Close(byPlayer: false);
             return;
         }
 
-        _title.Text = $"⚠ {way.Name}: feature needs repair";
-        _subtitle.Text = way.WornOut ? "A feature is worn out: the trail is closed until it is repaired."
+        var built = way.Features.Where(f => f.Built).OrderBy(f => f.Condition).ToList();
+        _title.Text = _overview ? $"{way.Name}: features" : $"⚠ {way.Name}: feature needs repair";
+        bool urgent = built.Any(f => TrailCondition.Permille(f) < state.WearRules.WarnBelowPermille) || way.WornOut;
+        _title.AddThemeColorOverride("font_color", _overview && !urgent ? UiTheme.Text : UiTheme.Warn);
+        _later.Text = _overview ? "Close" : "Later";
+        _subtitle.Text = built.Count == 0 ? "No built features yet: only features wear (Build → trail features)."
+            : way.WornOut ? "A feature is worn out: the trail is closed until it is repaired."
             : way.Repairing ? "The crew is at work on a feature: the trail is closed until it is done."
             : "Repairs close the trail while the crew works on it. At 0 % the trail closes by itself.";
         _workersLabel.Text = _workers.ToString();
 
-        var worn = way.Features.Where(f => f.Built && f.Condition < TrailCondition.Perfect).OrderBy(f => f.Condition).ToList();
+        var worn = _overview ? built : built.Where(f => f.Condition < TrailCondition.Perfect).ToList();
         string signature = string.Join(';', worn.Select(f =>
             $"{f.Id}:{f.Condition / 20_000}:{Jobs.ForRepair(state, f.Id)?.Progress / 20_000}")) + $"|{_workers}|{state.Crew.Count}";
         if (signature == _signature) return;
@@ -193,7 +214,9 @@ internal sealed partial class RepairDialog : PanelContainer
         texts.AddChild(UiTheme.Label($"{type.Name} at {feature.DistanceCm / 100} m", 13, bold: true));
 
         string detail;
-        if (job is not null)
+        if (feature.Condition >= TrailCondition.Perfect && job is null)
+            detail = "like new";
+        else if (job is not null)
             detail = $"repair {WorkCosts.ProgressPermille(state.CrewRules, job) / 10} % done · {(job.Workers > 0 ? job.Workers : state.CrewRules.MaxWorkersPerJob)} workers";
         else
         {
@@ -212,7 +235,7 @@ internal sealed partial class RepairDialog : PanelContainer
         var button = UiTheme.Button(job is not null ? "Repairing…" : "Repair",
             () => _ctx.Host.Enqueue(new RepairFeatureCommand(wayId, featureId, workers)),
             "Send the crew: the repair goes to the front of the queue, the trail is closed while they work");
-        button.Disabled = job is not null || state.Crew.Count == 0;
+        button.Disabled = job is not null || state.Crew.Count == 0 || feature.Condition >= TrailCondition.Perfect;
         if (state.Crew.Count == 0) button.TooltipText = "Hire workers first (Crew menu)";
         row.AddChild(button);
         return row;

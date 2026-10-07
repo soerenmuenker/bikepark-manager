@@ -395,9 +395,7 @@ public partial class TrailsPanel : HudPanel
         box.AddThemeConstantOverride("separation", 3);
         Button Small(Button b) { b.AddThemeFontSizeOverride("font_size", 12); return b; }
 
-        var repair = Small(UiTheme.Button("Repair…", () => Ctx.OpenRepair(id), "Send the crew to repair worn features (the trail is closed meanwhile)"));
-        repair.Disabled = !way.Features.Any(f => f.Built && f.Condition < TrailCondition.Perfect);
-        box.AddChild(repair);
+        box.AddChild(Small(UiTheme.Button("Features…", () => Ctx.OpenRepair(id), "Feature condition and repairs (or click the trail)")));
 
         box.AddChild(Small(UiTheme.Button(way.Closed ? "Open" : "Close", () => Ctx.Host.Enqueue(new SetTrailClosedCommand(id, !way.Closed)),
             way.Closed ? "Let riders on it again (a worn-out trail stays closed until repaired)" : "Close it to riders (those on it finish their run)")));
@@ -418,6 +416,17 @@ public partial class TrailsPanel : HudPanel
         foreach (var way in ways)
         {
             var row = new PanelContainer();
+            if (way.Kind == WayKind.Trail && way.Built)
+            {
+                // Click a trail for its feature overview and repairs.
+                int clicked = way.Id;
+                row.MouseDefaultCursorShape = CursorShape.PointingHand;
+                row.TooltipText = "Click for feature condition and repairs";
+                row.GuiInput += e =>
+                {
+                    if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }) Ctx.OpenRepair(clicked);
+                };
+            }
             var box = UiTheme.Box(UiTheme.Card, 8, 10, 6);
             box.ShadowSize = 0;
             row.AddThemeStyleboxOverride("panel", box);
