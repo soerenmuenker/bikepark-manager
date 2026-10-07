@@ -21,6 +21,10 @@ public static class Jobs
     public static Job? ForTrailRepair(WorldState state, int wayId) =>
         state.Jobs.FirstOrDefault(j => j.Kind == JobKind.RepairFeature && j.WayId == wayId);
 
+    /// <summary>A job on one of this trail's features (building or repairing) that the crew has started: the trail is closed.</summary>
+    public static Job? StartedFeatureWork(WorldState state, int wayId) =>
+        state.Jobs.FirstOrDefault(j => j.Kind is JobKind.RepairFeature or JobKind.BuildFeature && j.WayId == wayId && IsStarted(state, j));
+
     public static Job? ForFeature(WorldState state, int featureId) =>
         state.Jobs.FirstOrDefault(j => j.Kind == JobKind.BuildFeature && j.FeatureId == featureId);
 
@@ -111,7 +115,7 @@ public static class Jobs
             state.CrewStats.WoodUsed -= job.Wood;
         }
         Release(state, job);
-        if (job.Kind == JobKind.RepairFeature && state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail)
+        if (job.Kind is JobKind.RepairFeature or JobKind.BuildFeature && state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail)
             Reopen(ctx, trail);
         ctx.Publish(new JobCancelled(ctx.Tick, job.Id, job.Kind));
     }
@@ -148,6 +152,8 @@ public static class Jobs
             case JobKind.BuildFeature when state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Features.FirstOrDefault(f => f.Id == job.FeatureId) is { } feature:
                 feature.Built = true;
                 state.WaysRevision++;
+                Release(state, job);
+                Reopen(ctx, state.Ways.First(w => w.Id == job.WayId));
                 break;
             case JobKind.RepairFeature when state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail:
                 if (trail.Features.FirstOrDefault(f => f.Id == job.FeatureId) is { } repaired)
@@ -164,22 +170,38 @@ public static class Jobs
     }
 
     /// <summary>
-    /// After a repair (or a cancelled one): the trail is no longer under repair and, if no feature is worn out any more,
+    /// After feature work (or cancelled work): the trail is no longer closed for it and, if no feature is worn out any more,
     /// no longer worn out. Publishes <see cref="TrailReopened"/> when riders may use it again.
     /// </summary>
     public static void Reopen(SimContext ctx, Way trail)
     {
         bool wasRideable = trail.IsRideable;
-        trail.Repairing = ForTrailRepair(ctx.State, trail.Id) is { } other && IsBeingRepaired(ctx.State, other);
+        trail.Repairing = RefreshUnderWork(ctx.State, trail, ctx.Tick);
         if (trail.WornOut && !trail.Features.Any(f => f.Built && f.Condition <= 0))
             trail.WornOut = false;
         if (!wasRideable && trail.IsRideable)
             ctx.Publish(new TrailReopened(ctx.Tick, trail.Id));
     }
 
-    /// <summary>True once the crew has started on the job (a repair that hasn't started doesn't close the trail).</summary>
-    public static bool IsBeingRepaired(WorldState state, Job job) =>
-        job.Kind == JobKind.RepairFeature && (job.Progress > 0 || state.Crew.Any(m => m.JobId == job.Id));
+    /// <summary>
+    /// Whether the trail is closed for feature work now: the crew has started on a job on it, or just finished one and
+    /// the next job on the same trail is about to start (a 15 minute grace, so the trail doesn't open and close between
+    /// two features).
+    /// </summary>
+    public static bool RefreshUnderWork(WorldState state, Way trail, long tick)
+    {
+        if (StartedFeatureWork(state, trail.Id) is not null)
+        {
+            trail.LastWorkTick = tick;
+            return true;
+        }
+        return trail.LastWorkTick >= 0 && tick - trail.LastWorkTick <= 15
+            && state.Jobs.Any(j => j.Kind is JobKind.RepairFeature or JobKind.BuildFeature && j.WayId == trail.Id && Systems.JobSystem.IsWorkable(state, j));
+    }
+
+    /// <summary>True once the crew has started on the job (work that hasn't started doesn't close the trail).</summary>
+    public static bool IsStarted(WorldState state, Job job) =>
+        job.Progress > 0 || state.Crew.Any(m => m.JobId == job.Id);
 
     private static void Release(WorldState state, Job job)
     {

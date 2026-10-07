@@ -59,8 +59,11 @@ public sealed class Way
     /// <summary>Closed because a feature wore out (condition 0); reopens when a repair job finishes that leaves none at 0.</summary>
     public bool WornOut { get; set; }
 
-    /// <summary>The crew is repairing a feature: the trail is closed until the repair is done.</summary>
+    /// <summary>The crew is building or repairing a feature on it: the trail is closed until the work is done.</summary>
     public bool Repairing { get; set; }
+
+    /// <summary>Last tick the crew was seen at work on a feature of this trail (-1 = never); bridges the gap between two jobs.</summary>
+    public long LastWorkTick { get; set; } = -1;
 
     /// <summary>A built trail riders may start runs on.</summary>
     public bool IsRideable => Built && !Closed && !WornOut && !Repairing;

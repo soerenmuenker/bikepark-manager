@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Systems;
 ///   <item>a built feature below <see cref="WearRules.WarnBelowPermille"/> raises a <see cref="FeatureWarning"/> once;</item>
 ///   <item>a trail with a feature at 0 closes (<see cref="Way.WornOut"/>) until repairs leave none at 0 — the warning is
 ///   raised again then, so the player can send the crew;</item>
-///   <item>a trail is closed while the crew is repairing one of its features (<see cref="Way.Repairing"/>);</item>
+///   <item>a trail is closed while the crew builds or repairs one of its features (<see cref="Way.Repairing"/>);</item>
 ///   <item>minutes a trail is closed while the park is open are counted.</item>
 /// </list>
 /// Nothing is repaired on its own: the player sends the crew (<see cref="Commands.RepairFeatureCommand"/>).
@@ -53,12 +53,13 @@ internal sealed class TrailCareSystem : ISimSystem
             }
         }
 
-        bool repairing = Jobs.ForTrailRepair(state, trail.Id) is { } job && Jobs.IsBeingRepaired(state, job);
+        var work = Jobs.StartedFeatureWork(state, trail.Id);
+        bool repairing = Jobs.RefreshUnderWork(state, trail, ctx.Tick);
         if (repairing != trail.Repairing)
         {
             bool wasRideable = trail.IsRideable;
             trail.Repairing = repairing;
-            if (wasRideable && !trail.IsRideable) ctx.Publish(new TrailClosed(ctx.Tick, trail.Id, TrailClosedReason.Repair));
+            if (wasRideable && !trail.IsRideable) ctx.Publish(new TrailClosed(ctx.Tick, trail.Id, work?.Kind == JobKind.BuildFeature ? TrailClosedReason.Building : TrailClosedReason.Repair));
             else if (!wasRideable && trail.IsRideable) ctx.Publish(new TrailReopened(ctx.Tick, trail.Id));
         }
     }

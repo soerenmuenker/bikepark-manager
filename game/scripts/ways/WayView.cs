@@ -182,7 +182,7 @@ public partial class WayView : Node3D
             AddRibbon(WayMeshes.Ribbon(grid, g, 1.4f, 0.06f, followGround: true, i => DirtAt(state, way, g, i)), way.Name);
             var stripe = way.IsRideable ? WayMeshes.RatingColor(g.Rating) : ClosedStripe;
             AddRibbon(WayMeshes.Ribbon(grid, g, 0.35f, 0.09f, followGround: true, _ => stripe), way.Name + " stripe");
-            string status = way.WornOut ? "\nCLOSED · worn out" : way.Repairing ? "\nCLOSED · repair" : way.Closed ? "\nCLOSED" : "";
+            string status = way.WornOut ? "\nCLOSED · worn out" : way.Repairing ? "\nCLOSED · crew at work" : way.Closed ? "\nCLOSED" : "";
             AddLabel($"{way.Name}\n{g.Rating} · {g.LengthCm / 100} m{status}", WayMeshes.ToWorld(g.PositionAt(0)) + Vector3.Up * 4f,
                 way.IsRideable ? stripe : new Color(0.95f, 0.35f, 0.25f));
             AddFeatures(state, grid, network, way, g);

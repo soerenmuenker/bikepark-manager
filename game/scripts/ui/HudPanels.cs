@@ -350,7 +350,7 @@ public partial class TrailsPanel : HudPanel
             }
             var s = way.Stats;
             string avg = s.Runs == 0 ? "no runs yet" : $"{(double)s.SumRunMinutes / s.Runs:F1} min · fun {s.SumFun / s.Runs / 10}%";
-            main.Text = way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Repairing ? $"{way.Name}  · CLOSED (repair)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
+            main.Text = way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Repairing ? $"{way.Name}  · CLOSED (crew at work)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
             main.AddThemeColorOverride("font_color", way.IsRideable ? UiTheme.Text : UiTheme.Bad);
             detail.Text = $"{g.Rating} · {g.LengthCm / 100} m · -{(g.StartHeightCm - g.EndHeightCm) / 100} m · steepest {Gradient.Format(-g.MaxDropGradient)}\n" +
                           $"{s.Runs} runs ({s.RunsToday} today) · {avg}\n" +
@@ -367,7 +367,7 @@ public partial class TrailsPanel : HudPanel
         var worst = built.OrderBy(f => f.Condition).First();
         var type = TrailFeatures.FindType(state.TrailFeatureTypes, worst.TypeId);
         string next = way.WornOut ? "worn out: closed until repaired"
-            : way.Repairing ? $"closed for repair ({WorkCosts.ProgressPermille(state.CrewRules, Jobs.ForRepair(state, worst.Id) ?? Jobs.ForTrailRepair(state, way.Id)!) / 10} % done)"
+            : way.Repairing ? "closed while the crew works on a feature"
             : TrailCondition.Permille(worst) < state.WearRules.WarnBelowPermille ? "needs a repair!"
             : TrailCondition.Permille(worst) < 1000 ? "worn" : "like new";
         return $"Worst feature: {type?.Name} at {worst.DistanceCm / 100} m, {TrailCondition.Permille(worst) / 10} % · {next}";

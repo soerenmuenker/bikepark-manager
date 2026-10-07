@@ -262,11 +262,11 @@ Details: [wear_and_weather.md](wear_and_weather.md).
 - **Only trail features wear.** Condition is `TrailFeature.Condition` (millionths, perfect by default), never in the
   derived `WaySegment` and never via `WaysRevision`: wear changes every minute, the geometry doesn't. Trails themselves
   do not wear.
-- **Closures are filters, not graph changes**: `Way.IsRideable` (`Built && !Closed && !WornOut && !Repairing`) is
+- **Closures are filters, not graph changes**: `Way.IsRideable` (`Built && !Closed && !WornOut && !Repairing` (`Repairing` = crew at work on one of its features)) is
   checked when a rider picks a trail and again when they reach its start (then they pick another); the network keeps the live `Way`/`TrailFeature` objects. Riders already on their
   way finish.
 - **`TrailCareSystem`** (after `GuestSystem`, before `JobSystem`, no RNG) raises the "needs repair" warning, closes a
-  trail whose feature is at 0 and closes it while a repair runs. It never queues work: repairs are manual
+  trail whose feature is at 0 and closes it while the crew builds or repairs a feature. It never queues work: repairs are manual
   (`RepairFeatureCommand`); only a finished repair reopens a worn-out trail.
 - Save version 3 migrates away the per-segment condition and the maintain switch.
 - All wear and work numbers come from `WearRules` / `CrewRules` (`TrailCondition`, `WorkCosts.RepairMinutes`: `crewRules.repairWorkPermille` of the build work).

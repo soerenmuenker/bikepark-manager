@@ -257,6 +257,52 @@ public class WearAndWeatherTests
     }
 
     [Fact]
+    public void BuildingAFeature_ClosesTheTrailWhileTheCrewWorks()
+    {
+        var sim = Valley(7 * 60);
+        var red = Trail(sim, RedRocket);
+        sim.Commands.Enqueue(new HireCrewCommand());
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 20_000));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 30_000));
+        sim.Step();
+        var feature = red.Features.First();
+        Assert.False(feature.Built);
+        Assert.True(red.IsRideable); // planned only: the crew hasn't started
+
+        var closed = new List<TrailClosed>();
+        var reopened = new List<TrailReopened>();
+        sim.Events.Clear();
+        sim.Events.Subscribe<TrailClosed>(closed.Add);
+        sim.Events.Subscribe<TrailReopened>(reopened.Add);
+        sim.RunTicks(sim.State.CrewRules.WorkStartMinute - sim.State.Tick + 3);
+        Assert.False(red.IsRideable);
+        Assert.Contains(sim.Events.Pending, e => e is TrailClosed { WayId: RedRocket, Reason: TrailClosedReason.Building });
+
+        // Both features are built one after the other without the trail opening in between; then it is open.
+        sim.RunTicks(2 * GameTime.MinutesPerDay);
+        sim.Events.Dispatch();
+        Assert.All(red.Features, f => Assert.True(f.Built));
+        Assert.True(red.IsRideable);
+        Assert.Single(closed.Where(c => c.WayId == RedRocket && c.Reason == TrailClosedReason.Building).Take(1));
+        Assert.Contains(reopened, r => r.WayId == RedRocket);
+    }
+
+    [Fact]
+    public void CancellingAPlannedFeature_OpensTheTrailAgain()
+    {
+        var sim = Valley(7 * 60);
+        var red = Trail(sim, RedRocket);
+        sim.Commands.Enqueue(new HireCrewCommand());
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 20_000));
+        sim.RunTicks(sim.State.CrewRules.WorkStartMinute - sim.State.Tick + 3);
+        Assert.False(red.IsRideable);
+        sim.Commands.Enqueue(new RemoveTrailFeatureCommand(RedRocket, red.Features[0].Id));
+        sim.Step();
+        Assert.True(red.IsRideable);
+        Assert.False(red.Repairing);
+    }
+
+    [Fact]
     public void AWornOutTrail_ReopensOnlyWhenNoFeatureIsAtZero()
     {
         var sim = Valley(7 * 60);

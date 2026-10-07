@@ -165,7 +165,7 @@ internal sealed partial class RepairDialog : PanelContainer
 
         _title.Text = $"⚠ {way.Name}: feature needs repair";
         _subtitle.Text = way.WornOut ? "A feature is worn out: the trail is closed until it is repaired."
-            : way.Repairing ? "The crew is repairing: the trail is closed until the repair is done."
+            : way.Repairing ? "The crew is at work on a feature: the trail is closed until it is done."
             : "Repairs close the trail while the crew works on it. At 0 % the trail closes by itself.";
         _workersLabel.Text = _workers.ToString();
 

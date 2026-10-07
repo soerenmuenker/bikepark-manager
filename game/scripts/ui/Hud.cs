@@ -637,6 +637,7 @@ public partial class Hud : CanvasLayer
         {
             TrailClosedReason.WornOut => $"{TrailName(e.WayId)} is worn out and closed until the crew repairs it",
             TrailClosedReason.Repair => $"{TrailName(e.WayId)} is closed while the crew repairs it",
+            TrailClosedReason.Building => $"{TrailName(e.WayId)} is closed while the crew builds a feature",
             _ => $"{TrailName(e.WayId)} is closed",
         }, e.Reason == TrailClosedReason.WornOut ? UiTheme.Bad : UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<FeatureWarning>(e =>

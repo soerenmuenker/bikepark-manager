@@ -128,6 +128,9 @@ public enum TrailClosedReason
 
     /// <summary>The crew started repairing a feature.</summary>
     Repair,
+
+    /// <summary>The crew started building a new feature.</summary>
+    Building,
 }
 
 /// <summary>A trail closed: by the player, worn out (a feature at 0) or while the crew repairs a feature.</summary>

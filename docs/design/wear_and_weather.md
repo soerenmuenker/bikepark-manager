@@ -47,7 +47,10 @@ Decisions:
 - **Closures.**
   - At 0 % on any feature the trail closes: its stripe turns grey and its label says "CLOSED · worn out". It reopens
     when the repairs leave no feature at 0 %.
-  - While the crew repairs a feature the trail is closed ("CLOSED · repair") and opens again when it is done.
+  - While the crew **builds a new feature** or **repairs** one, the trail is closed ("CLOSED · crew at work") and opens
+    again when the work is done. Between two jobs on the same trail it stays closed (up to 15 minutes) instead of
+    opening for a minute. A feature that is only planned doesn't close the trail until the crew starts on it, and
+    cancelling the job opens it again.
   - The player can also close or open a trail. A worn-out trail stays closed until repaired.
   - Riders already on the trail finish their run. Riders still on their way up (walking, in the lift queue, on the
     lift) choose another open trail when they get to the top, so nobody starts a closed trail.
@@ -67,12 +70,12 @@ player: it sends 3 workers to every feature at the moment it falls below 20 %. W
 
 | Run (14 days) | Flow Country | Red Rocket | Lift rides | Crew-h |
 |---|---|---|---|---|
-| no repairs | worn out on day 5, closed 5,024 open-min | worn out on day 5, closed 4,886 open-min | 6,573 (0 a day from day 6) | 76 (all building) |
-| warnings answered at once | open, 21 repairs, closed 439 open-min | open, 19 repairs, closed 497 open-min | 18,706 | 136 |
+| no repairs | worn out on day 6, closed 5,175 open-min | worn out on day 7, closed 4,577 open-min | 8,869 (0 a day from day 8) | 76 (all building) |
+| warnings answered at once | open, 21 repairs, closed 968 open-min | open, 20 repairs, closed 1,123 open-min | 18,706 | 137 |
 
 - A feature takes about 800 passes a day, so tabletops (the hardest) fall below 20 % after ~4.5 days, berms and rollers
   after ~5.5 days. Wet days wear up to three times faster.
-- Answered warnings cost about 60 crew-h over the 14 days, and the trail is closed only while a repair is on.
+- Answered warnings cost about 60 crew-h over the 14 days. The closed minutes are the crew building the features on days 1–3 plus the repairs; the other trail takes the riders, so the lift rides barely change.
 - Known gap: with every trail closed, guests still come and pay. They only leave sooner and unhappier. Visitors
   reacting to closures and ratings is Phase 9 (reputation).
 - The weather changes the guests (rain day: 127 visitors instead of ~280), but barely the lift rides, because the
