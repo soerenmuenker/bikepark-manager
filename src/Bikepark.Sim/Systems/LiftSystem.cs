@@ -6,7 +6,8 @@ using Bikepark.Sim.State;
 namespace Bikepark.Sim.Systems;
 
 /// <summary>
-/// Runs the lifts. At opening time booked bike access tiers take effect. While the park is open each lift sends up a
+/// Runs the lifts. At opening time booked bike access tiers take effect. While the lift runs
+/// (<see cref="ParkSchedule.LiftRunning"/>: open, warm-up before opening, last rides while riders wait) each lift sends up a
 /// carrier every <see cref="LiftType.IntervalSeconds"/>; bike-equipped carriers (<see cref="LiftMath.IsBikeCarrier"/>)
 /// take up to <see cref="LiftType.BikesPerCarrier"/> riders from the front of the queue, who then ride up
 /// (<see cref="RiderSystem"/> moves them). Runs after <see cref="RiderSystem"/>, so riders reaching the station board in
@@ -23,12 +24,11 @@ internal sealed class LiftSystem : ISimSystem
             foreach (var lift in state.Lifts)
                 ApplyBookedTier(ctx, lift);
 
-        bool open = ParkSchedule.IsOpen(state, ctx.Tick);
         foreach (var lift in state.Lifts)
         {
             if (lift.BikeCarrierPermille <= 0 && lift.Queue.Count > 0)
                 ReleaseQueue(ctx, lift);
-            if (open)
+            if (ParkSchedule.LiftRunning(state, lift, ctx.Tick))
                 Dispatch(ctx, lift);
             lift.Stats.MaxQueueToday = Math.Max(lift.Stats.MaxQueueToday, lift.Queue.Count);
             lift.Stats.MaxQueue = Math.Max(lift.Stats.MaxQueue, lift.Queue.Count);

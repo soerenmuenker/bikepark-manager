@@ -378,9 +378,17 @@ public partial class Hud : CanvasLayer
         var state = _ctx.Sim.State;
         _parkName.Text = state.Park.Name.ToUpperInvariant();
         _clock.Text = $"Day {GameTime.Day(state.Tick) + 1}  {GameTime.Format(state.Tick)[^5..]}";
-        bool open = ParkSchedule.IsOpen(state, state.Tick);
-        _openState.Text = _ctx.Host.IsSkipping ? "  FAST-FORWARD" : open ? "  OPEN" : "  CLOSED";
-        _openState.AddThemeColorOverride("font_color", _ctx.Host.IsSkipping ? UiTheme.Warn : open ? UiTheme.Good : UiTheme.TextDim);
+        var (text, color) = _ctx.Host.IsSkippingNight ? ("NIGHT ⏩", UiTheme.TextDim)
+            : _ctx.Host.IsSkipping ? ("FAST-FORWARD", UiTheme.Warn)
+            : ParkSchedule.Phase(state, state.Tick) switch
+            {
+                DayPhase.Open => ("OPEN", UiTheme.Good),
+                DayPhase.PreOpening => ("PRE-OPENING", UiTheme.Warn),
+                DayPhase.LastRides => ("LAST RIDES", UiTheme.Warn),
+                _ => ("CLOSED", UiTheme.TextDim),
+            };
+        _openState.Text = "  " + text;
+        _openState.AddThemeColorOverride("font_color", color);
         for (int i = 0; i < _speedButtons.Count; i++)
             _speedButtons[i].Active = !_ctx.Host.IsSkipping && _ctx.Host.SpeedIndex == i;
     }

@@ -107,9 +107,13 @@ public partial class RiderView : Node3D
         int count = 0;
         foreach (var guest in sim.State.Guests)
         {
-            if (!IsOnNetwork(guest)) continue;
+            if (!IsOnNetwork(guest) && guest.Activity != RiderActivity.Eating) continue;
             Vector3 position, forward;
-            if (guest.Activity == RiderActivity.Queuing)
+            if (guest.Activity == RiderActivity.Eating)
+            {
+                if (!TryLocateBreak(sim, network, guest, out position, out forward)) continue;
+            }
+            else if (guest.Activity == RiderActivity.Queuing)
             {
                 if (!queueIndex.TryGetValue(guest.Id, out var q) || LiftNetwork.Pad(sim.State, q.Lift.Valley.TerrainEditId) is not { } pad) continue;
                 position = LiftShapes.QueueSlot(pad, q.Index);
@@ -127,7 +131,7 @@ public partial class RiderView : Node3D
                 mm.InstanceCount = Math.Max(64, mm.InstanceCount * 2);
             var basis = Basis.LookingAt(forward, Vector3.Up).Scaled(Vector3.One * ModelScale);
             mm.SetInstanceTransform(count, new Transform3D(basis, position));
-            mm.SetInstanceColor(count, SkillColor(guest.Skill));
+            mm.SetInstanceColor(count, guest.Activity == RiderActivity.Eating ? SkillColor(guest.Skill).Lerp(LunchTint, 0.6f) : SkillColor(guest.Skill));
             _positions[guest.Id] = position;
             count++;
         }
@@ -174,6 +178,32 @@ public partial class RiderView : Node3D
             return true;
         }
         return false;
+    }
+
+    private static readonly Color LunchTint = new(1.0f, 0.78f, 0.35f);
+
+    /// <summary>
+    /// A guest on their lunch break: standing next to the bike in a loose ring (by id) around where their last run
+    /// ended, facing out.
+    /// </summary>
+    private static bool TryLocateBreak(Simulation sim, WayNetwork network, Guest guest, out Vector3 position, out Vector3 forward)
+    {
+        position = default;
+        forward = Vector3.Forward;
+        Vector3 spot;
+        if (guest.LocationHubId != 0 && network.FindHub(guest.LocationHubId) is { } hub)
+            spot = LiftShapes.Center(hub.Pad);
+        else if (guest.LocationWayId != 0 && network.TryGetGeometry(guest.LocationWayId, out var g))
+            spot = WayMeshes.ToWorld(g.PositionAt(guest.LocationCm));
+        else
+            return false;
+
+        float angle = guest.Id * 2.39996f; // golden angle: an even spread
+        float radius = 10f + guest.Id % 13 * 1.5f; // clear of the queue at the station
+        forward = new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle));
+        var p = spot + forward * radius;
+        position = new Vector3(p.X, sim.Terrain.HeightAt((long)(p.X * 100), (long)(p.Z * 100)) / 100f, p.Z);
+        return true;
     }
 
     /// <summary>On a lift (in a cabin under the up rope) or walking between parking lot and station.</summary>

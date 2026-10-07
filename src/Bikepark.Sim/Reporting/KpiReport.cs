@@ -40,6 +40,8 @@ public sealed record KpiReport(
     int GuestsQueuing,
     int RidersOnLifts,
     long TotalLiftFeesCents,
+    int GuestsEating,
+    long TotalFoodCents,
     string? StateHash)
 {
     public static KpiReport From(WorldState state, bool includeHash = true)
@@ -77,6 +79,8 @@ public sealed record KpiReport(
             GuestsQueuing: state.Guests.Count(g => g.Activity == RiderActivity.Queuing),
             RidersOnLifts: state.Guests.Count(g => g.Activity == RiderActivity.OnLift),
             TotalLiftFeesCents: state.Finance.TotalLiftFeesCents,
+            GuestsEating: state.Guests.Count(g => g.Activity == RiderActivity.Eating),
+            TotalFoodCents: state.Finance.TotalFoodCents,
             StateHash: includeHash ? Persistence.StateHash.Compute(state) : null);
     }
 }

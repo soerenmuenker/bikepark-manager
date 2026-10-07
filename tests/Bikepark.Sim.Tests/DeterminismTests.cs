@@ -83,6 +83,22 @@ public class DeterminismTests
         Assert.Equal(StateHash.Compute(uninterrupted.State), StateHash.Compute(resumed.State));
     }
 
+    [Theory]
+    [InlineData(12L * 60 + 30)] // lunch
+    [InlineData(18L * 60 + 10)] // last rides
+    public void SaveLoadMidDay_InStarterValley_ContinuesIdentically(long saveAtTick)
+    {
+        const long totalTicks = 1440 + 600;
+        var uninterrupted = TestWorlds.RunLift(5, totalTicks, TestWorlds.DemoLiftNetwork());
+
+        var first = TestWorlds.RunLift(5, saveAtTick, TestWorlds.DemoLiftNetwork());
+        Assert.NotEmpty(first.State.Guests);
+        var resumed = new Simulation(SaveGame.Deserialize(SaveGame.Serialize(first.State)));
+        resumed.RunTicks(totalTicks - saveAtTick);
+
+        Assert.Equal(StateHash.Compute(uninterrupted.State), StateHash.Compute(resumed.State));
+    }
+
     [Fact]
     public void SteppingInChunks_EqualsSteppingAtOnce()
     {

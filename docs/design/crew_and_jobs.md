@@ -37,7 +37,8 @@ Decisions:
 - **Toasts:** "Planned Flow Country: the crew will build it", "Built: Berm on Flow Country at 40 m",
   "Flow Country is built and open".
 - **In the world:** workers are orange-vest figures with hard hats at the tree they fell, at the dug end of a way or
-  on the feature they build. Idle workers wait at the base during work hours.
+  on the feature they build. Idle workers wait at the base during their shift; in overtime only those still on a job
+  are out.
 - **Finance menu:** crew wages and tools & wood totals.
 - **System menu:** an "Instant build (debug)" toggle, which works like `--instant`.
 
@@ -50,28 +51,31 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 ```
 
 The trails are built at once (`"instant": true`). The 19 demo features are planned and built by the crew.
+Re-measured 2026-10-07 with the Phase 5.1 daily rhythm (crew 07:30–17:30 plus up to 90 min overtime to finish a job,
+see [daily_rhythm.md](daily_rhythm.md)).
 
 | Run | Crew | Felled / bought / used wood | Last feature built | Open after 10 days | Wages | Red Rocket |
 |---|---|---|---|---|---|---|
 | no features | 2 workers | – | – | – | €3,600 | Red (569) |
-| features, 2 workers, no tools | 2 workers | 0 / 0 / 15 | day 8, 11:59 (14 of 19) | 5 wood features waiting for wood | €3,600 | Red (650) |
-| + `demo_crew.json` | 3 workers, shovel set, chainsaw, 30 m felling area | 160 / 0 / 155 | day 7, 08:39 (19 of 19) | – | €5,400 + €2,400 tools | Black (700) |
+| features, 2 workers, no tools | 2 workers | 0 / 0 / 15 | day 8, 11:29 (14 of 19) | 5 wood features waiting for wood | €3,600 | Red (650) |
+| + `demo_crew.json` | 3 workers, shovel set, chainsaw, 30 m felling area | 160 / 0 / 155 | day 6, 16:49 (19 of 19) | – | €5,400 + €2,400 tools | Black (700) |
 
-With `demo_crew.json`, the line takes six days:
+With `demo_crew.json`, the line takes six days (two features are finished in overtime after closing: day 2 18:41,
+day 5 18:29):
 
 | Day | Built |
 |---|---|
 | 1–3 | Flow Country's nine dirt features |
-| 3–5 | Red Rocket's dirt features and the kicker (starting wood) |
-| 5 | The felling (80 trees, 160 wood) |
-| 5–7 | The wall-rides and drops |
+| 3–4 | Red Rocket's dirt features and the kicker (starting wood) |
+| 5 | The first drop, the felling (80 trees, 160 wood) |
+| 5–6 | The wall-rides and drops |
 
 The ratings and fun end where Phase 4.1 put them instantly:
 
 | Trail | Rating | Avg fun |
 |---|---|---|
-| Flow Country | Red | 587 |
-| Red Rocket | Black | 582 |
+| Flow Country | Red | 584 |
+| Red Rocket | Black | 583 |
 
 ## Model
 
@@ -125,7 +129,8 @@ so state hashes for older scripts are unchanged. During work hours, every minute
 3. Every job with workers advances.
 4. A finished job sets `Built`, bumps `WaysRevision` and publishes `JobCompleted`.
 
-Outside work hours everyone goes home (`JobId` = 0). `FinanceSystem` pays `wagePerDayCents` per worker at the end of
+After the shift, a worker stays on for up to `overtimeMinutes` only if their job can be finished in the overtime left
+(Phase 5.1); nobody starts new work. Outside work hours everyone goes home (`JobId` = 0). `FinanceSystem` pays `wagePerDayCents` per worker at the end of
 each day.
 
 ### Network
@@ -165,7 +170,7 @@ difficulty and give riders fun.
 | Wage | €180 per day |
 | Max crew | 12 |
 | Max workers per job | 3 |
-| Work hours | 07:00–17:00 |
+| Work hours | 07:30–17:30, up to 90 min overtime to finish a job (Phase 5.1) |
 | Trail digging | 4 crew-min/m |
 | Path digging | 6 crew-min/m |
 | Steep extra | +50 % |

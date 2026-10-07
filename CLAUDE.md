@@ -17,13 +17,16 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Systems/LiftSystem.cs` – booked bike access tiers at opening, carrier dispatch, boarding bike cabins from the FIFO queue
   - `Crew/` – `CrewRules`/`ToolType` (content), `CrewMember`/`Job` (state), `WorkCosts` (all work/wood/speed numbers),
     `Forest` (which scatter trees are gone or claimed), `ClearingPlanner` (felling areas), `Jobs` (queue/cancel/complete)
-  - `Systems/JobSystem.cs` – the crew at work: assigns workers to jobs in priority order, fells trees (wood), builds planned ways and features
+  - `Systems/JobSystem.cs` – the crew at work: assigns workers to jobs in priority order, fells trees (wood), builds planned ways and features;
+    after the shift only overtime that finishes a job
+  - `Systems/ParkSchedule.cs` – the daily timetable (open, last rides, lift warm-up, crew shift/overtime, day phase,
+    quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus, drawn icons, theme in code),
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
-  felling tool, `shaders/`)
+  felling tool, `scripts/world/DayLight.cs` time-of-day sun/sky, `shaders/`)
 - `data/` – JSON content (`scenarios/`, `lift_types.json`, `trail_features.json`, `tools.json`, `scripts/` command
   scripts such as `demo_lift_network.json`, `demo_features.json`, `demo_crew.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
@@ -35,7 +38,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 ```bash
 dotnet build Bikepark.sln
 dotnet test Bikepark.sln
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json]... [--daily] [--save out.json]
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json]... [--daily] [--hourly] [--save out.json]
+# --hourly: the last day per hour (phase, guests, on trails, queuing, eating, runs, crew working, lift minutes)
 # Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
@@ -91,6 +95,9 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     debug `instant` flag is set; scenario ways are always built). Only built ways are routed/ridden and only built
     features count. All work, wood and speed numbers come from `WorkCosts`; which trees stand comes only from `Forest`
     (scatter trees are identified by position; felled ones are stored in `FelledTrees`).
+15. **Daily rhythm:** `ParkSchedule` is the only timetable (systems and views ask it). Skips (night skip, skip to opening)
+    only step more ticks per frame, never jump `Tick`. New daily-rhythm rules default to off. Riders on a lap finish it
+    in the last rides; overtime only finishes jobs (no new assignments).
 
 ## Game controls (debug build)
 
@@ -106,7 +113,10 @@ Fell trees: click the centre, move to size, click to mark · while a build tool 
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
 `--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
-`--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes).
+`--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--no-night-skip`
+(turn off the automatic night skip, e.g. for screenshots at night with `--speed=0`).
+Day: crew 07:30, gondola warm-up 08:30, open 09:00–18:00, lunch ~12–13:30, last rides until 18:45, then the night is
+skipped automatically (Game menu → Skip nights).
 
 ## Conventions
 

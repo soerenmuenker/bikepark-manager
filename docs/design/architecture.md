@@ -39,7 +39,7 @@ Everything that matters for gameplay can be run, tested and balanced without lau
 - `Simulation.Step()` simulates exactly one tick:
   1. take all commands due at this tick from the `CommandQueue` and, in `(Tick, Sequence)` order,
      validate → apply → publish `CommandApplied` / `CommandRejected`;
-  2. run all systems in a **fixed, explicit order** (`ParkHours → GuestArrival → Rider → Lift → Guest → Finance`);
+  2. run all systems in a **fixed, explicit order** (`ParkHours → GuestArrival → Rider → Lift → Guest → Job → Finance`);
   3. increment `WorldState.Tick`.
 - The sim has no notion of real time or frame rate. `SimHost` (Godot) converts real time into
   a number of ticks with a fixed-step accumulator, a speed multiplier and a per-frame cap.
@@ -234,6 +234,24 @@ Design note: [crew_and_jobs.md](crew_and_jobs.md).
   `hireCrew`, `dismissCrew`, `buyTool`, `buyWood`, `fellTrees` (validated by `ClearingPlanner`), `prioritizeJob`,
   `cancelJob`; deleting a planned way or feature cancels its job and refunds wood. **Events**: `CrewHired`,
   `CrewDismissed`, `ToolBought`, `WoodBought`, `JobQueued`, `JobCompleted` (with a title), `JobCancelled`, `TreeFelled`.
+
+## 15. Daily rhythm (Phase 5.1)
+
+Details: [daily_rhythm.md](daily_rhythm.md).
+
+- **`ParkSchedule` is the only timetable**: opening hours, last rides, lift warm-up, crew shift and overtime, the day
+  phase, `IsQuiet` and `NextWakeTick` are pure functions of `WorldState` + tick. Systems and views ask it; nobody
+  compares minutes against the rules directly.
+- **Skipping never jumps `Tick`.** The host's night skip (and the manual skips) only run more steps per frame, so every
+  minute is simulated: tier switches at opening, the books at 23:59, lunch plans and determinism all hold. Whether to
+  skip is a host setting, not state.
+- **Every new daily-rhythm rule defaults to "off"** (`LastRideMinutes`, `LiftWarmupMinutes`, `ArrivalProfile`,
+  lunch window, `OvertimeMinutes`); scenarios opt in. Older saves need no migration.
+- **Guests on a lap are never removed mid-lap before `close + lastRideMinutes`**; guests eating are never removed
+  before closing. Lunch is planned at arrival (`Guest.LunchMinute`) and taken at the next break between laps.
+- **Overtime only finishes work**: no new assignments after the shift; a worker stays only if the job fits in the
+  overtime left.
+- Day light is view-only (`game/scripts/world/DayLight.cs`), derived from the minute of the day.
 
 ## Open questions / next steps
 

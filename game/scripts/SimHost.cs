@@ -4,6 +4,7 @@ using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Scenarios;
+using Bikepark.Sim.Systems;
 using Godot;
 
 namespace Bikepark.Game;
@@ -19,7 +20,10 @@ namespace Bikepark.Game;
 /// demo features on it (simulates the first minute so the trails exist), <c>--demo-crew</c> adds a worker, tools and a
 /// felling area (data/scripts/demo_crew.json), <c>--instant</c> turns on instant building (debug), <c>--speed=N</c> picks a speed index,
 /// <c>--report</c> prints a KPI line every game hour (for headless checks), <c>--advance=N</c> simulates N ticks at start
-/// (after <c>--demo</c>, e.g. 720 = noon on day 1).
+/// (after <c>--demo</c>, e.g. 720 = noon on day 1), <c>--no-night-skip</c> turns off the automatic night skip.
+/// Night skip: whenever the park is quiet (<see cref="ParkSchedule.IsQuiet"/>: closed, empty, crew off) time
+/// fast-forwards to <see cref="ParkSchedule.NextWakeTick"/> and then continues at the speed it had. Skips always step
+/// every tick, so the sim sees each minute.
 /// </summary>
 public partial class SimHost : Node
 {
@@ -45,12 +49,20 @@ public partial class SimHost : Node
     /// <summary>Debug: the build tools build ways and features at once instead of planning crew jobs.</summary>
     public bool InstantBuild { get; set; }
 
+    /// <summary>Fast-forward through quiet nights (closed, empty park, crew off) automatically.</summary>
+    public bool AutoSkipNights { get; set; } = true;
+
+    /// <summary>Game minutes per real second during the night skip (a 12-hour night passes in about 2.5 s).</summary>
+    [Export] public double NightSkipTicksPerSecond { get; set; } = 300;
+
     /// <summary>Game minutes per real second while turbo-skipping towards closing time.</summary>
     [Export] public double TurboTicksPerSecond { get; set; } = 120;
 
     private double _accumulator;
     private long _skipTargetTick = -1;
     private double _skipTicksPerSecond;
+    private int _speedAfterSkip = 1;
+    private bool _nightSkip;
     private bool _report;
 
     public Simulation Sim { get; private set; } = null!;
@@ -59,8 +71,11 @@ public partial class SimHost : Node
 
     public int Speed => SpeedMultipliers[SpeedIndex];
 
-    /// <summary>True while a skip (to opening hours or turbo to closing hours) is running.</summary>
+    /// <summary>True while a skip (night skip, to opening hours or turbo to closing hours) is running.</summary>
     public bool IsSkipping => _skipTargetTick >= 0;
+
+    /// <summary>True while the automatic night skip runs.</summary>
+    public bool IsSkippingNight => IsSkipping && _nightSkip;
 
     /// <summary>Raised when <see cref="Sim"/> is replaced (new game or load). Subscribers must re-subscribe to its events.</summary>
     public event Action<Simulation>? SimulationReplaced;
@@ -88,6 +103,7 @@ public partial class SimHost : Node
             else if (arg == "--demo-crew") LoadDemoCrew();
             else if (arg == "--instant") InstantBuild = true;
             else if (arg == "--report") _report = true;
+            else if (arg == "--no-night-skip") AutoSkipNights = false;
             else if (arg.StartsWith("--speed=", StringComparison.Ordinal) && int.TryParse(arg[8..], out int speed)) SetSpeedIndex(speed);
             else if (arg.StartsWith("--advance=", StringComparison.Ordinal) && long.TryParse(arg[10..], out long ticks)) Sim.RunTicks(ticks);
         }
@@ -95,6 +111,9 @@ public partial class SimHost : Node
 
     public override void _Process(double delta)
     {
+        if (AutoSkipNights && Speed > 0 && !IsSkipping && ParkSchedule.IsQuiet(Sim.State, Sim.State.Tick))
+            StartSkip(ParkSchedule.NextWakeTick(Sim.State, Sim.State.Tick), NightSkipTicksPerSecond, SpeedIndex, night: true);
+
         if (Speed > 0 || IsSkipping)
         {
             _accumulator += delta * (IsSkipping ? _skipTicksPerSecond : TicksPerSecondAtNormalSpeed * Speed);
@@ -179,25 +198,32 @@ public partial class SimHost : Node
     }
 
     /// <summary>Fast-forwards (as fast as the per-frame tick cap allows) to the next opening time, then continues at 1x.</summary>
-    public void SkipToOpeningHours() => StartSkip(Sim.State.Rules.OpenMinute, double.MaxValue);
+    public void SkipToOpeningHours() => StartSkip(NextAt(Sim.State.Rules.OpenMinute), double.MaxValue, 1, night: false);
 
     /// <summary>Runs at turbo speed until the next closing time, then continues at 1x.</summary>
-    public void TurboToClosingHours() => StartSkip(Sim.State.Rules.CloseMinute, TurboTicksPerSecond);
+    public void TurboToClosingHours() => StartSkip(NextAt(Sim.State.Rules.CloseMinute), TurboTicksPerSecond, 1, night: false);
 
-    private void StartSkip(int minuteOfDay, double ticksPerSecond)
+    private long NextAt(int minuteOfDay)
     {
         long tick = Sim.State.Tick;
         long target = GameTime.Day(tick) * GameTime.MinutesPerDay + minuteOfDay;
-        if (target <= tick) target += GameTime.MinutesPerDay;
-        _skipTargetTick = target;
+        return target <= tick ? target + GameTime.MinutesPerDay : target;
+    }
+
+    private void StartSkip(long targetTick, double ticksPerSecond, int speedAfter, bool night)
+    {
+        _skipTargetTick = targetTick;
         _skipTicksPerSecond = ticksPerSecond;
+        _speedAfterSkip = Math.Max(1, speedAfter);
+        _nightSkip = night;
         _accumulator = 0;
     }
 
     private void EndSkip()
     {
         _skipTargetTick = -1;
-        SetSpeedIndex(1);
+        _nightSkip = false;
+        SetSpeedIndex(_speedAfterSkip);
     }
 
     public void Save()

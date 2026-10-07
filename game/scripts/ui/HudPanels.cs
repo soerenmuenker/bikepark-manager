@@ -640,7 +640,7 @@ public partial class CrewPanel : HudPanel
 
 public partial class RidersPanel : HudPanel
 {
-    private Label _inPark = null!, _riding = null!, _queuing = null!, _onLift = null!, _walking = null!;
+    private Label _inPark = null!, _riding = null!, _queuing = null!, _onLift = null!, _walking = null!, _eating = null!;
     private Label _mood = null!, _exitMood = null!, _fun = null!, _runs = null!, _visitors = null!, _unhappy = null!, _turned = null!;
     private ProgressBar _moodBar = null!;
     private Label _follow = null!;
@@ -654,6 +654,7 @@ public partial class RidersPanel : HudPanel
                  {
                      ("In park", l => _inPark = l), ("On trails", l => _riding = l), ("Queuing", l => _queuing = l),
                      ("On the lift", l => _onLift = l), ("Walking / pedalling", l => _walking = l),
+                     ("Lunch break", l => _eating = l),
                  })
         {
             now.AddChild(UiTheme.StatTile(caption, out var value));
@@ -695,6 +696,7 @@ public partial class RidersPanel : HudPanel
         _queuing.Text = $"{k.GuestsQueuing}";
         _onLift.Text = $"{k.RidersOnLifts}";
         _walking.Text = $"{guests.Count(g => g.Activity is RiderActivity.Walking or RiderActivity.Climbing)}";
+        _eating.Text = $"{k.GuestsEating}";
         _mood.Text = guests.Count == 0 ? "–" : $"{k.AverageHappiness / 10}%";
         _mood.AddThemeColorOverride("font_color", guests.Count == 0 ? UiTheme.Text : UiTheme.MoodColor(k.AverageHappiness));
         _moodBar.Value = k.AverageHappiness;
@@ -832,7 +834,7 @@ public partial class LiftsPanel : HudPanel
 public partial class FinancePanel : HudPanel
 {
     private Label _money = null!, _revenue = null!, _expenses = null!, _net = null!;
-    private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _fee = null!;
+    private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _food = null!, _fee = null!;
     private DayChart _chart = null!;
 
     public override string Title => "Finances";
@@ -849,6 +851,7 @@ public partial class FinancePanel : HudPanel
         var totals = Row(24);
         totals.AddChild(UiTheme.StatTile("Total revenue", out _totalRevenue, 16));
         totals.AddChild(UiTheme.StatTile("Total expenses", out _totalExpenses, 16));
+        totals.AddChild(UiTheme.StatTile("Lunch sales", out _food, 16));
         totals.AddChild(UiTheme.StatTile("Lift fees paid", out _liftFees, 16));
         totals.AddChild(UiTheme.StatTile("Crew wages", out _wages, 16));
         totals.AddChild(UiTheme.StatTile("Tools & wood", out _materials, 16));
@@ -883,6 +886,7 @@ public partial class FinancePanel : HudPanel
         _totalRevenue.Text = UiTheme.Money(f.TotalRevenueCents);
         _totalExpenses.Text = UiTheme.Money(f.TotalExpensesCents);
         _liftFees.Text = UiTheme.Money(f.TotalLiftFeesCents);
+        _food.Text = UiTheme.Money(f.TotalFoodCents);
         _wages.Text = UiTheme.Money(f.TotalWagesCents);
         _materials.Text = UiTheme.Money(f.TotalToolsCents + f.TotalWoodCents);
         _fee.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.EntryFeeCents);
@@ -995,6 +999,14 @@ public partial class SystemPanel : HudPanel
         };
         instant.Toggled += on => Ctx.Host.InstantBuild = on;
         Body.AddChild(instant);
+        var nights = new CheckButton
+        {
+            Text = "Skip nights: fast-forward while the park is closed and empty and the crew is off",
+            ButtonPressed = Ctx.Host.AutoSkipNights,
+            FocusMode = FocusModeEnum.None,
+        };
+        nights.Toggled += on => Ctx.Host.AutoSkipNights = on;
+        Body.AddChild(nights);
         Body.AddChild(UiTheme.Label("Space pause · 1–4 speed · +/− zoom · B build · V trails · C crew · R riders · G lifts · M finances · O map", 11, UiTheme.TextDim));
     }
 

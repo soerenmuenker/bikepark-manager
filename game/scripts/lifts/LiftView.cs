@@ -206,12 +206,11 @@ public partial class LiftView : Node3D
     private void UpdateCabins(Simulation sim)
     {
         var state = sim.State;
-        bool running = ParkSchedule.IsOpen(state, state.Tick);
-        float alpha = running ? _host.InterpolationAlpha : 0f;
         var transforms = new List<(Transform3D Transform, Color Color)>();
 
         foreach (var lift in state.Lifts)
         {
+            float alpha = ParkSchedule.LiftRunning(state, lift, state.Tick) ? _host.InterpolationAlpha : 0f;
             var type = LiftNetwork.FindType(state, lift.TypeId);
             var valley = LiftNetwork.Pad(state, lift.Valley.TerrainEditId);
             var mountain = LiftNetwork.Pad(state, lift.Mountain.TerrainEditId);

@@ -305,7 +305,7 @@ public class CrewTests
             sim.Commands.Enqueue(new CancelJobCommand(other.Id));
         sim.Commands.Enqueue(new HireCrewCommand());
         int wood = sim.State.WoodStock;
-        sim.RunTicks(420 + trees * 20 / 3 + 5 - sim.State.Tick); // three workers fell
+        sim.RunTicks(sim.State.CrewRules.WorkStartMinute + trees * 20 / 3 + 5 - sim.State.Tick); // three workers fell
         Assert.Equal(trees, job.TreesFelled);
         Assert.Equal(WorkType.Digging, job.CurrentWorkType);
         Assert.Equal(wood + trees * 2, sim.State.WoodStock);

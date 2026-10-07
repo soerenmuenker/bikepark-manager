@@ -38,14 +38,50 @@ internal sealed class RiderSystem : ISimSystem
             if (guest.Activity == RiderActivity.Wandering)
                 PlaceAtBase(state, guest, network);
 
+            if (guest.Activity == RiderActivity.Eating)
+            {
+                if (ctx.Tick < guest.BusyUntilTick) continue;
+                guest.Activity = RiderActivity.Idle;
+            }
+
             if (guest.Activity == RiderActivity.Idle)
             {
-                if (guest.Energy < state.TrailRules.TiredEnergy || !ParkSchedule.IsOpen(state, ctx.Tick)) continue;
+                if (!ParkSchedule.IsOpen(state, ctx.Tick)) continue;
+                if (TryStartLunch(ctx, guest)) continue;
+                if (guest.Energy < state.TrailRules.TiredEnergy) continue;
                 if (!StartLap(ctx, network, guest)) continue;
             }
 
             Advance(ctx, network, guest, TickMilliseconds);
         }
+    }
+
+    /// <summary>
+    /// At their first break between laps after their planned <see cref="Guest.LunchMinute"/>, guests have lunch where
+    /// they are. It costs <see cref="ParkRules.LunchPriceCents"/> (guests who can't afford it bring their own) and
+    /// restores energy and mood.
+    /// </summary>
+    private static bool TryStartLunch(SimContext ctx, Guest guest)
+    {
+        var rules = ctx.State.Rules;
+        if (guest.HadLunch || guest.LunchMinute < 0 || GameTime.MinuteOfDay(ctx.Tick) < guest.LunchMinute)
+            return false;
+
+        long paid = 0;
+        if (guest.CashCents >= rules.LunchPriceCents)
+        {
+            paid = rules.LunchPriceCents;
+            guest.CashCents -= paid;
+            ctx.State.Finance.Earn(paid);
+            ctx.State.Finance.TotalFoodCents += paid;
+        }
+        guest.HadLunch = true;
+        guest.Activity = RiderActivity.Eating;
+        guest.BusyUntilTick = ctx.Tick + ctx.Rng.Range(rules.LunchMinMinutes, rules.LunchMaxMinutes + 1);
+        guest.Energy = Math.Min(1000, guest.Energy + rules.LunchEnergy);
+        guest.Happiness = Math.Min(1000, guest.Happiness + rules.LunchHappiness);
+        ctx.Publish(new GuestAteLunch(ctx.Tick, guest.Id, paid));
+        return true;
     }
 
     /// <summary>

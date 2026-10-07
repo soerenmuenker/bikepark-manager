@@ -11,15 +11,6 @@ public interface ISimSystem
     void Update(SimContext ctx);
 }
 
-public static class ParkSchedule
-{
-    public static bool IsOpen(WorldState state, long tick)
-    {
-        int minute = GameTime.MinuteOfDay(tick);
-        return minute >= state.Rules.OpenMinute && minute < state.Rules.CloseMinute;
-    }
-}
-
 internal sealed class ParkHoursSystem : ISimSystem
 {
     public void Update(SimContext ctx)
@@ -33,8 +24,8 @@ internal sealed class ParkHoursSystem : ISimSystem
 }
 
 /// <summary>
-/// Spawns guests while the park is open. Arrival rate drops as the entry fee rises above the reference fee. With
-/// parking lots, guests arrive by car and are turned away when the lots are full.
+/// Spawns guests while the park is open, following the day's arrival profile. Arrival rate drops as the entry fee rises
+/// above the reference fee. With parking lots, guests arrive by car and are turned away when the lots are full.
 /// </summary>
 internal sealed class GuestArrivalSystem : ISimSystem
 {
@@ -44,20 +35,45 @@ internal sealed class GuestArrivalSystem : ISimSystem
         if (!ParkSchedule.IsOpen(state, ctx.Tick))
             return;
 
-        int expectedPermille = ExpectedArrivalsPermille(state);
+        int expectedPermille = ExpectedArrivalsPermille(state, GameTime.MinuteOfDay(ctx.Tick));
         int arrivals = expectedPermille / 1000 + (ctx.Rng.ChancePermille(expectedPermille % 1000) ? 1 : 0);
 
         for (int i = 0; i < arrivals; i++)
             TryAdmitGuest(ctx);
     }
 
-    internal static int ExpectedArrivalsPermille(WorldState state)
+    internal static int ExpectedArrivalsPermille(WorldState state, int minuteOfDay)
     {
         var rules = state.Rules;
         long reference = Math.Max(1, rules.ReferenceEntryFeeCents);
         long feeFactor = 1000 + (reference - state.Park.EntryFeeCents) * 500 / reference;
         feeFactor = Math.Clamp(feeFactor, 100, 1500);
-        return (int)(rules.BaseArrivalPermille * feeFactor / 1000);
+        return (int)(rules.BaseArrivalPermille * feeFactor / 1000 * ProfilePermille(rules.ArrivalProfile, minuteOfDay) / 1000);
+    }
+
+    /// <summary>The arrival profile at a minute of the day (1000 without a profile).</summary>
+    public static int ProfilePermille(List<ArrivalPoint> profile, int minuteOfDay)
+    {
+        if (profile.Count == 0) return 1000;
+        if (minuteOfDay <= profile[0].Minute) return profile[0].Permille;
+        for (int i = 1; i < profile.Count; i++)
+        {
+            var (a, b) = (profile[i - 1], profile[i]);
+            if (minuteOfDay <= b.Minute)
+                return a.Permille + (b.Permille - a.Permille) * (minuteOfDay - a.Minute) / (b.Minute - a.Minute);
+        }
+        return profile[^1].Permille;
+    }
+
+    /// <summary>A lunch minute in what is left of the lunch window (triangular, peaked in its middle), or -1.</summary>
+    private static int PlanLunch(SimContext ctx, int arrivalMinute)
+    {
+        var rules = ctx.State.Rules;
+        if (!rules.HasLunch || arrivalMinute >= rules.LunchEndMinute) return -1;
+        int from = Math.Max(rules.LunchStartMinute, arrivalMinute + 1);
+        int span = rules.LunchEndMinute - from;
+        if (span <= 0) return -1;
+        return from + (ctx.Rng.NextInt(span) + ctx.Rng.NextInt(span)) / 2;
     }
 
     private static void TryAdmitGuest(SimContext ctx)
@@ -86,8 +102,10 @@ internal sealed class GuestArrivalSystem : ISimSystem
         long reference = Math.Max(1, state.Rules.ReferenceEntryFeeCents);
         int feePenalty = (int)Math.Max(0, (fee - reference) * 200 / reference);
 
+        int lunchMinute = PlanLunch(ctx, GameTime.MinuteOfDay(ctx.Tick));
         var guest = new Guest
         {
+            LunchMinute = lunchMinute,
             Id = state.AllocateEntityId(),
             CashCents = cash - fee,
             Happiness = Math.Clamp(ctx.Rng.Range(550, 801) - feePenalty, 0, 1000),
@@ -110,7 +128,8 @@ internal sealed class GuestArrivalSystem : ISimSystem
 
 /// <summary>
 /// Updates guests in the park: mood, spending, rest, and leaving. Riders only leave between laps or out of a lift
-/// queue (or at closing time); tired riders go home. Waiting in a queue beyond the grace time costs mood; queuing and
+/// queue, never during lunch; tired riders go home. After closing, guests between laps go home; riders on a lap finish
+/// it during the last rides (<see cref="ParkRules.LastRideMinutes"/>), then everyone left goes home. Waiting in a queue beyond the grace time costs mood; queuing and
 /// riding a lift restore energy.
 /// </summary>
 internal sealed class GuestSystem : ISimSystem
@@ -127,8 +146,8 @@ internal sealed class GuestSystem : ISimSystem
         if (guests.Count == 0)
             return;
 
-        bool closing = GameTime.MinuteOfDay(ctx.Tick) >= state.Rules.CloseMinute
-                       || GameTime.MinuteOfDay(ctx.Tick) < state.Rules.OpenMinute;
+        bool closed = !ParkSchedule.GuestsAllowed(state, ctx.Tick);
+        bool lastRides = ParkSchedule.IsLastRides(state, ctx.Tick);
         bool crowded = guests.Count > state.Rules.Capacity;
 
         // Iterate in list order and compact in place: deterministic and allocation-free.
@@ -136,7 +155,9 @@ internal sealed class GuestSystem : ISimSystem
         for (int read = 0; read < guests.Count; read++)
         {
             var guest = guests[read];
-            GuestLeaveReason? leave = closing ? GuestLeaveReason.ParkClosed : UpdateGuest(ctx, guest, crowded);
+            GuestLeaveReason? leave = closed || lastRides && IsBetweenLaps(guest)
+                ? GuestLeaveReason.ParkClosed
+                : UpdateGuest(ctx, guest, crowded);
 
             if (leave is { } reason)
             {
@@ -154,6 +175,10 @@ internal sealed class GuestSystem : ISimSystem
         }
         guests.RemoveRange(write, guests.Count - write);
     }
+
+    /// <summary>Not on a lap: idle, having lunch or wandering (queuing riders are on a lap).</summary>
+    private static bool IsBetweenLaps(Guest guest) =>
+        guest.Activity is RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Wandering;
 
     private static GuestLeaveReason? UpdateGuest(SimContext ctx, Guest guest, bool crowded)
     {
@@ -179,7 +204,7 @@ internal sealed class GuestSystem : ISimSystem
 
         guest.Happiness = Math.Clamp(guest.Happiness, 0, 1000);
 
-        if (onTheWay)
+        if (onTheWay || guest.Activity == RiderActivity.Eating)
             return null;
         if (guest.Activity == RiderActivity.Idle && guest.Energy < ctx.State.TrailRules.TiredEnergy)
             return GuestLeaveReason.Tired;

@@ -38,6 +38,9 @@ public enum GuestLeaveReason
 
 public sealed record GuestLeft(long Tick, int GuestId, GuestLeaveReason Reason) : ISimEvent;
 
+/// <summary>A guest started their lunch break (<paramref name="PaidCents"/> 0: they brought their own).</summary>
+public sealed record GuestAteLunch(long Tick, int GuestId, long PaidCents) : ISimEvent;
+
 public sealed record WayBuilt(long Tick, int WayId) : ISimEvent;
 
 public sealed record WayDeleted(long Tick, int WayId) : ISimEvent;

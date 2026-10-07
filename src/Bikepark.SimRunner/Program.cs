@@ -70,10 +70,20 @@ public static class Program
         var completed = new List<string>();
         sim.Events.Subscribe<JobCompleted>(e => completed.Add($"{GameTime.Format(e.Tick)} {e.Title}"));
 
+        var hourly = new List<HourReport>();
+        int runsThisHour = 0, lunchesThisHour = 0;
+        sim.Events.Subscribe<RunFinished>(_ => runsThisHour++);
+        sim.Events.Subscribe<GuestAteLunch>(_ => lunchesThisHour++);
+
         for (int day = 0; day < options.Days; day++)
         {
-            sim.RunDays(1);
-            sim.Events.Dispatch();
+            if (options.IncludeHourly && day == options.Days - 1)
+                RunDayHourly(sim, hourly, () => (runsThisHour, lunchesThisHour), () => runsThisHour = lunchesThisHour = 0);
+            else
+            {
+                sim.RunDays(1);
+                sim.Events.Dispatch();
+            }
         }
 
         if (options.SavePath is { } savePath)
@@ -90,9 +100,38 @@ public static class Program
             GuestsLeft: leaveReasons,
             TurnedAway: turnedAway.GroupBy(r => r).OrderBy(g => g.Key).ToDictionary(g => g.Key.ToString(), g => g.Count()),
             RejectedCommands: rejections.Select(r => new RejectedCommand(r.Tick, r.Command, r.Reason)).ToList(),
-            Daily: options.IncludeDaily ? dailyReports : null);
+            Daily: options.IncludeDaily ? dailyReports : null,
+            Hourly: options.IncludeHourly ? hourly : null);
 
         Console.WriteLine(JsonSerializer.Serialize(output, RunnerJson.Options));
+    }
+
+    /// <summary>Runs one day minute by minute and averages what is going on per hour (people counts are per-minute averages).</summary>
+    private static void RunDayHourly(Simulation sim, List<HourReport> hourly, Func<(int Runs, int Lunches)> counts, Action resetCounts)
+    {
+        var state = sim.State;
+        for (int hour = 0; hour < 24; hour++)
+        {
+            sim.Events.Dispatch();
+            resetCounts();
+            var phase = Bikepark.Sim.Systems.ParkSchedule.Phase(state, state.Tick);
+            long guests = 0, trails = 0, eating = 0, queuing = 0, crew = 0;
+            int liftMinutes = 0;
+            for (int minute = 0; minute < GameTime.MinutesPerHour; minute++)
+            {
+                if (state.Lifts.Any(l => Bikepark.Sim.Systems.ParkSchedule.LiftRunning(state, l, state.Tick))) liftMinutes++;
+                sim.Step();
+                guests += state.Guests.Count;
+                trails += state.Guests.Count(g => g.Activity == Bikepark.Sim.State.RiderActivity.Descending);
+                eating += state.Guests.Count(g => g.Activity == Bikepark.Sim.State.RiderActivity.Eating);
+                queuing += state.Guests.Count(g => g.Activity == Bikepark.Sim.State.RiderActivity.Queuing);
+                crew += state.Crew.Count(m => m.JobId != 0);
+            }
+            sim.Events.Dispatch();
+            var (runs, lunches) = counts();
+            hourly.Add(new HourReport($"{hour:00}:00", phase.ToString(), (int)(guests / 60), (int)(trails / 60), (int)(eating / 60),
+                (int)(queuing / 60), runs, lunches, Math.Round(crew / 60.0, 1), liftMinutes));
+        }
     }
 
     private static List<WayReport> WayReports(Simulation sim) => sim.State.Ways.Select(w =>
@@ -175,6 +214,18 @@ internal sealed record LiftReport(
     int QueueNow,
     long? DailyFeeCents);
 
+internal sealed record HourReport(
+    string Hour,
+    string PhaseAtStart,
+    int Guests,
+    int OnTrails,
+    int Eating,
+    int Queuing,
+    int RunsFinished,
+    int LunchesStarted,
+    double CrewWorking,
+    int LiftMinutes);
+
 internal sealed record RejectedCommand(long Tick, ICommand Command, string Reason);
 
 internal sealed record CrewReport(
@@ -216,7 +267,8 @@ internal sealed record RunnerOutput(
     Dictionary<string, int> GuestsLeft,
     Dictionary<string, int> TurnedAway,
     List<RejectedCommand> RejectedCommands,
-    List<DayReport>? Daily);
+    List<DayReport>? Daily,
+    List<HourReport>? Hourly);
 
 internal static class RunnerJson
 {
@@ -232,10 +284,11 @@ internal sealed record RunnerOptions(
     ulong? Seed,
     IReadOnlyList<string> CommandsPaths,
     bool IncludeDaily,
-    string? SavePath)
+    string? SavePath,
+    bool IncludeHourly = false)
 {
     public const string Usage =
-        "usage: Bikepark.SimRunner --scenario <path> [--days N=30] [--seed S] [--commands <path>]... [--daily] [--save <path>]";
+        "usage: Bikepark.SimRunner --scenario <path> [--days N=30] [--seed S] [--commands <path>]... [--daily] [--hourly] [--save <path>]";
 
     public static RunnerOptions Parse(string[] args)
     {
@@ -244,6 +297,7 @@ internal sealed record RunnerOptions(
         ulong? seed = null;
         var commands = new List<string>();
         bool daily = false;
+        bool hourly = false;
         string? save = null;
 
         for (int i = 0; i < args.Length; i++)
@@ -261,6 +315,7 @@ internal sealed record RunnerOptions(
                     break;
                 case "--commands": commands.Add(Next()); break;
                 case "--daily": daily = true; break;
+                case "--hourly": hourly = true; break;
                 case "--save": save = Next(); break;
                 case "-h" or "--help": throw new ArgumentException("help requested");
                 default: throw new ArgumentException($"unknown argument '{args[i]}'");
@@ -269,6 +324,6 @@ internal sealed record RunnerOptions(
 
         if (scenario is null)
             throw new ArgumentException("--scenario is required");
-        return new RunnerOptions(scenario, days, seed, commands, daily, save);
+        return new RunnerOptions(scenario, days, seed, commands, daily, save, hourly);
     }
 }

@@ -14,7 +14,8 @@ namespace Bikepark.Sim.Systems;
 ///   first its trees are felled one by one (each adds wood), then the main work is done; a finished job builds its
 ///   way or feature.</item>
 /// </list>
-/// Outside work hours everyone goes home. No randomness.
+/// After the shift, workers stay on for up to <see cref="CrewRules.OvertimeMinutes"/> if their job can be finished in
+/// the overtime left; nobody starts new work. Outside work hours everyone goes home. No randomness.
 /// </summary>
 public sealed class JobSystem : ISimSystem
 {
@@ -24,15 +25,19 @@ public sealed class JobSystem : ISimSystem
         if (state.Crew.Count == 0)
             return;
 
-        int minute = GameTime.MinuteOfDay(ctx.Tick);
-        if (minute < state.CrewRules.WorkStartMinute || minute >= state.CrewRules.WorkEndMinute || state.Jobs.Count == 0)
+        bool shift = ParkSchedule.IsCrewShift(state, ctx.Tick);
+        bool overtime = ParkSchedule.IsCrewOvertime(state, ctx.Tick);
+        if (!shift && !overtime || state.Jobs.Count == 0)
         {
             foreach (var member in state.Crew)
                 member.JobId = 0;
             return;
         }
 
-        Assign(state);
+        if (shift)
+            Assign(state);
+        else
+            KeepFinishableJobs(state, ParkSchedule.OvertimeLeft(state, ctx.Tick));
 
         // Work, in queue order (a finished job leaves the list, so iterate over a copy).
         foreach (var job in state.Jobs.ToList())
@@ -76,6 +81,21 @@ public sealed class JobSystem : ISimSystem
                 member.JobId = job.Id;
                 break;
             }
+        }
+    }
+
+    /// <summary>Overtime: workers stay only on workable jobs their crew can finish in the minutes left.</summary>
+    private static void KeepFinishableJobs(WorldState state, int minutesLeft)
+    {
+        foreach (var member in state.Crew)
+        {
+            if (member.JobId == 0) continue;
+            if (Jobs.Find(state, member.JobId) is not { } job || !IsWorkable(state, job)) { member.JobId = 0; continue; }
+            int workers = state.Crew.Count(m => m.JobId == job.Id);
+            long canDo = (long)workers * WorkCosts.SpeedPermille(state, job.CurrentWorkType) * minutesLeft;
+            if (WorkCosts.RemainingMinutes(state.CrewRules, job) * 1000 > canDo)
+                foreach (var other in state.Crew.Where(m => m.JobId == job.Id))
+                    other.JobId = 0;
         }
     }
 

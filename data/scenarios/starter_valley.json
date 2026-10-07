@@ -6,10 +6,27 @@
   "parkName": "Starter Valley Bikepark",
   "startingMoneyCents": 5000000,
   "entryFeeCents": 1500,
+  // Daily rhythm (minutes of the day): open 09:00-18:00, then 45 min of last rides; the gondola warms up from 08:30.
+  // Arrivals follow the profile (permille of baseArrivalPermille): a morning rush, tapering off in the afternoon.
+  // Guests take one lunch break between 11:00 and 13:00.
   "rules": {
-    "openMinute": 480,
-    "closeMinute": 1200,
-    "baseArrivalPermille": 400,
+    "openMinute": 540,
+    "closeMinute": 1080,
+    "lastRideMinutes": 45,
+    "liftWarmupMinutes": 30,
+    "baseArrivalPermille": 700,
+    "arrivalProfile": [
+      { "minute": 540, "permille": 1600 },
+      { "minute": 660, "permille": 1400 },
+      { "minute": 780, "permille": 800 },
+      { "minute": 900, "permille": 400 },
+      { "minute": 990, "permille": 0 }
+    ],
+    "lunchStartMinute": 660,
+    "lunchEndMinute": 780,
+    "lunchMinMinutes": 30,
+    "lunchMaxMinutes": 50,
+    "lunchPriceCents": 1400,
     "referenceEntryFeeCents": 1500,
     "maxEntryFeeCents": 10000,
     "capacity": 150,
@@ -59,14 +76,16 @@
   "liftTypesFile": "../lift_types.json",
   "trailFeaturesFile": "../trail_features.json",
   "toolsFile": "../tools.json",
-  // Crew and building (CrewRules). Planned ways and features are built by crew jobs during work hours; work is in
+  // Crew and building (CrewRules). Planned ways and features are built by crew jobs during work hours (07:30-17:30,
+  // up to 90 min overtime to finish a job); work is in
   // crew-minutes at base speed. Trees in a planned way's corridor are felled first (each gives woodPerTree wood).
   "crewRules": {
     "wagePerDayCents": 18000,
     "maxCrew": 12,
     "maxWorkersPerJob": 3,
-    "workStartMinute": 420,
-    "workEndMinute": 1020,
+    "workStartMinute": 450,
+    "workEndMinute": 1050,
+    "overtimeMinutes": 90,
     "trailWorkMinutesPerMeter": 4,
     "pathWorkMinutesPerMeter": 6,
     "steepExtraPermille": 500,

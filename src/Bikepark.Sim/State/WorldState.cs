@@ -126,7 +126,68 @@ public sealed class ParkRules
     public int Capacity { get; set; } = 150;
     public long DailyUpkeepCents { get; set; } = 25_000;
     public long SnackPriceCents { get; set; } = 400;
+
+    // ---- Daily rhythm (all off by default, so older saves and scenarios behave as before) ----
+
+    /// <summary>After closing, riders already on a lap finish it (the lift still serves its queue) for this long; then everyone goes home.</summary>
+    public int LastRideMinutes { get; set; }
+
+    /// <summary>The lifts start running (empty) this many minutes before opening.</summary>
+    public int LiftWarmupMinutes { get; set; }
+
+    /// <summary>
+    /// Arrival rate over the day, in permille of <see cref="BaseArrivalPermille"/>: points sorted by minute, linearly
+    /// interpolated, held flat before the first and after the last point. Empty = 1000 all day.
+    /// </summary>
+    public List<ArrivalPoint> ArrivalProfile { get; set; } = [];
+
+    /// <summary>
+    /// Guests plan one lunch break for a minute in this window (both 0 = no lunch), peaked in its middle, and take it at
+    /// their first break between laps after that minute.
+    /// </summary>
+    public int LunchStartMinute { get; set; }
+    public int LunchEndMinute { get; set; }
+    public int LunchMinMinutes { get; set; } = 20;
+    public int LunchMaxMinutes { get; set; } = 40;
+    public long LunchPriceCents { get; set; } = 1_400;
+
+    /// <summary>Energy (0..1000) and happiness a lunch restores.</summary>
+    public int LunchEnergy { get; set; } = 250;
+    public int LunchHappiness { get; set; } = 40;
+
+    public bool HasLunch => LunchEndMinute > LunchStartMinute;
+
+    public List<string> Validate()
+    {
+        var errors = new List<string>();
+        if (OpenMinute < 0 || OpenMinute >= GameTime.MinutesPerDay) errors.Add("rules.openMinute out of range");
+        if (CloseMinute <= OpenMinute || CloseMinute > GameTime.MinutesPerDay) errors.Add("rules.closeMinute must be after openMinute and within the day");
+        if (BaseArrivalPermille < 0) errors.Add("rules.baseArrivalPermille must be >= 0");
+        if (ReferenceEntryFeeCents <= 0) errors.Add("rules.referenceEntryFeeCents must be > 0");
+        if (Capacity <= 0) errors.Add("rules.capacity must be > 0");
+        if (LastRideMinutes < 0 || CloseMinute + LastRideMinutes > GameTime.MinutesPerDay)
+            errors.Add("rules.lastRideMinutes must be >= 0 and end within the day");
+        if (LiftWarmupMinutes < 0 || LiftWarmupMinutes > OpenMinute) errors.Add("rules.liftWarmupMinutes must be within 0..openMinute");
+        for (int i = 0; i < ArrivalProfile.Count; i++)
+        {
+            var p = ArrivalProfile[i];
+            if (p.Minute < 0 || p.Minute >= GameTime.MinutesPerDay || p.Permille is < 0 or > 10_000)
+                errors.Add("rules.arrivalProfile: minute must be within the day and permille within 0..10000");
+            if (i > 0 && p.Minute <= ArrivalProfile[i - 1].Minute) errors.Add("rules.arrivalProfile: minutes must increase");
+        }
+        if (LunchStartMinute < 0 || LunchEndMinute < 0 || LunchEndMinute > GameTime.MinutesPerDay || LunchEndMinute < LunchStartMinute)
+            errors.Add("rules: lunch window must satisfy 0 <= lunchStartMinute <= lunchEndMinute <= 1440");
+        if (LunchMinMinutes < 1 || LunchMaxMinutes < LunchMinMinutes || LunchMaxMinutes > 240)
+            errors.Add("rules: lunch minutes must satisfy 1 <= lunchMinMinutes <= lunchMaxMinutes <= 240");
+        if (LunchPriceCents < 0) errors.Add("rules.lunchPriceCents must be >= 0");
+        if (LunchEnergy is < 0 or > 1000) errors.Add("rules.lunchEnergy must be within 0..1000");
+        if (LunchHappiness is < 0 or > 1000) errors.Add("rules.lunchHappiness must be within 0..1000");
+        return errors;
+    }
 }
+
+/// <summary>One point of <see cref="ParkRules.ArrivalProfile"/>.</summary>
+public sealed record ArrivalPoint(int Minute, int Permille);
 
 public sealed class FinanceState
 {
@@ -135,6 +196,9 @@ public sealed class FinanceState
     public long TotalExpensesCents { get; set; }
     public long RevenueTodayCents { get; set; }
     public long ExpensesTodayCents { get; set; }
+
+    /// <summary>Lunch sales (included in the revenue).</summary>
+    public long TotalFoodCents { get; set; }
 
     /// <summary>Bike access fees paid to lift companies (included in the expenses).</summary>
     public long TotalLiftFeesCents { get; set; }
@@ -206,6 +270,9 @@ public enum RiderActivity : byte
 
     /// <summary>Riding a lift up.</summary>
     OnLift = 6,
+
+    /// <summary>Having lunch where the last run ended, until <see cref="Guest.BusyUntilTick"/>.</summary>
+    Eating = 7,
 }
 
 public sealed class Guest
@@ -256,4 +323,14 @@ public sealed class Guest
     public long RunFun { get; set; }
     public int RunSegments { get; set; }
     public int RunsCompleted { get; set; }
+
+    // ---- Daily rhythm ----
+
+    /// <summary>Minute of the day from which the guest wants lunch (-1: no lunch planned, e.g. arrived after the window).</summary>
+    public int LunchMinute { get; set; } = -1;
+
+    public bool HadLunch { get; set; }
+
+    /// <summary>When the current break (<see cref="RiderActivity.Eating"/>) ends.</summary>
+    public long BusyUntilTick { get; set; }
 }

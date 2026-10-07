@@ -14,7 +14,7 @@ namespace Bikepark.Sim.Tests;
 
 public class LiftTests
 {
-    private const int Opening = 8 * 60;
+    private const int Opening = 9 * 60; // Starter Valley
 
     // ---------------------------------------------------------------- terrain edits
 

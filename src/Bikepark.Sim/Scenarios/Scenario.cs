@@ -133,11 +133,7 @@ public static class ScenarioLoader
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(s.Id)) errors.Add("id is required");
         var r = s.Rules;
-        if (r.OpenMinute < 0 || r.OpenMinute >= GameTime.MinutesPerDay) errors.Add("rules.openMinute out of range");
-        if (r.CloseMinute <= r.OpenMinute || r.CloseMinute > GameTime.MinutesPerDay) errors.Add("rules.closeMinute must be after openMinute and within the day");
-        if (r.BaseArrivalPermille < 0) errors.Add("rules.baseArrivalPermille must be >= 0");
-        if (r.ReferenceEntryFeeCents <= 0) errors.Add("rules.referenceEntryFeeCents must be > 0");
-        if (r.Capacity <= 0) errors.Add("rules.capacity must be > 0");
+        errors.AddRange(r.Validate());
         if (s.EntryFeeCents < 0 || s.EntryFeeCents > r.MaxEntryFeeCents) errors.Add("entryFeeCents out of range");
 
         errors.AddRange(s.Terrain.Validate());
