@@ -54,6 +54,7 @@ public sealed class JobSystem : ISimSystem
     public static bool IsWorkable(WorldState state, Job job) => job.Kind switch
     {
         JobKind.FellTrees => job.IsFelling,
+        JobKind.RepairTrail => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Built == true,
         JobKind.BuildFeature => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Built == true
                                 && (job.WoodTaken || state.WoodStock >= job.Wood),
         _ => true,

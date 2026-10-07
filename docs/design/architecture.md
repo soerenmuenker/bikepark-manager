@@ -39,7 +39,7 @@ Everything that matters for gameplay can be run, tested and balanced without lau
 - `Simulation.Step()` simulates exactly one tick:
   1. take all commands due at this tick from the `CommandQueue` and, in `(Tick, Sequence)` order,
      validate → apply → publish `CommandApplied` / `CommandRejected`;
-  2. run all systems in a **fixed, explicit order** (`ParkHours → GuestArrival → Rider → Lift → Guest → Job → Finance`);
+  2. run all systems in a **fixed, explicit order** (`Weather → ParkHours → GuestArrival → Rider → Lift → Guest → TrailCare → Job → Finance`);
   3. increment `WorldState.Tick`.
 - The sim has no notion of real time or frame rate. `SimHost` (Godot) converts real time into
   a number of ticks with a fixed-step accumulator, a speed multiplier and a per-frame cap.
@@ -252,6 +252,20 @@ Details: [daily_rhythm.md](daily_rhythm.md).
 - **Overtime only finishes work**: no new assignments after the shift; a worker stays only if the job fits in the
   overtime left.
 - Day light is view-only (`game/scripts/world/DayLight.cs`), derived from the minute of the day.
+
+## 16. Wear and weather (Phase 5.2)
+
+Details: [wear_and_weather.md](wear_and_weather.md).
+
+- **Weather is state, rolled once a day** by `WeatherSystem` (first system): `Today`, `Tomorrow` (the forecast),
+  ground wetness. No odds in the scenario ⇒ always sunny and no RNG draws, so older scripts keep their hashes.
+- **Condition is stored per segment index on the trail** (`Way.Condition`, millionths, missing = perfect), never in
+  the derived `WaySegment` and never via `WaysRevision`: wear changes every minute, the geometry doesn't.
+- **Closures are filters, not graph changes**: `Way.IsRideable` (`Built && !Closed && !WornOut`) is checked when a
+  rider picks a trail; the network keeps the live `Way` objects. Riders already on their way finish.
+- **`TrailCareSystem`** (after `GuestSystem`, before `JobSystem`, no RNG) is the only place that closes worn trails and
+  queues automatic repairs; only a finished repair job reopens a worn-out trail.
+- All wear and work numbers come from `WearRules` / `CrewRules` (`TrailCondition`, `WorkCosts.RepairMinutes`).
 
 ## Open questions / next steps
 

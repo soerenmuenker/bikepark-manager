@@ -30,6 +30,15 @@ public static class WorkCosts
     public static WorkEstimate Way(CrewRules crew, TrailRules trail, WayKind kind, WayGeometry geometry, int trees) =>
         new(trees, FellMinutes(crew, trees), WayWorkMinutes(crew, trail, kind, geometry), WorkType.Digging, 0, trees * crew.WoodPerTree);
 
+    /// <summary>Repairing a trail: <see cref="CrewRules.RepairMinutesPerSegment"/> per segment, scaled by its wear.</summary>
+    public static long RepairMinutes(CrewRules crew, Way way, int segments)
+    {
+        long missing = 0;
+        for (int i = 0; i < segments; i++)
+            missing += TrailCondition.Perfect - TrailCondition.Get(way, i);
+        return Math.Max(1, missing * crew.RepairMinutesPerSegment / TrailCondition.Perfect);
+    }
+
     public static WorkEstimate Feature(TrailFeatureType type) =>
         new(0, 0, type.WorkMinutes, FeatureWorkType(type), type.Wood, 0);
 

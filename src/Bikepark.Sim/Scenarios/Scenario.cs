@@ -23,6 +23,10 @@ public sealed class ScenarioDefinition
 
     public Trails.TrailRules TrailRules { get; set; } = new();
 
+    public Trails.WearRules WearRules { get; set; } = new();
+
+    public Weather.WeatherRules WeatherRules { get; set; } = new();
+
     /// <summary>Terrain parameters. A null terrain seed follows the scenario seed (and --seed overrides).</summary>
     public TerrainSettings Terrain { get; set; } = new();
 
@@ -111,6 +115,8 @@ public static class ScenarioLoader
             Rules = scenario.Rules,
             Terrain = scenario.Terrain with { Seed = scenario.Terrain.Seed ?? seed },
             TrailRules = scenario.TrailRules,
+            WearRules = scenario.WearRules,
+            WeatherRules = scenario.WeatherRules,
             LiftTypes = scenario.LiftTypes,
             Operators = scenario.Operators,
             LiftRules = scenario.LiftRules,
@@ -138,6 +144,8 @@ public static class ScenarioLoader
 
         errors.AddRange(s.Terrain.Validate());
         errors.AddRange(s.TrailRules.Validate());
+        errors.AddRange(s.WearRules.Validate());
+        errors.AddRange(s.WeatherRules.Validate());
         errors.AddRange(s.LiftRules.Validate());
         if (s.LiftTypesFile is { Length: > 0 }) errors.Add("liftTypesFile can only be resolved when loading from a file");
         foreach (var type in s.LiftTypes) errors.AddRange(type.Validate());

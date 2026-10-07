@@ -19,6 +19,9 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     `Forest` (which scatter trees are gone or claimed), `ClearingPlanner` (felling areas), `Jobs` (queue/cancel/complete)
   - `Systems/JobSystem.cs` – the crew at work: assigns workers to jobs in priority order, fells trees (wood), builds planned ways and features;
     after the shift only overtime that finishes a job
+  - `Weather/` – `WeatherRules`/`WeatherState`/`DayWeather` (daily seeded forecast, ground wetness), `Systems/WeatherSystem.cs`
+  - `Trails/TrailCondition.cs` – `WearRules` and per-segment trail condition (wear per rider pass, more when wet; worn
+    segments slower/less fun); `Systems/TrailCareSystem.cs` closes worn-out trails and queues repair jobs for maintained ones
   - `Systems/ParkSchedule.cs` – the daily timetable (open, last rides, lift warm-up, crew shift/overtime, day phase,
     quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
@@ -26,9 +29,9 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus, drawn icons, theme in code),
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
-  felling tool, `scripts/world/DayLight.cs` time-of-day sun/sky, `shaders/`)
+  felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
 - `data/` – JSON content (`scenarios/`, `lift_types.json`, `trail_features.json`, `tools.json`, `scripts/` command
-  scripts such as `demo_lift_network.json`, `demo_features.json`, `demo_crew.json`)
+  scripts such as `demo_lift_network.json`, `demo_features.json`, `demo_crew.json`, `demo_no_care.json` (maintenance off))
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
 ## Commands
@@ -39,7 +42,9 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 dotnet build Bikepark.sln
 dotnet test Bikepark.sln
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json]... [--daily] [--hourly] [--save out.json]
-# --hourly: the last day per hour (phase, guests, on trails, queuing, eating, runs, crew working, lift minutes)
+# --hourly: the last day per hour (phase, guests, on trails, queuing, eating, runs, crew working, lift minutes, rain, wetness, closed trails)
+# Wear: 10 days with and without trail care (per-trail status, condition, closed minutes, repairs; weather per day with --daily)
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 10 --commands data/scripts/demo_lift_network.json --daily [--commands data/scripts/demo_no_care.json]
 # Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
@@ -98,6 +103,10 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 15. **Daily rhythm:** `ParkSchedule` is the only timetable (systems and views ask it). Skips (night skip, skip to opening)
     only step more ticks per frame, never jump `Tick`. New daily-rhythm rules default to off. Riders on a lap finish it
     in the last rides; overtime only finishes jobs (no new assignments).
+16. **Wear and weather:** weather is rolled once a day by `WeatherSystem` (no odds ⇒ always sunny, no RNG). Trail
+    condition lives on `Way.Condition` per segment index (never in `WaySegment`, never bumps `WaysRevision`). Closures
+    are filters (`Way.IsRideable`), not graph changes. Only `TrailCareSystem` closes worn trails and auto-queues repairs;
+    only a finished repair reopens a worn-out trail.
 
 ## Game controls (debug build)
 
@@ -107,13 +116,15 @@ pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, 
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter plans it for the crew, Esc cancel;
 preview colored by gradient, tool panel shows trees to fell and crew-hours; ends snap onto plateaus) · L place lift (valley, then top) · K place parking lot (centre, then direction) ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
-Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Build →
+Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu per trail: condition, Repair, Close/Open,
+Maintain (auto repair jobs) · Build →
 Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire/dismiss, tools, buy wood, job queue (↑ first,
 ✕ cancel) · System menu: Instant build (debug) · F follow next rider ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
 `--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
-`--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--no-night-skip`
+`--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
+(queue a command script, before `--advance`), `--no-night-skip`
 (turn off the automatic night skip, e.g. for screenshots at night with `--speed=0`).
 Day: crew 07:30, gondola warm-up 08:30, open 09:00–18:00, lunch ~12–13:30, last rides until 18:45, then the night is
 skipped automatically (Game menu → Skip nights).

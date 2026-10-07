@@ -20,7 +20,9 @@ namespace Bikepark.Game;
 /// demo features on it (simulates the first minute so the trails exist), <c>--demo-crew</c> adds a worker, tools and a
 /// felling area (data/scripts/demo_crew.json), <c>--instant</c> turns on instant building (debug), <c>--speed=N</c> picks a speed index,
 /// <c>--report</c> prints a KPI line every game hour (for headless checks), <c>--advance=N</c> simulates N ticks at start
-/// (after <c>--demo</c>, e.g. 720 = noon on day 1), <c>--no-night-skip</c> turns off the automatic night skip.
+/// (after <c>--demo</c>, e.g. 720 = noon on day 1), <c>--no-night-skip</c> turns off the automatic night skip,
+/// <c>--script=&lt;file&gt;</c> queues a command script (path relative to the repo, at the script's ticks; put it before
+/// <c>--advance</c>).
 /// Night skip: whenever the park is quiet (<see cref="ParkSchedule.IsQuiet"/>: closed, empty, crew off) time
 /// fast-forwards to <see cref="ParkSchedule.NextWakeTick"/> and then continues at the speed it had. Skips always step
 /// every tick, so the sim sees each minute.
@@ -104,6 +106,12 @@ public partial class SimHost : Node
             else if (arg == "--instant") InstantBuild = true;
             else if (arg == "--report") _report = true;
             else if (arg == "--no-night-skip") AutoSkipNights = false;
+            else if (arg.StartsWith("--script=", StringComparison.Ordinal))
+            {
+                var script = ReadScript(arg[9..]);
+                foreach (var timed in script) Sim.Commands.Enqueue(timed.Command, timed.Tick);
+                GD.Print($"Queued {script.Count} commands from {arg[9..]}");
+            }
             else if (arg.StartsWith("--speed=", StringComparison.Ordinal) && int.TryParse(arg[8..], out int speed)) SetSpeedIndex(speed);
             else if (arg.StartsWith("--advance=", StringComparison.Ordinal) && long.TryParse(arg[10..], out long ticks)) Sim.RunTicks(ticks);
         }

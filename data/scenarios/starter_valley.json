@@ -58,6 +58,38 @@
     "descentEnergyPer100Meters": 3,
     "tiredEnergy": 150
   },
+  // Weather: each day is rolled at midnight from these odds (permille), tomorrow's is the forecast. Rain wets the ground
+  // (wetness 0..1000), which dries afterwards; fewer guests come on bad days and riders in the rain lose mood.
+  "weatherRules": {
+    "sunnyPermille": 400,
+    "cloudyPermille": 300,
+    "showersPermille": 200,
+    "rainPermille": 100,
+    "showerMinHours": 1,
+    "showerMaxHours": 3,
+    "rainMinHours": 4,
+    "rainMaxHours": 10,
+    "wetPerRainMinute": 8,
+    "dryPerMinuteSunny": 2,
+    "dryPerMinuteCloudy": 1,
+    "sunnyArrivalPermille": 1050,
+    "cloudyArrivalPermille": 950,
+    "showersArrivalPermille": 800,
+    "rainArrivalPermille": 450,
+    "rainMoodPerMinute": 1
+  },
+  // Trail wear: each rider passing a 10 m segment takes wearPerPass millionths off its condition (more on harder
+  // segments, up to 3x on wet ground). Below 70 % riding gets slower and less fun, below 25 % the trail closes until
+  // repaired; trails set to "maintain" get a repair job below 60 %.
+  "wearRules": {
+    "wearPerPass": 60,
+    "wetWearPermille": 2000,
+    "roughBelowPermille": 700,
+    "wornSpeedLossPermille": 300,
+    "wornFunLoss": 400,
+    "closeBelowPermille": 250,
+    "maintainBelowPermille": 600
+  },
   // Terrain is regenerated from these settings; "seed" defaults to the scenario seed.
   "terrain": {
     "sizeMeters": 1000,
@@ -90,6 +122,7 @@
     "pathWorkMinutesPerMeter": 6,
     "steepExtraPermille": 500,
     "fellMinutesPerTree": 20,
+    "repairMinutesPerSegment": 20,
     "woodPerTree": 2,
     "woodPriceCents": 2500,
     "minClearingRadiusMeters": 5,

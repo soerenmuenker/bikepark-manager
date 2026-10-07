@@ -12,7 +12,7 @@ step takes effect at the next opening.
 
 Proof KPI (SimRunner, Starter Valley + `demo_lift_network.json`, 3 days; re-measured with the Phase 5.1 daily
 rhythm, open 09:00–18:00 with a morning rush): queues reach ~75 at the default tier (every 4th cabin, 150 riders/h,
-~18 min average wait). €300/day in lift fees shows in the expenses. At "all cabins" the wait drops to ~3 min, laps
+~18 min average wait). €300/day in lift fees shows in the expenses. At "all cabins" the wait drops to ~2 min, laps
 triple and exit mood rises from 65 % to 90 %, but the fee is €1,400/day. The gondola warms up empty from 08:30 and
 keeps serving its queue during the last rides after closing ([daily_rhythm.md](daily_rhythm.md)).
 

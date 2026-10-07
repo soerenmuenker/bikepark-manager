@@ -42,6 +42,9 @@ public sealed record KpiReport(
     long TotalLiftFeesCents,
     int GuestsEating,
     long TotalFoodCents,
+    int TrailsClosed,
+    int RainDays,
+    int WetnessPermille,
     string? StateHash)
 {
     public static KpiReport From(WorldState state, bool includeHash = true)
@@ -81,6 +84,9 @@ public sealed record KpiReport(
             TotalLiftFeesCents: state.Finance.TotalLiftFeesCents,
             GuestsEating: state.Guests.Count(g => g.Activity == RiderActivity.Eating),
             TotalFoodCents: state.Finance.TotalFoodCents,
+            TrailsClosed: state.Ways.Count(w => w.Kind == WayKind.Trail && w.Built && !w.IsRideable),
+            RainDays: state.Weather.RainDays,
+            WetnessPermille: state.Weather.WetnessPermille,
             StateHash: includeHash ? Persistence.StateHash.Compute(state) : null);
     }
 }

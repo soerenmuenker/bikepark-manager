@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scripts/SimHost.cs" id="1_simhost"]
 [ext_resource type="Script" path="res://scripts/ui/Hud.cs" id="2_hud"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/crew/ClearingTool.cs" id="11_clearingtool"]
 [ext_resource type="Script" path="res://scripts/crew/CrewView.cs" id="12_crewview"]
 [ext_resource type="Script" path="res://scripts/world/DayLight.cs" id="13_daylight"]
+[ext_resource type="Script" path="res://scripts/world/RainView.cs" id="14_rain"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_material"]
 sky_horizon_color = Color(0.68, 0.76, 0.86, 1)
@@ -47,6 +48,9 @@ directional_shadow_max_distance = 900.0
 
 [node name="DayLight" type="Node" parent="."]
 script = ExtResource("13_daylight")
+
+[node name="RainView" type="Node3D" parent="."]
+script = ExtResource("14_rain")
 
 [node name="TerrainView" type="Node3D" parent="."]
 script = ExtResource("3_terrain")

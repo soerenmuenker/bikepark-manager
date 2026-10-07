@@ -1,6 +1,7 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.Trails;
+using Bikepark.Sim.Weather;
 
 namespace Bikepark.Sim.Events;
 
@@ -103,6 +104,22 @@ public sealed record DayReport(
     int LiftRides = 0,
     long WagesCents = 0,
     int WoodStock = 0,
-    int Jobs = 0);
+    int Jobs = 0,
+    WeatherKind Weather = WeatherKind.Sunny,
+    int RainMinutes = 0,
+    int TrailsClosed = 0);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
+
+/// <summary>A new day: today's weather and tomorrow's forecast.</summary>
+public sealed record WeatherForecast(long Tick, DayWeather Today, DayWeather Tomorrow) : ISimEvent;
+
+public sealed record RainStarted(long Tick) : ISimEvent;
+
+public sealed record RainStopped(long Tick) : ISimEvent;
+
+/// <summary>A trail closed: worn out (a segment fell below the closing condition) or by the player.</summary>
+public sealed record TrailClosed(long Tick, int WayId, bool WornOut) : ISimEvent;
+
+/// <summary>A trail is open again (repaired, or opened by the player).</summary>
+public sealed record TrailReopened(long Tick, int WayId) : ISimEvent;

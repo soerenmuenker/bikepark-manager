@@ -50,6 +50,26 @@ public sealed class Way
     public bool Built { get; set; } = true;
 
     public WayStats Stats { get; set; } = new();
+
+    // ---- Wear (trails only, see TrailCondition) ----
+
+    /// <summary>
+    /// Condition per segment index in millionths (1,000,000 = perfect); segments past the end of the list are perfect,
+    /// so an empty list is a trail in mint condition.
+    /// </summary>
+    public List<int> Condition { get; set; } = [];
+
+    /// <summary>Closed by the player: riders don't start runs on it.</summary>
+    public bool Closed { get; set; }
+
+    /// <summary>Closed because a segment wore out; reopens when a repair job finishes.</summary>
+    public bool WornOut { get; set; }
+
+    /// <summary>The crew repairs the trail on its own when it gets worn (a repair job is queued automatically).</summary>
+    public bool Maintain { get; set; } = true;
+
+    /// <summary>A built trail riders may start runs on.</summary>
+    public bool IsRideable => Built && !Closed && !WornOut;
 }
 
 /// <summary>Usage counters of a trail.</summary>
@@ -61,6 +81,11 @@ public sealed class WayStats
 
     /// <summary>Sum of each run's average fun (0..1000).</summary>
     public long SumFun { get; set; }
+
+    /// <summary>Minutes the trail was closed (by the player or worn out) while the park was open.</summary>
+    public long ClosedMinutes { get; set; }
+
+    public int Repairs { get; set; }
 }
 
 /// <summary>Building rules and rider tuning, loaded from the scenario and saved with the game.</summary>

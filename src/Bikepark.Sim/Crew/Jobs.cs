@@ -13,6 +13,10 @@ public static class Jobs
     public static Job? ForWay(WorldState state, int wayId) =>
         state.Jobs.FirstOrDefault(j => j.Kind == JobKind.BuildWay && j.WayId == wayId);
 
+    /// <summary>The job repairing this trail, if one is queued.</summary>
+    public static Job? ForRepair(WorldState state, int wayId) =>
+        state.Jobs.FirstOrDefault(j => j.Kind == JobKind.RepairTrail && j.WayId == wayId);
+
     public static Job? ForFeature(WorldState state, int featureId) =>
         state.Jobs.FirstOrDefault(j => j.Kind == JobKind.BuildFeature && j.FeatureId == featureId);
 
@@ -28,6 +32,8 @@ public static class Jobs
                 var feature = way?.Features.FirstOrDefault(f => f.Id == job.FeatureId);
                 var type = feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId);
                 return $"{type?.Name ?? "Feature"} on {way?.Name ?? "a trail"}{(feature is null ? "" : $" at {feature.DistanceCm / 100} m")}";
+            case JobKind.RepairTrail:
+                return $"Repair {way?.Name ?? "a trail"}";
             default:
                 return $"Fell {job.Trees.Count} trees";
         }
@@ -56,6 +62,16 @@ public static class Jobs
             MainWorkType = WorkType.Digging,
         });
     }
+
+    /// <summary>Queues repairing a trail's wear (the work is fixed now, from its condition at this moment).</summary>
+    public static Job QueueRepair(SimContext ctx, Way way, WayGeometry geometry) =>
+        Queue(ctx, new Job
+        {
+            Kind = JobKind.RepairTrail,
+            WayId = way.Id,
+            WorkMinutes = WorkCosts.RepairMinutes(ctx.State.CrewRules, way, geometry.Segments.Count),
+            MainWorkType = WorkType.Digging,
+        });
 
     public static Job QueueFeature(SimContext ctx, int wayId, TrailFeature feature, TrailFeatureType type) =>
         Queue(ctx, new Job
@@ -113,6 +129,15 @@ public static class Jobs
             case JobKind.BuildFeature when state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Features.FirstOrDefault(f => f.Id == job.FeatureId) is { } feature:
                 feature.Built = true;
                 state.WaysRevision++;
+                break;
+            case JobKind.RepairTrail when state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail:
+                TrailCondition.Restore(trail);
+                trail.Stats.Repairs++;
+                if (trail.WornOut)
+                {
+                    trail.WornOut = false;
+                    if (trail.IsRideable) ctx.Publish(new TrailReopened(ctx.Tick, trail.Id));
+                }
                 break;
         }
         state.CrewStats.JobsCompleted++;

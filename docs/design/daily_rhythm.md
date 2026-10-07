@@ -40,7 +40,8 @@ Decisions:
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --hourly
 ```
 
-`--hourly` reports the last simulated day minute by minute, averaged per hour (day 3, seed 1337):
+`--hourly` reports the last simulated day minute by minute, averaged per hour (day 3, seed 1337; measured before
+Phase 5.2 turned on weather and wear, which shift the numbers slightly):
 
 | Hour | Phase at start | Guests | On trails | Queuing | Eating | Runs finished | Crew working | Lift minutes |
 |---|---|---|---|---|---|---|---|---|

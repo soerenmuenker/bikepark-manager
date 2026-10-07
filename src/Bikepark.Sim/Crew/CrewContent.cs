@@ -63,6 +63,9 @@ public sealed class CrewRules
     public int SteepExtraPermille { get; set; } = 500;
 
     public int FellMinutesPerTree { get; set; } = 20;
+
+    /// <summary>Repairing one trail segment from condition 0 to perfect (less for less wear), crew-minutes of digging.</summary>
+    public int RepairMinutesPerSegment { get; set; } = 20;
     public int WoodPerTree { get; set; } = 2;
     public long WoodPriceCents { get; set; } = 2_500;
 
@@ -83,6 +86,7 @@ public sealed class CrewRules
             errors.Add("crewRules: work minutes per meter must be within 1..1000");
         if (SteepExtraPermille is < 0 or > 10_000) errors.Add("crewRules.steepExtraPermille must be within 0..10000");
         if (FellMinutesPerTree is < 1 or > 1000) errors.Add("crewRules.fellMinutesPerTree must be within 1..1000");
+        if (RepairMinutesPerSegment is < 1 or > 1000) errors.Add("crewRules.repairMinutesPerSegment must be within 1..1000");
         if (WoodPerTree is < 0 or > 100) errors.Add("crewRules.woodPerTree must be within 0..100");
         if (WoodPriceCents < 0) errors.Add("crewRules.woodPriceCents must be >= 0");
         if (MinClearingRadiusMeters < 1 || MaxClearingRadiusMeters < MinClearingRadiusMeters || MaxClearingRadiusMeters > 200)

@@ -116,10 +116,11 @@ public static class Program
             resetCounts();
             var phase = Bikepark.Sim.Systems.ParkSchedule.Phase(state, state.Tick);
             long guests = 0, trails = 0, eating = 0, queuing = 0, crew = 0;
-            int liftMinutes = 0;
+            int liftMinutes = 0, rainMinutes = 0;
             for (int minute = 0; minute < GameTime.MinutesPerHour; minute++)
             {
                 if (state.Lifts.Any(l => Bikepark.Sim.Systems.ParkSchedule.LiftRunning(state, l, state.Tick))) liftMinutes++;
+                if (Bikepark.Sim.Weather.WeatherMath.IsRaining(state, state.Tick)) rainMinutes++;
                 sim.Step();
                 guests += state.Guests.Count;
                 trails += state.Guests.Count(g => g.Activity == Bikepark.Sim.State.RiderActivity.Descending);
@@ -130,7 +131,8 @@ public static class Program
             sim.Events.Dispatch();
             var (runs, lunches) = counts();
             hourly.Add(new HourReport($"{hour:00}:00", phase.ToString(), (int)(guests / 60), (int)(trails / 60), (int)(eating / 60),
-                (int)(queuing / 60), runs, lunches, Math.Round(crew / 60.0, 1), liftMinutes));
+                (int)(queuing / 60), runs, lunches, Math.Round(crew / 60.0, 1), liftMinutes, rainMinutes, state.Weather.WetnessPermille,
+                state.Ways.Count(w => w.Kind == WayKind.Trail && w.Built && !w.IsRideable)));
         }
     }
 
@@ -150,7 +152,12 @@ public static class Program
             Gradient.Format(geometry.MaxClimbGradient),
             w.Stats.Runs,
             w.Stats.Runs == 0 ? null : Math.Round((double)w.Stats.SumRunMinutes / w.Stats.Runs, 1),
-            w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs));
+            w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs),
+            trail && w.Built ? !w.IsRideable ? w.WornOut ? "worn out" : "closed" : "open" : null,
+            trail ? TrailCondition.AveragePermille(w, geometry.Segments.Count) : null,
+            trail ? TrailCondition.WorstPermille(w, geometry.Segments.Count) : null,
+            trail ? w.Stats.ClosedMinutes : null,
+            trail ? w.Stats.Repairs : null);
     }).ToList();
 
     private static CrewReport? CrewReport(Simulation sim, List<string> completed)
@@ -224,7 +231,10 @@ internal sealed record HourReport(
     int RunsFinished,
     int LunchesStarted,
     double CrewWorking,
-    int LiftMinutes);
+    int LiftMinutes,
+    int RainMinutes,
+    int WetnessPermille,
+    int TrailsClosed);
 
 internal sealed record RejectedCommand(long Tick, ICommand Command, string Reason);
 
@@ -256,7 +266,12 @@ internal sealed record WayReport(
     string? MaxClimbGradient,
     long Runs,
     double? AverageRunMinutes,
-    int? AverageFun);
+    int? AverageFun,
+    string? Status,
+    int? ConditionPermille,
+    int? WorstConditionPermille,
+    long? ClosedMinutes,
+    int? Repairs);
 
 internal sealed record RunnerOutput(
     int Days,

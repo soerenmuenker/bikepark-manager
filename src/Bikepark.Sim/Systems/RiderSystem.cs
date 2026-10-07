@@ -154,6 +154,7 @@ internal sealed class RiderSystem : ISimSystem
         var options = new List<(Way Trail, List<RouteLeg> Route, int Weight)>();
         foreach (var trail in network.Trails)
         {
+            if (!trail.IsRideable) continue; // closed or worn out
             var route = BestRoute(state, network, guest, from, network.StartNode(trail));
             if (route is null) continue;
             options.Add((trail, route, Weight(guest, trail, network.Geometry(trail.Id))));
@@ -276,6 +277,11 @@ internal sealed class RiderSystem : ISimSystem
             int gradeAlong = segment.GradePermille * dir;
             bool isRun = legIndex == guest.Route.Count - 1;
             int speed = Speed(guest, rules, geometry.Kind, segment, gradeAlong);
+            // Worn trail segments are slower and less fun; every pass wears them a bit more.
+            var trailWay = geometry.Kind == WayKind.Trail ? network.FindWay(leg.WayId) : null;
+            int condition = trailWay is null ? 1000 : TrailCondition.Permille(trailWay, segment.Index);
+            if (condition < 1000)
+                speed = Math.Max(MinSpeedCmPerS, speed * (1000 - TrailCondition.SpeedLossPermille(ctx.State.WearRules, condition)) / 1000);
 
             long reach = (long)speed * budgetMs / 1000;
             if (reach <= 0) break;
@@ -304,10 +310,12 @@ internal sealed class RiderSystem : ISimSystem
                 }
                 if (move == toBoundary)
                 {
-                    guest.RunFun += SegmentFun(guest, rules, segment, gradeAlong, speed);
+                    guest.RunFun += Math.Max(0, SegmentFun(guest, rules, segment, gradeAlong, speed) - TrailCondition.FunLoss(ctx.State.WearRules, condition));
                     guest.RunSegments++;
                 }
             }
+            if (trailWay is not null && move == toBoundary)
+                TrailCondition.Wear(trailWay, segment.Index, TrailCondition.PassWear(ctx.State, segment));
         }
     }
 

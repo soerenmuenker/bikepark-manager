@@ -24,7 +24,7 @@ internal sealed class ParkHoursSystem : ISimSystem
 }
 
 /// <summary>
-/// Spawns guests while the park is open, following the day's arrival profile. Arrival rate drops as the entry fee rises
+/// Spawns guests while the park is open, following the day's arrival profile and weather. Arrival rate drops as the entry fee rises
 /// above the reference fee. With parking lots, guests arrive by car and are turned away when the lots are full.
 /// </summary>
 internal sealed class GuestArrivalSystem : ISimSystem
@@ -48,7 +48,8 @@ internal sealed class GuestArrivalSystem : ISimSystem
         long reference = Math.Max(1, rules.ReferenceEntryFeeCents);
         long feeFactor = 1000 + (reference - state.Park.EntryFeeCents) * 500 / reference;
         feeFactor = Math.Clamp(feeFactor, 100, 1500);
-        return (int)(rules.BaseArrivalPermille * feeFactor / 1000 * ProfilePermille(rules.ArrivalProfile, minuteOfDay) / 1000);
+        long weather = state.WeatherRules.ArrivalPermille(state.Weather.Today.Kind);
+        return (int)(rules.BaseArrivalPermille * feeFactor / 1000 * ProfilePermille(rules.ArrivalProfile, minuteOfDay) / 1000 * weather / 1000);
     }
 
     /// <summary>The arrival profile at a minute of the day (1000 without a profile).</summary>
@@ -149,6 +150,7 @@ internal sealed class GuestSystem : ISimSystem
         bool closed = !ParkSchedule.GuestsAllowed(state, ctx.Tick);
         bool lastRides = ParkSchedule.IsLastRides(state, ctx.Tick);
         bool crowded = guests.Count > state.Rules.Capacity;
+        bool raining = Weather.WeatherMath.IsRaining(state, ctx.Tick);
 
         // Iterate in list order and compact in place: deterministic and allocation-free.
         int write = 0;
@@ -157,7 +159,7 @@ internal sealed class GuestSystem : ISimSystem
             var guest = guests[read];
             GuestLeaveReason? leave = closed || lastRides && IsBetweenLaps(guest)
                 ? GuestLeaveReason.ParkClosed
-                : UpdateGuest(ctx, guest, crowded);
+                : UpdateGuest(ctx, guest, crowded, raining);
 
             if (leave is { } reason)
             {
@@ -180,7 +182,7 @@ internal sealed class GuestSystem : ISimSystem
     private static bool IsBetweenLaps(Guest guest) =>
         guest.Activity is RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Wandering;
 
-    private static GuestLeaveReason? UpdateGuest(SimContext ctx, Guest guest, bool crowded)
+    private static GuestLeaveReason? UpdateGuest(SimContext ctx, Guest guest, bool crowded, bool raining)
     {
         var rules = ctx.State.Rules;
         var liftRules = ctx.State.LiftRules;
@@ -190,6 +192,8 @@ internal sealed class GuestSystem : ISimSystem
         if (crowded)
             guest.Happiness -= CrowdingPenalty;
 
+        if (raining && guest.Activity != RiderActivity.OnLift)
+            guest.Happiness -= ctx.State.WeatherRules.RainMoodPerMinute;
         if (guest.Activity is RiderActivity.Queuing or RiderActivity.OnLift)
             guest.Energy = Math.Min(1000, guest.Energy + liftRules.RestEnergyPerMinute);
         if (guest.Activity == RiderActivity.Queuing && ctx.Tick - guest.QueueSinceTick >= liftRules.QueueGraceMinutes)
@@ -257,7 +261,10 @@ internal sealed class FinanceSystem : ISimSystem
             LiftRides: state.Lifts.Sum(l => l.Stats.RidersToday),
             WagesCents: state.Finance.WagesTodayCents,
             WoodStock: state.WoodStock,
-            Jobs: state.Jobs.Count);
+            Jobs: state.Jobs.Count,
+            Weather: state.Weather.Today.Kind,
+            RainMinutes: state.Weather.Today.RainEndMinute - state.Weather.Today.RainStartMinute,
+            TrailsClosed: state.Ways.Count(w => w.Kind == Trails.WayKind.Trail && w.Built && !w.IsRideable));
         ctx.Publish(new DayEnded(ctx.Tick, report));
 
         foreach (var way in state.Ways)

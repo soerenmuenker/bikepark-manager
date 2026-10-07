@@ -40,11 +40,13 @@ public sealed class Simulation
         // Order matters for determinism and gameplay. Append new systems deliberately.
         _systems =
         [
+            new WeatherSystem(),
             new ParkHoursSystem(),
             new GuestArrivalSystem(),
             new RiderSystem(),
             new LiftSystem(),
             new GuestSystem(),
+            new TrailCareSystem(),
             new JobSystem(),
             new FinanceSystem(),
         ];

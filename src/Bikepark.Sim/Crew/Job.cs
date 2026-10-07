@@ -22,6 +22,9 @@ public enum JobKind : byte
 
     /// <summary>Fell the trees in a circle (<see cref="Job.Center"/>, <see cref="Job.RadiusCm"/>).</summary>
     FellTrees = 2,
+
+    /// <summary>Repair a worn trail (<see cref="Job.WayId"/>): when done, every segment is in perfect condition.</summary>
+    RepairTrail = 3,
 }
 
 /// <summary>

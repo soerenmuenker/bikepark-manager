@@ -1,4 +1,5 @@
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Weather;
 using Godot;
 
 namespace Bikepark.Game.World;
@@ -7,7 +8,7 @@ namespace Bikepark.Game.World;
 /// Time-of-day lighting. From the game clock (smoothed between ticks) it moves the <c>Sun</c> along an arc from east
 /// (sunrise ~06:00) over south to west (sunset ~21:00) and blends a keyframe table for its colour and energy, the sky,
 /// the fog and the ambient light: warm low light in the morning and evening, white at noon, faint blue moonlight at
-/// night. Pure view.
+/// night. Clouds and rain (from the sim's weather) dim the sun and grey the sky. Pure view.
 /// </summary>
 public partial class DayLight : Node
 {
@@ -50,6 +51,8 @@ public partial class DayLight : Node
     private DirectionalLight3D _sun = null!;
     private Godot.Environment _environment = null!;
     private ProceduralSkyMaterial? _sky;
+    private float _overcast;
+    private float _baseFogDensity;
 
     public override void _Ready()
     {
@@ -57,12 +60,27 @@ public partial class DayLight : Node
         _sun = GetNode<DirectionalLight3D>(SunPath);
         _environment = GetNode<WorldEnvironment>(EnvironmentPath).Environment;
         _sky = _environment.Sky?.SkyMaterial as ProceduralSkyMaterial;
+        _baseFogDensity = _environment.FogDensity;
+    }
+
+    /// <summary>How overcast it is now, 0..1: rain is darkest, then rain days, cloudy days, shower days.</summary>
+    private static float OvercastTarget(Bikepark.Sim.State.WorldState state)
+    {
+        if (WeatherMath.IsRaining(state, state.Tick)) return 1f;
+        return state.Weather.Today.Kind switch
+        {
+            WeatherKind.Rain => 0.75f,
+            WeatherKind.Cloudy => 0.55f,
+            WeatherKind.Showers => 0.35f,
+            _ => 0f,
+        };
     }
 
     public override void _Process(double delta)
     {
         var state = _host.Sim.State;
         float minute = GameTime.MinuteOfDay(state.Tick) + Math.Clamp(_host.InterpolationAlpha, 0f, 0.999f);
+        _overcast = Mathf.MoveToward(_overcast, OvercastTarget(state), (float)delta * 0.4f); // clouds roll in over a few seconds
         Apply(minute);
     }
 
@@ -74,14 +92,15 @@ public partial class DayLight : Node
         float t = b.Minute > a.Minute ? Math.Clamp((minute - a.Minute) / (b.Minute - a.Minute), 0f, 1f) : 0f;
         t = t * t * (3f - 2f * t); // smoothstep: no kinks at the keys
 
-        float energy = Mathf.Lerp(a.Energy, b.Energy, t);
+        float energy = Mathf.Lerp(a.Energy, b.Energy, t) * (1f - 0.6f * _overcast);
         _sun.LightEnergy = energy;
-        _sun.LightColor = a.Light.Lerp(b.Light, t);
+        _sun.LightColor = Grey(a.Light.Lerp(b.Light, t), 0.6f * _overcast);
         _sun.ShadowEnabled = energy >= ShadowMinEnergy;
         _sun.Basis = Basis.LookingAt(-LightSourceDirection(minute), Vector3.Up);
 
-        var top = a.SkyTop.Lerp(b.SkyTop, t);
-        var horizon = a.Horizon.Lerp(b.Horizon, t);
+        var top = Grey(a.SkyTop.Lerp(b.SkyTop, t), 0.8f * _overcast).Darkened(0.25f * _overcast);
+        var horizon = Grey(a.Horizon.Lerp(b.Horizon, t), 0.7f * _overcast).Darkened(0.15f * _overcast);
+        _environment.FogDensity = _baseFogDensity * (1f + 2f * _overcast * _overcast);
         if (_sky is not null)
         {
             _sky.SkyTopColor = top;
@@ -93,6 +112,13 @@ public partial class DayLight : Node
         // Fog covers the whole valley: half as saturated as the horizon, or dawn and dusk paint everything.
         float grey = horizon.Luminance;
         _environment.FogLightColor = horizon.Lerp(new Color(grey, grey, grey), 0.5f);
+    }
+
+    /// <summary>The colour moved towards a grey of the same brightness.</summary>
+    private static Color Grey(Color c, float amount)
+    {
+        float l = c.Luminance;
+        return c.Lerp(new Color(l, l, l), Math.Clamp(amount, 0f, 1f));
     }
 
     /// <summary>Unit vector towards the sun (by day) or the moon (by night). North is -Z, east +X.</summary>

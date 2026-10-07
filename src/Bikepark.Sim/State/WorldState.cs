@@ -4,6 +4,7 @@ using Bikepark.Sim.Crew;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
+using Bikepark.Sim.Weather;
 
 namespace Bikepark.Sim.State;
 
@@ -41,6 +42,13 @@ public sealed class WorldState
     public int TerrainRevision { get; set; }
 
     public TrailRules TrailRules { get; set; } = new();
+
+    /// <summary>How trails wear (off by default).</summary>
+    public WearRules WearRules { get; set; } = new();
+
+    public WeatherRules WeatherRules { get; set; } = new();
+
+    public WeatherState Weather { get; set; } = new();
 
     /// <summary>Access paths and trails, in build order. Only player input; geometry is derived.</summary>
     public List<Way> Ways { get; set; } = [];

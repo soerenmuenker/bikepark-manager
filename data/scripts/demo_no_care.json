@@ -1,0 +1,4 @@
+[
+  { "tick": 1, "command": { "type": "setTrailMaintain", "wayId": 11, "maintain": false } },
+  { "tick": 1, "command": { "type": "setTrailMaintain", "wayId": 12, "maintain": false } }
+]

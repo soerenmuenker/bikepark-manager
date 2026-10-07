@@ -12,6 +12,7 @@ using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reporting;
 using Bikepark.Sim.Systems;
 using Bikepark.Sim.Trails;
+using Bikepark.Sim.Weather;
 using Godot;
 using Gradient = Bikepark.Sim.Trails.Gradient;
 
@@ -54,7 +55,7 @@ public partial class Hud : CanvasLayer
     private double _refreshTimer;
     private readonly List<IDisposable> _subscriptions = [];
 
-    private Label _parkName = null!, _clock = null!, _openState = null!;
+    private Label _parkName = null!, _clock = null!, _openState = null!, _weather = null!;
     private Label _moneyValue = null!, _guestsValue = null!, _moodValue = null!, _queueValue = null!, _crewValue = null!, _woodValue = null!;
     private IconView _moodIcon = null!;
     private Control _queueChip = null!;
@@ -217,6 +218,10 @@ public partial class Hud : CanvasLayer
         _openState.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         time.AddChild(_openState);
         box.AddChild(time);
+        _weather = UiTheme.Label("", 11, UiTheme.TextDim);
+        _weather.TooltipText = "Today's weather and tomorrow's forecast. Rain keeps guests away and wears wet trails faster.";
+        _weather.MouseFilter = Control.MouseFilterEnum.Stop;
+        box.AddChild(_weather);
 
         var speeds = new HBoxContainer();
         speeds.AddThemeConstantOverride("separation", 4);
@@ -389,6 +394,12 @@ public partial class Hud : CanvasLayer
             };
         _openState.Text = "  " + text;
         _openState.AddThemeColorOverride("font_color", color);
+        var weather = state.Weather;
+        bool raining = WeatherMath.IsRaining(state, state.Tick);
+        _weather.Text = (raining ? "RAINING" : WeatherText(weather.Today)) +
+                        (weather.Tomorrow is { } tomorrow ? $"  ·  tomorrow {WeatherText(tomorrow)}" : "") +
+                        (weather.WetnessPermille >= 100 ? $"  ·  ground {weather.WetnessPermille / 10} % wet" : "");
+        _weather.AddThemeColorOverride("font_color", raining ? UiTheme.Accent : UiTheme.TextDim);
         for (int i = 0; i < _speedButtons.Count; i++)
             _speedButtons[i].Active = !_ctx.Host.IsSkipping && _ctx.Host.SpeedIndex == i;
     }
@@ -582,6 +593,13 @@ public partial class Hud : CanvasLayer
         GetViewport().SetInputAsHandled();
     }
 
+    /// <summary>"Sunny", "Showers 13–15 h", "Rain 06–14 h".</summary>
+    private static string WeatherText(DayWeather day) => day.HasRain
+        ? $"{day.Kind} {day.RainStartMinute / 60:00}–{(day.RainEndMinute + 59) / 60:00} h"
+        : day.Kind.ToString();
+
+    private string TrailName(int wayId) => _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == wayId)?.Name ?? "A trail";
+
     // ---------------------------------------------------------------- events → toasts
 
     private void Subscribe(Simulation sim)
@@ -598,6 +616,13 @@ public partial class Hud : CanvasLayer
                 net >= 0 ? UiTheme.Good : UiTheme.Bad);
         }));
         _subscriptions.Add(events.Subscribe<ParkOpened>(_ => Toast("The park is open", UiTheme.Good)));
+        _subscriptions.Add(events.Subscribe<WeatherForecast>(e =>
+            Toast($"Today: {WeatherText(e.Today)} · tomorrow: {WeatherText(e.Tomorrow)}", e.Today.HasRain ? UiTheme.Warn : UiTheme.TextDim)));
+        _subscriptions.Add(events.Subscribe<RainStarted>(_ => Toast("It's raining: trails wear faster when wet", UiTheme.Warn)));
+        _subscriptions.Add(events.Subscribe<TrailClosed>(e => Toast(e.WornOut
+            ? $"{TrailName(e.WayId)} is worn out and closed until the crew repairs it"
+            : $"{TrailName(e.WayId)} is closed", e.WornOut ? UiTheme.Bad : UiTheme.TextDim)));
+        _subscriptions.Add(events.Subscribe<TrailReopened>(e => Toast($"{TrailName(e.WayId)} is open again", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<ParkClosed>(_ => Toast("The park has closed", UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<CommandRejected>(e => Toast(e.Reason, UiTheme.Bad)));
         _subscriptions.Add(events.Subscribe<WayBuilt>(e =>
@@ -610,6 +635,7 @@ public partial class Hud : CanvasLayer
         {
             JobKind.BuildWay => $"{e.Title} is built and open",
             JobKind.BuildFeature => $"Built: {e.Title}",
+            JobKind.RepairTrail => $"Repaired {TrailName(e.WayId)}",
             _ => $"Done: {e.Title.ToLowerInvariant().Replace("fell ", "felled ")}",
         }, UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<CrewHired>(e => Toast($"Hired {_ctx.Sim.State.Crew.FirstOrDefault(m => m.Id == e.CrewId)?.Name}", UiTheme.Accent)));

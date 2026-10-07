@@ -128,7 +128,8 @@ public sealed record PrioritizeJobCommand(int JobId) : ICommand
 
 /// <summary>
 /// Cancels a job. Building a way or feature: the planned way or feature is removed too (like deleting it). Felling:
-/// trees cut so far stay cut.
+/// trees cut so far stay cut. Repairing a trail: its automatic maintenance is turned off too (or it would be queued
+/// again at once).
 /// </summary>
 public sealed record CancelJobCommand(int JobId) : ICommand
 {
@@ -153,6 +154,10 @@ public sealed record CancelJobCommand(int JobId) : ICommand
                 break;
             case JobKind.BuildFeature:
                 new RemoveTrailFeatureCommand(job.WayId, job.FeatureId).Apply(ctx);
+                break;
+            case JobKind.RepairTrail:
+                if (ctx.State.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail) trail.Maintain = false;
+                Jobs.Cancel(ctx, job);
                 break;
             default:
                 Jobs.Cancel(ctx, job);

@@ -112,6 +112,12 @@ internal static class TestWorlds
         new(2000, new SetEntryFeeCommand(99_999)), // rejected: above max
         new(3000, new SetEntryFeeCommand(800)),
         new(3000, new SetEntryFeeCommand(1200)), // same tick: applied after the previous one
+        // Trail care (no wear in the test world): Red Rocket closed for a while, Blue Line not maintained.
+        new(650, new SetTrailClosedCommand(3, true)),
+        new(800, new SetTrailClosedCommand(3, false)),
+        new(650, new SetTrailMaintainCommand(2, false)),
+        new(660, new RepairTrailCommand(2)), // rejected: in perfect condition
+        new(660, new SetTrailClosedCommand(1, true)), // rejected: a path
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)
