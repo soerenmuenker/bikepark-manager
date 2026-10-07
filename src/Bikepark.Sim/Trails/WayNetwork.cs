@@ -206,12 +206,12 @@ public sealed class WayNetwork
 
     /// <summary>
     /// Cheapest route between two nodes (cost = distance plus a penalty for climbing; links have their own cost), as
-    /// merged legs. Lift links are only used if <paramref name="liftUsable"/> allows them (null: all). Returns an empty
-    /// list if from == to, null if unreachable. Deterministic.
+    /// merged legs. Lift links are only used if <paramref name="liftUsable"/> allows them, ways only if
+    /// <paramref name="wayUsable"/> does (null: all). Returns an empty list if from == to, null if unreachable. Deterministic.
     /// </summary>
     public List<RouteLeg>? Route(int from, int to, Func<int, bool>? liftUsable = null) => Route(from, to, liftUsable, out _);
 
-    public List<RouteLeg>? Route(int from, int to, Func<int, bool>? liftUsable, out long totalCost)
+    public List<RouteLeg>? Route(int from, int to, Func<int, bool>? liftUsable, out long totalCost, Func<int, bool>? wayUsable = null)
     {
         totalCost = 0;
         if (from < 0 || to < 0) return null;
@@ -232,6 +232,7 @@ public sealed class WayNetwork
             foreach (var edge in _edges[node])
             {
                 if (edge.Kind == LegKind.Lift && liftUsable is not null && !liftUsable(edge.Id)) continue;
+                if (edge.Kind == LegKind.Way && wayUsable is not null && !wayUsable(edge.Id)) continue;
                 long next = cost[node] + edge.Cost;
                 if (next >= cost[edge.To]) continue;
                 cost[edge.To] = next;

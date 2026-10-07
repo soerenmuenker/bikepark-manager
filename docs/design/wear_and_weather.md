@@ -14,8 +14,9 @@ Decisions:
 - **Only features wear.** Trails without features (and gravel paths) never wear or close.
 - **Repairs are manual**: the player picks the feature and how many workers (pop-up, or Trails menu → Repair…).
   The repair goes to the front of the crew queue.
-- **The whole trail closes during a repair** (riders are routed per trail), from the moment the crew starts until the
-  feature is perfect again. Riders already on the trail finish their run.
+- **The whole trail closes during a repair** (riders are routed per trail), from the moment the crew is assigned until
+  the feature is perfect again. Riders already on the trail finish their run, and the crew only starts working once the
+  last of them has left: there is never traffic on a trail with work going on.
 - **A repair restores the feature to 100 %.** Work = `repairWorkPermille` (50 %) of its build work, scaled by the wear.
 
 ## What the player sees
@@ -49,11 +50,14 @@ Decisions:
     when the repairs leave no feature at 0 %.
   - While the crew **builds a new feature** or **repairs** one, the trail is closed ("CLOSED · crew at work") and opens
     again when the work is done. Between two jobs on the same trail it stays closed (up to 15 minutes) instead of
-    opening for a minute. A feature that is only planned doesn't close the trail until the crew starts on it, and
-    cancelling the job opens it again.
+    opening for a minute. A feature that is only planned doesn't close the trail until the crew is assigned to it, and
+    cancelling the job opens it again. The workers wait at a closed trail until the last rider is off it (job queue:
+    "waiting for the last riders to leave"), then start.
   - The player can also close or open a trail. A worn-out trail stays closed until repaired.
-  - Riders already on the trail finish their run. Riders still on their way up (walking, in the lift queue, on the
-    lift) choose another open trail when they get to the top, so nobody starts a closed trail.
+  - Riders already on the trail finish their run. Every trail entrance is checked again: riders still on their way
+    (walking, in the lift queue, on the lift, or about to use a trail as a connector) whose next trail closed since they
+    planned the lap pick another open trail at random (weighted as usual) from where they stand, so nobody enters a
+    closed trail. Routes never lead over closed trails.
 - **Feature overview.** Clicking a trail in the Trails menu (or its **Features…** button) opens the same pop-up as a status
   overview: every built feature with its condition, the crew time to repair, the workers stepper and Repair / Repair all.
   Perfect features show "like new". It doesn't pause the game and stays open until you close it (✕ / Close).

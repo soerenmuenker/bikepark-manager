@@ -186,6 +186,7 @@ internal sealed partial class RepairDialog : PanelContainer
         _later.Text = _overview ? "Close" : "Later";
         _subtitle.Text = built.Count == 0 ? "No built features yet: only features wear (Build → trail features)."
             : way.WornOut ? "A feature is worn out: the trail is closed until it is repaired."
+            : way.Repairing && Jobs.HasRidersOn(state, way.Id) ? "The trail is closed for the crew: they start once the last riders have left it."
             : way.Repairing ? "The crew is at work on a feature: the trail is closed until it is done."
             : "Repairs close the trail while the crew works on it. At 0 % the trail closes by itself.";
         _workersLabel.Text = _workers.ToString();

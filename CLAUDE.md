@@ -107,7 +107,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     only trail features wear: condition lives on `TrailFeature.Condition` (never in `WaySegment`, never bumps
     `WaysRevision`). Closures are filters (`Way.IsRideable`: closed, worn out at 0 %, or under repair), not graph
     changes. `TrailCareSystem` warns (< 20 %) and closes, it never queues work: repairs are manual
-    (`RepairFeatureCommand`, from the warning pop-up); only a finished repair reopens a worn-out trail.
+    (`RepairFeatureCommand`, from the warning pop-up); only a finished repair reopens a worn-out trail. Feature work closes
+    its trail when workers are assigned and only progresses once no rider is on it; riders re-check every trail entrance.
 
 ## Game controls (debug build)
 

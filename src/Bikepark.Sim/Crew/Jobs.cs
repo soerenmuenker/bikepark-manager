@@ -21,7 +21,10 @@ public static class Jobs
     public static Job? ForTrailRepair(WorldState state, int wayId) =>
         state.Jobs.FirstOrDefault(j => j.Kind == JobKind.RepairFeature && j.WayId == wayId);
 
-    /// <summary>A job on one of this trail's features (building or repairing) that the crew has started: the trail is closed.</summary>
+    /// <summary>
+    /// A job on one of this trail's features (building or repairing) that the crew has started or been assigned to: the
+    /// trail is closed. The work itself only begins once no rider is on the trail any more (<see cref="IsWaitingForRiders"/>).
+    /// </summary>
     public static Job? StartedFeatureWork(WorldState state, int wayId) =>
         state.Jobs.FirstOrDefault(j => j.Kind is JobKind.RepairFeature or JobKind.BuildFeature && j.WayId == wayId && IsStarted(state, j));
 
@@ -182,6 +185,36 @@ public static class Jobs
         if (!wasRideable && trail.IsRideable)
             ctx.Publish(new TrailReopened(ctx.Tick, trail.Id));
     }
+
+    /// <summary>
+    /// Closes the trail when the crew is assigned to feature work on it, and opens it again when there is none
+    /// (<see cref="RefreshUnderWork"/>); publishes <see cref="TrailClosed"/> / <see cref="TrailReopened"/>.
+    /// </summary>
+    public static void UpdateWorkClosure(SimContext ctx, Way trail)
+    {
+        var work = StartedFeatureWork(ctx.State, trail.Id);
+        bool repairing = RefreshUnderWork(ctx.State, trail, ctx.Tick);
+        if (repairing == trail.Repairing) return;
+        bool wasRideable = trail.IsRideable;
+        trail.Repairing = repairing;
+        if (wasRideable && !trail.IsRideable)
+            ctx.Publish(new TrailClosed(ctx.Tick, trail.Id, work?.Kind == JobKind.BuildFeature ? TrailClosedReason.Building : TrailClosedReason.Repair));
+        else if (!wasRideable && trail.IsRideable)
+            ctx.Publish(new TrailReopened(ctx.Tick, trail.Id));
+    }
+
+    /// <summary>True while any rider is travelling along the way (riding down a trail, or on it on the way to another).</summary>
+    public static bool HasRidersOn(WorldState state, int wayId) =>
+        state.Guests.Any(g => g.Activity is RiderActivity.Descending or RiderActivity.Climbing
+                              && g.LegIndex >= 0 && g.LegIndex < g.Route.Count
+                              && g.Route[g.LegIndex] is { Kind: LegKind.Way } leg && leg.WayId == wayId);
+
+    /// <summary>
+    /// Feature work the crew is assigned to but can't begin yet: the trail is closed, but riders who were already on
+    /// it are still riding down. Nobody works on a trail with traffic.
+    /// </summary>
+    public static bool IsWaitingForRiders(WorldState state, Job job) =>
+        job.Kind is JobKind.RepairFeature or JobKind.BuildFeature && HasRidersOn(state, job.WayId);
 
     /// <summary>
     /// Whether the trail is closed for feature work now: the crew has started on a job on it, or just finished one and

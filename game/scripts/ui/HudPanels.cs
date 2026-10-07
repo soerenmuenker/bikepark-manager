@@ -587,6 +587,8 @@ public partial class CrewPanel : HudPanel
             if (job.Wood > 0 && !job.WoodTaken)
                 return $"Waiting for wood: needs {job.Wood}, {state.WoodStock} in stock (fell trees or buy)";
         }
+        if (workers > 0 && Jobs.IsWaitingForRiders(state, job))
+            return $"Trail closed · waiting for the last riders to leave{who}";
         string left = HudContext.CrewTime(WorkCosts.RemainingMinutes(rules, job)) + " left";
         if (job.IsFelling)
             return $"Felling {job.TreesFelled}/{job.Trees.Count} trees · {left}{who}";

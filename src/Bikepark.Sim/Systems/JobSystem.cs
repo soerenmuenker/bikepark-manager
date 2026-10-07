@@ -9,7 +9,7 @@ namespace Bikepark.Sim.Systems;
 /// <list type="number">
 ///   <item>workers whose job can't go on are freed; free workers (in hiring order) take the first workable job in the
 ///   queue that has room (<see cref="CrewRules.MaxWorkersPerJob"/>); a job needing wood takes it from the stock when
-///   its first worker starts;</item>
+///   its first worker starts; feature work closes its trail at once but only begins once the last rider has left it;</item>
 ///   <item>each job advances by its workers' speed (<see cref="WorkCosts.SpeedPermille"/> for the work it needs now):
 ///   first its trees are felled one by one (each adds wood), then the main work is done; a finished job builds its
 ///   way or feature.</item>
@@ -39,11 +39,17 @@ public sealed class JobSystem : ISimSystem
         else
             KeepFinishableJobs(state, ParkSchedule.OvertimeLeft(state, ctx.Tick));
 
+        // A trail closes as soon as the crew is assigned to work on it, so no new riders enter it.
+        foreach (var job in state.Jobs)
+            if (job.Kind is JobKind.RepairFeature or JobKind.BuildFeature && state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail)
+                Jobs.UpdateWorkClosure(ctx, trail);
+
         // Work, in queue order (a finished job leaves the list, so iterate over a copy).
         foreach (var job in state.Jobs.ToList())
         {
             int workers = state.Crew.Count(m => m.JobId == job.Id);
             if (workers == 0) continue;
+            if (Jobs.IsWaitingForRiders(state, job)) continue; // the last riders are still on the trail
             state.CrewStats.CrewMinutesWorked += workers;
             job.Progress += (long)workers * WorkCosts.SpeedPermille(state, job.CurrentWorkType);
             Advance(ctx, job);

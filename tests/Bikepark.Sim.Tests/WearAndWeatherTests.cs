@@ -257,6 +257,49 @@ public class WearAndWeatherTests
     }
 
     [Fact]
+    public void FeatureWork_ClosesTheTrailAtOnce_ButStartsOnlyOnceTheLastRiderHasLeft()
+    {
+        var sim = Valley(11 * 60);
+        var red = Trail(sim, RedRocket);
+        var berm = AddFeature(sim, RedRocket, "berm", 20_000);
+        berm.Condition = 100_000;
+        // Send the crew at a moment with riders on Red Rocket, so they have to clear it first.
+        while (!Jobs.HasRidersOn(sim.State, RedRocket)) sim.Step();
+        sim.Commands.Enqueue(new HireCrewCommand());
+        sim.Commands.Enqueue(new RepairFeatureCommand(RedRocket, berm.Id, 1));
+        sim.Step();
+        var job = Jobs.ForRepair(sim.State, berm.Id)!;
+        Assert.Equal(1, sim.State.Crew.Count(m => m.JobId == job.Id));
+        Assert.True(red.Repairing); // closed as soon as the crew is assigned
+        var onTrail = sim.State.Guests.Where(g => OnWay(g, RedRocket)).Select(g => g.Id).ToHashSet();
+        Assert.NotEmpty(onTrail);
+
+        int waited = 0;
+        while (Jobs.HasRidersOn(sim.State, RedRocket))
+        {
+            Assert.Equal(0, job.Progress); // nobody works on a trail with traffic
+            Assert.True(Jobs.IsWaitingForRiders(sim.State, job));
+            // Nobody enters it any more, not even riders who planned it before it closed.
+            Assert.All(sim.State.Guests.Where(g => OnWay(g, RedRocket)), g => Assert.Contains(g.Id, onTrail));
+            sim.Step();
+            waited++;
+        }
+        Assert.True(waited > 0);
+
+        sim.Step();
+        Assert.True(job.Progress > 0);
+        while (Jobs.ForRepair(sim.State, berm.Id) is not null)
+        {
+            Assert.False(Jobs.HasRidersOn(sim.State, RedRocket));
+            sim.Step();
+        }
+        Assert.True(red.IsRideable);
+
+        static bool OnWay(Guest g, int wayId) =>
+            g.Activity is RiderActivity.Descending or RiderActivity.Climbing && g.Route[g.LegIndex].WayId == wayId;
+    }
+
+    [Fact]
     public void BuildingAFeature_ClosesTheTrailWhileTheCrewWorks()
     {
         var sim = Valley(7 * 60);

@@ -197,7 +197,7 @@ public static class Program
             state.Finance.TotalToolsCents + state.Finance.TotalWoodCents,
             completed,
             state.Jobs.Select(j => $"{Jobs.Title(state, j)}: {WorkCosts.ProgressPermille(rules, j) / 10} %" +
-                                   (Bikepark.Sim.Systems.JobSystem.IsWorkable(state, j) ? "" : " (waiting)")).ToList());
+                                   (!Bikepark.Sim.Systems.JobSystem.IsWorkable(state, j) ? " (waiting)" : Jobs.IsWaitingForRiders(state, j) ? " (waiting for riders)" : "")).ToList());
     }
 
     private static List<LiftReport> LiftReports(Simulation sim)

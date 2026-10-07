@@ -183,12 +183,13 @@ internal sealed class RiderSystem : ISimSystem
 
     /// <summary>
     /// The cheaper of the best route using lifts (plus the expected queue time) and the best route on foot / pedalling.
-    /// Climbing costs more for tired riders. Lifts without bike carriers are never used.
+    /// Climbing costs more for tired riders. Lifts without bike carriers are never used, nor trails that are closed.
     /// </summary>
     internal static List<RouteLeg>? BestRoute(WorldState state, WayNetwork network, Guest guest, int from, int to)
     {
         bool Usable(int liftId) => state.Lifts.FirstOrDefault(l => l.Id == liftId) is { BikeCarrierPermille: > 0 };
-        var withLifts = network.Route(from, to, Usable, out long liftCost);
+        bool Open(int wayId) => network.FindWay(wayId) is not { Kind: WayKind.Trail, IsRideable: false };
+        var withLifts = network.Route(from, to, Usable, out long liftCost, Open);
         if (withLifts is null || withLifts.All(l => l.Kind != LegKind.Lift)) return withLifts;
 
         foreach (var leg in withLifts)
@@ -200,7 +201,7 @@ internal sealed class RiderSystem : ISimSystem
             liftCost += (long)wait * state.LiftRules.LiftWaitCostCmPerMinute;
         }
 
-        var climbing = network.Route(from, to, _ => false, out long climbCost);
+        var climbing = network.Route(from, to, _ => false, out long climbCost, Open);
         if (climbing is null) return withLifts;
         climbCost = climbCost * (2000 - Math.Clamp(guest.Energy, 0, 1000)) / 1000;
         return climbCost < liftCost ? climbing : withLifts;
@@ -348,12 +349,14 @@ internal sealed class RiderSystem : ISimSystem
             ctx.Publish(new RiderUnloaded(ctx.Tick, guest.Id, leg.WayId));
         if (legIndex + 1 < guest.Route.Count)
         {
-            // Riders who picked a trail that closed meanwhile don't start it: they choose again from where they stand.
-            if (legIndex + 2 == guest.Route.Count && network.FindWay(guest.TrailId) is { IsRideable: false } closed)
+            // Every trail entrance is checked again: riders whose next leg is a trail that closed since they planned
+            // the lap (their run or a trail on the way to it) don't enter it; they choose again from where they stand.
+            var next = guest.Route[legIndex + 1];
+            if (next.Kind == LegKind.Way && network.FindWay(next.WayId) is { Kind: WayKind.Trail, IsRideable: false } closed)
             {
                 guest.LocationHubId = 0;
                 guest.LocationWayId = closed.Id;
-                guest.LocationCm = 0;
+                guest.LocationCm = next.FromCm;
                 ClearLap(ctx.State, guest);
                 if (!StartLap(ctx, network, guest))
                     PlaceAtBase(ctx.State, guest, network);
