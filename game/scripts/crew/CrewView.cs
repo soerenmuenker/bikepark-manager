@@ -59,7 +59,7 @@ public partial class CrewView : Node3D
                 var job = Jobs.Find(state, member.JobId)!;
                 int slot = slots.TryGetValue(job.Id, out int n) ? n : 0;
                 slots[job.Id] = slot + 1;
-                target = JobPosition(sim, job) is { } p ? p + Offset(slot) : null;
+                target = JobPosition(sim, job, slot) is { } p ? p + (job.IsFelling ? Vector3.Zero : Offset(slot)) : null;
             }
             else
             {
@@ -92,11 +92,12 @@ public partial class CrewView : Node3D
     }
 
     /// <summary>Where the job's work happens now (meters), or null if it has nothing to show.</summary>
-    private static Vector3? JobPosition(Simulation sim, Job job)
+    private static Vector3? JobPosition(Simulation sim, Job job, int slot)
     {
         if (job.IsFelling)
         {
-            var tree = job.Trees[job.TreesFelled];
+            // Every worker on a felling job has their own tree.
+            var tree = job.Trees[Math.Min(job.TreesFelled + slot, job.Trees.Count - 1)];
             return new Vector3(tree.X / 100f, 0, tree.Z / 100f);
         }
         var network = sim.Network;

@@ -104,7 +104,7 @@ public class CrewTests
 
         var job = Assert.Single(sim.State.Jobs);
         Assert.Equal(JobKind.BuildFeature, job.Kind);
-        Assert.Equal(960, job.WorkMinutes);
+        Assert.Equal(400, job.WorkMinutes);
         Assert.Equal(WorkType.Digging, job.MainWorkType);
         var feature = Assert.Single(sim.Network.FeaturesOn(RedRocket));
         Assert.False(feature.Feature.Built);
@@ -133,7 +133,7 @@ public class CrewTests
     {
         var sim = TestWorld();
         sim.Commands.Enqueue(new HireCrewCommand());
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(BlueLine, "berm", 18_000)); // 480 crew-minutes
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(BlueLine, "berm", 18_000)); // 200 crew-minutes
         sim.RunTicks(420 - sim.State.Tick); // until 07:00
         var job = Assert.Single(sim.State.Jobs);
         Assert.Equal(0, job.Progress);
@@ -142,11 +142,11 @@ public class CrewTests
         sim.RunTicks(60);
         Assert.Equal(sim.State.Crew[0].JobId, job.Id);
         Assert.Equal(60_000, job.Progress);
-        Assert.Equal(125, WorkCosts.ProgressPermille(sim.State.CrewRules, job));
+        Assert.Equal(300, WorkCosts.ProgressPermille(sim.State.CrewRules, job));
 
-        sim.RunTicks(899 - sim.State.Tick);
+        sim.RunTicks(619 - sim.State.Tick);
         Assert.Single(sim.State.Jobs);
-        sim.Step(); // tick 899: the 480th minute
+        sim.Step(); // tick 619: the 200th minute
         Assert.Empty(sim.State.Jobs);
         Assert.True(sim.State.Ways.Single(w => w.Id == BlueLine).Features.Single().Built);
         Assert.Equal(0, sim.State.Crew[0].JobId);
@@ -159,7 +159,9 @@ public class CrewTests
         var sim = TestWorld();
         sim.Commands.Enqueue(new HireCrewCommand());
         sim.Commands.Enqueue(new BuyToolCommand("shovel_set"));
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 30_000)); // 960 crew-minutes
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 30_000));
+        sim.Step();
+        sim.State.Jobs[0].WorkMinutes = 960; // longer than a day, so the shift end is what stops it
         sim.RunTicks(480 - sim.State.Tick);
         Assert.Equal(60 * 1250, sim.State.Jobs[0].Progress);
 
@@ -269,6 +271,42 @@ public class CrewTests
         Assert.Equal(trees * 2, sim.State.WoodStock);
         Assert.Equal(trees, sim.State.FelledTrees.Count);
         Assert.Equal(trees, sim.State.CrewStats.TreesFelled);
+    }
+
+    [Fact]
+    public void Felling_UsesTheWholeCrew_OneWorkerPerTree()
+    {
+        var sim = TestWorld();
+        for (int i = 0; i < 6; i++)
+            sim.Commands.Enqueue(new HireCrewCommand());
+        sim.Commands.Enqueue(new FellTreesCommand(Forest, 2_000));
+        sim.Step();
+        var job = Assert.Single(sim.State.Jobs);
+        Assert.True(job.Trees.Count > 12);
+
+        sim.RunTicks(sim.State.CrewRules.WorkStartMinute + 1 - sim.State.Tick);
+        Assert.Equal(6, sim.State.Crew.Count(m => m.JobId == job.Id)); // more than maxWorkersPerJob (3)
+        Assert.Equal(WorkType.Felling, job.CurrentWorkType);
+    }
+
+    [Fact]
+    public void WorkersBeyondTheLimit_LeaveAWayJobOnceItsTreesAreFelled()
+    {
+        var sim = ValleyWorld(instantTrails: false);
+        var job = Jobs.ForWay(sim.State, ValleyRedRocket(sim))!;
+        foreach (var other in sim.State.Jobs.Where(j => j != job).ToList())
+            sim.Commands.Enqueue(new CancelJobCommand(other.Id));
+        for (int i = 0; i < 6; i++)
+            sim.Commands.Enqueue(new HireCrewCommand());
+        sim.RunTicks(sim.State.CrewRules.WorkStartMinute + 2 - sim.State.Tick);
+        Assert.True(job.IsFelling);
+        Assert.Equal(sim.State.Crew.Count, sim.State.Crew.Count(m => m.JobId == job.Id));
+
+        while (job.IsFelling)
+            sim.Step();
+        sim.Step();
+        Assert.Equal(WorkType.Digging, job.CurrentWorkType);
+        Assert.Equal(sim.State.CrewRules.MaxWorkersPerJob, sim.State.Crew.Count(m => m.JobId == job.Id));
     }
 
     [Fact]

@@ -58,8 +58,8 @@ Starter Valley, seed 1337, two workers, default bike access. `demo_no_care.json`
   (60 %) after ~4.5 days and closes (25 %) after ~7.5 days without care. Wet days wear up to three times faster.
 - Two workers keep both trails open with ~4.5 crew-h/day of repairs. The jobs are queued on their own and finish in
   about half a day (one ends in overtime, day 5 18:48).
-- The 10-day feature run of [crew_and_jobs.md](crew_and_jobs.md) (3 workers) still finishes the line on day 6 at
-  16:49. Both repairs follow on day 7.
+- The 10-day feature run of [crew_and_jobs.md](crew_and_jobs.md) (3 workers) finishes the line on day 3 at
+  11:16 (after the work cuts). Both repairs follow on day 4.
 - The weather changes the guests (rain day: 127 visitors instead of ~280), but barely the lift rides, because the
   gondola, not the number of guests, limits riding.
 - Known gap: with every trail closed, guests still come and pay. They only leave sooner and unhappier. Visitors

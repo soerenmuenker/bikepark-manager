@@ -60,11 +60,26 @@ public sealed class JobSystem : ISimSystem
         _ => true,
     };
 
+    /// <summary>Workers a job can use now: felling takes one per tree still standing in it, other work <see cref="CrewRules.MaxWorkersPerJob"/>.</summary>
+    public static int WorkerLimit(WorldState state, Job job) => job.IsFelling
+        ? Math.Max(state.CrewRules.MaxWorkersPerJob, job.Trees.Count - job.TreesFelled)
+        : state.CrewRules.MaxWorkersPerJob;
+
     private static void Assign(WorldState state)
     {
         foreach (var member in state.Crew)
             if (member.JobId != 0 && (Jobs.Find(state, member.JobId) is not { } current || !IsWorkable(state, current)))
                 member.JobId = 0;
+
+        // Felling is over for a job: its extra workers move on.
+        foreach (var job in state.Jobs)
+        {
+            int limit = WorkerLimit(state, job);
+            int on = 0;
+            foreach (var member in state.Crew)
+                if (member.JobId == job.Id && ++on > limit)
+                    member.JobId = 0;
+        }
 
         foreach (var member in state.Crew)
         {
@@ -72,7 +87,7 @@ public sealed class JobSystem : ISimSystem
             foreach (var job in state.Jobs)
             {
                 if (!IsWorkable(state, job)) continue;
-                if (state.Crew.Count(m => m.JobId == job.Id) >= state.CrewRules.MaxWorkersPerJob) continue;
+                if (state.Crew.Count(m => m.JobId == job.Id) >= WorkerLimit(state, job)) continue;
                 if (!job.WoodTaken && job.Wood > 0)
                 {
                     state.WoodStock -= job.Wood;

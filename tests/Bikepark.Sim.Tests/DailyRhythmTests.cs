@@ -224,8 +224,10 @@ public class DailyRhythmTests
         foreach (var c in TestWorlds.DemoNetwork())
             sim.Commands.Enqueue(c.Command, 0);
         sim.Commands.Enqueue(new HireCrewCommand(), 0);
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(2, "double", 30_000), 0); // 960 crew-minutes
-        sim.RunTicks(17 * 60);
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(2, "double", 30_000), 0);
+        sim.Step();
+        sim.State.Jobs[0].WorkMinutes = 960; // a long job: the double alone would be done before 17:00
+        sim.RunTicks(17 * 60 - sim.State.Tick);
         Assert.Single(sim.State.Jobs);
         Assert.NotEqual(0, sim.State.Crew[0].JobId);
         return sim;

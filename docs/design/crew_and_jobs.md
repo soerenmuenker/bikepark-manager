@@ -51,24 +51,23 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 ```
 
 The trails are built at once (`"instant": true`). The 19 demo features are planned and built by the crew.
-Re-measured 2026-10-07 with the Phase 5.1 daily rhythm (crew 07:30–17:30 plus up to 90 min overtime to finish a job,
+Work numbers cut on 2026-10-07 (features about 40 %, paths and trees about half), re-measured the same day with the Phase 5.1 daily rhythm (crew 07:30–17:30 plus up to 90 min overtime to finish a job,
 see [daily_rhythm.md](daily_rhythm.md)).
 
 | Run | Crew | Felled / bought / used wood | Last feature built | Open after 10 days | Wages | Red Rocket |
 |---|---|---|---|---|---|---|
 | no features | 2 workers | – | – | – | €3,600 | Red (569) |
-| features, 2 workers, no tools | 2 workers | 0 / 0 / 15 | day 8, 11:29 (14 of 19) | 5 wood features waiting for wood | €3,600 | Red (650) |
-| + `demo_crew.json` | 3 workers, shovel set, chainsaw, 30 m felling area | 160 / 0 / 155 | day 6, 16:49 (19 of 19) | – | €5,400 + €2,400 tools | Black (700) |
+| features, 2 workers, no tools | 2 workers | 0 / 0 / 15 | day 3, 18:14 (14 of 19) | 5 wood features waiting for wood | €3,600 | Red (650) |
+| + `demo_crew.json` | 3 workers, shovel set, chainsaw, 30 m felling area | 160 / 0 / 155 | day 3, 11:16 (19 of 19) | – | €5,400 + €2,400 tools | Black (700) |
 
-With `demo_crew.json`, the line takes six days (two features are finished in overtime after closing: day 2 18:41,
-day 5 18:29):
+With `demo_crew.json`, the line takes three days (two features are finished in overtime after closing: day 2 18:34,
+day 1 18:03):
 
 | Day | Built |
 |---|---|
-| 1–3 | Flow Country's nine dirt features |
-| 3–4 | Red Rocket's dirt features and the kicker (starting wood) |
-| 5 | The first drop, the felling (80 trees, 160 wood) |
-| 5–6 | The wall-rides and drops |
+| 1 | Flow Country's nine dirt features and the kicker |
+| 2 | Red Rocket's doubles and berm, the felling (80 trees, 160 wood), the first wall-ride and drop |
+| 3 | The other wall-rides and drops |
 
 The ratings and fun end where Phase 4.1 put them instantly:
 
@@ -120,8 +119,9 @@ The ratings and fun end where Phase 4.1 put them instantly:
 so state hashes for older scripts are unchanged. During work hours, every minute:
 
 1. Workers whose job can't go on are freed.
-2. Free workers, in hiring order, take the first workable job in the queue that has fewer than `maxWorkersPerJob`
-   workers.
+2. Free workers, in hiring order, take the first workable job in the queue that has room: `maxWorkersPerJob`, or for
+   a job that still has trees to fell one worker per remaining tree (so a big felling area uses the whole crew). When
+   the trees are gone, workers above the limit move on. In the view each worker walks to their own tree.
    - A feature is workable once its trail is built and its wood is in stock. The wood is taken when the first worker
      starts.
    - A felling job is workable while trees remain.
@@ -172,9 +172,9 @@ difficulty and give riders fun.
 | Max workers per job | 3 |
 | Work hours | 07:30–17:30, up to 90 min overtime to finish a job (Phase 5.1) |
 | Trail digging | 4 crew-min/m |
-| Path digging | 6 crew-min/m |
+| Path digging | 3 crew-min/m |
 | Steep extra | +50 % |
-| Felling | 20 crew-min per tree |
+| Felling | 8 crew-min per tree, one worker per tree (the whole crew can fell at once) |
 | Wood per tree | 2 |
 | Wood price | €25 |
 | Clearing radius | 5–40 m |
@@ -184,13 +184,13 @@ Feature work (`trail_features.json`):
 
 | Feature | Work | Wood |
 |---|---|---|
-| berm | 480 crew-min | – |
-| rollers | 600 crew-min | – |
-| tabletop | 720 crew-min | – |
-| double | 960 crew-min | – |
-| wall-ride | 600 crew-min | 30 |
-| kicker | 360 crew-min | 15 |
-| drop | 480 crew-min | 25 |
+| berm | 200 crew-min | – |
+| rollers | 240 crew-min | – |
+| tabletop | 300 crew-min | – |
+| double | 400 crew-min | – |
+| wall-ride | 240 crew-min | 30 |
+| kicker | 150 crew-min | 15 |
+| drop | 200 crew-min | 25 |
 
 Tools (`tools.json`):
 

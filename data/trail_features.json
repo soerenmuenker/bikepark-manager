@@ -20,7 +20,7 @@
     "flowAffinity": 950,
     "techAffinity": 400,
     "funWeight": 2,
-    "workMinutes": 480,
+    "workMinutes": 200,
     "wood": 0
   },
   {
@@ -35,7 +35,7 @@
     "flowAffinity": 850,
     "techAffinity": 350,
     "funWeight": 2,
-    "workMinutes": 600,
+    "workMinutes": 240,
     "wood": 0
   },
   {
@@ -50,7 +50,7 @@
     "flowAffinity": 900,
     "techAffinity": 600,
     "funWeight": 3,
-    "workMinutes": 720,
+    "workMinutes": 300,
     "wood": 0
   },
   {
@@ -65,7 +65,7 @@
     "flowAffinity": 850,
     "techAffinity": 750,
     "funWeight": 3,
-    "workMinutes": 960,
+    "workMinutes": 400,
     "wood": 0
   },
   {
@@ -81,7 +81,7 @@
     "flowAffinity": 700,
     "techAffinity": 850,
     "funWeight": 3,
-    "workMinutes": 600,
+    "workMinutes": 240,
     "wood": 30
   },
   {
@@ -96,7 +96,7 @@
     "flowAffinity": 650,
     "techAffinity": 800,
     "funWeight": 2,
-    "workMinutes": 360,
+    "workMinutes": 150,
     "wood": 15
   },
   {
@@ -111,7 +111,7 @@
     "flowAffinity": 400,
     "techAffinity": 950,
     "funWeight": 3,
-    "workMinutes": 480,
+    "workMinutes": 200,
     "wood": 25
   }
 ]
