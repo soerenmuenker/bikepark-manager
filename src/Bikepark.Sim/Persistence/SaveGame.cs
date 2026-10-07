@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -42,6 +42,38 @@ public static class SaveGame
                 foreach (string old in new[] { "pathMaxGradePermille", "trailMaxDownGradePermille", "trailMaxUpGradePermille" })
                     rules.Remove(old);
             version = 2;
+        }
+
+        if (version == 2)
+        {
+            // v3: only trail features wear (Feature.Condition) and repairs are manual. The per-segment trail condition,
+            // the maintain switch, the old thresholds and repair-trail jobs are dropped (features start perfect).
+            if (root["world"] is JsonObject world)
+            {
+                if (world["ways"] is JsonArray ways)
+                    foreach (var way in ways.OfType<JsonObject>())
+                    {
+                        way.Remove("condition");
+                        way.Remove("maintain");
+                    }
+                if (world["wearRules"] is JsonObject wear)
+                {
+                    wear.Remove("closeBelowPermille");
+                    wear.Remove("maintainBelowPermille");
+                }
+                world["crewRules"]?.AsObject().Remove("repairMinutesPerSegment");
+                if (world["jobs"] is JsonArray jobs)
+                    for (int i = jobs.Count - 1; i >= 0; i--)
+                        if (jobs[i]?["kind"]?.GetValue<string>() == "repairTrail")
+                        {
+                            int id = jobs[i]!["id"]!.GetValue<int>();
+                            jobs.RemoveAt(i);
+                            if (world["crew"] is JsonArray crew)
+                                foreach (var member in crew.OfType<JsonObject>().Where(m => m["jobId"]?.GetValue<int>() == id))
+                                    member["jobId"] = 0;
+                        }
+            }
+            version = 3;
         }
 
         root["version"] = version;

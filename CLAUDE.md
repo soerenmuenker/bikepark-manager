@@ -20,8 +20,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Systems/JobSystem.cs` – the crew at work: assigns workers to jobs in priority order, fells trees (wood), builds planned ways and features;
     after the shift only overtime that finishes a job
   - `Weather/` – `WeatherRules`/`WeatherState`/`DayWeather` (daily seeded forecast, ground wetness), `Systems/WeatherSystem.cs`
-  - `Trails/TrailCondition.cs` – `WearRules` and per-segment trail condition (wear per rider pass, more when wet; worn
-    segments slower/less fun); `Systems/TrailCareSystem.cs` closes worn-out trails and queues repair jobs for maintained ones
+  - `Trails/TrailCondition.cs` – `WearRules` and feature condition (wear per rider pass, more when wet; worn
+    features slower/less fun); `Systems/TrailCareSystem.cs` raises the repair warning and closes worn-out trails
   - `Systems/ParkSchedule.cs` – the daily timetable (open, last rides, lift warm-up, crew shift/overtime, day phase,
     quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
@@ -31,7 +31,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
 - `data/` – JSON content (`scenarios/`, `lift_types.json`, `trail_features.json`, `tools.json`, `scripts/` command
-  scripts such as `demo_lift_network.json`, `demo_features.json`, `demo_crew.json`, `demo_no_care.json` (maintenance off))
+  scripts such as `demo_lift_network.json`, `demo_features.json`, `demo_crew.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
 ## Commands
@@ -41,10 +41,10 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 ```bash
 dotnet build Bikepark.sln
 dotnet test Bikepark.sln
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json]... [--daily] [--hourly] [--save out.json]
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json]... [--daily] [--hourly] [--auto-repair] [--save out.json]
 # --hourly: the last day per hour (phase, guests, on trails, queuing, eating, runs, crew working, lift minutes, rain, wetness, closed trails)
-# Wear: 10 days with and without trail care (per-trail status, condition, closed minutes, repairs; weather per day with --daily)
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 10 --commands data/scripts/demo_lift_network.json --daily [--commands data/scripts/demo_no_care.json]
+# Wear: 14 days with and without a stand-in player that repairs on every warning (--auto-repair): per-trail status, feature conditions, closed minutes, repairs
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --daily [--auto-repair]
 # Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
@@ -104,9 +104,10 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     only step more ticks per frame, never jump `Tick`. New daily-rhythm rules default to off. Riders on a lap finish it
     in the last rides; overtime only finishes jobs (no new assignments).
 16. **Wear and weather:** weather is rolled once a day by `WeatherSystem` (no odds ⇒ always sunny, no RNG). Trail
-    condition lives on `Way.Condition` per segment index (never in `WaySegment`, never bumps `WaysRevision`). Closures
-    are filters (`Way.IsRideable`), not graph changes. Only `TrailCareSystem` closes worn trails and auto-queues repairs;
-    only a finished repair reopens a worn-out trail.
+    only trail features wear: condition lives on `TrailFeature.Condition` (never in `WaySegment`, never bumps
+    `WaysRevision`). Closures are filters (`Way.IsRideable`: closed, worn out at 0 %, or under repair), not graph
+    changes. `TrailCareSystem` warns (< 20 %) and closes, it never queues work: repairs are manual
+    (`RepairFeatureCommand`, from the warning pop-up); only a finished repair reopens a worn-out trail.
 
 ## Game controls (debug build)
 
@@ -116,8 +117,8 @@ pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, 
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter plans it for the crew, Esc cancel;
 preview colored by gradient, tool panel shows trees to fell and crew-hours; ends snap onto plateaus) · L place lift (valley, then top) · K place parking lot (centre, then direction) ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
-Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu per trail: condition, Repair, Close/Open,
-Maintain (auto repair jobs) · Build →
+Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu per trail: worst feature, Repair… (pop-up), Close/Open ·
+warning pop-up when a feature is below 20 %: pick workers and repair · Build →
 Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire/dismiss, tools, buy wood, job queue (↑ first,
 ✕ cancel) · System menu: Instant build (debug) · F follow next rider ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale

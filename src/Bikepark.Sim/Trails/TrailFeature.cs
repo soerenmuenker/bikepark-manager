@@ -90,6 +90,12 @@ public sealed class TrailFeature
 
     /// <summary>False while the feature is only planned (a crew job builds it); only built features count.</summary>
     public bool Built { get; set; } = true;
+
+    /// <summary>Wear (see <see cref="TrailCondition"/>): millionths, 1,000,000 = perfect. Riders passing it wear it down.</summary>
+    public int Condition { get; set; } = TrailCondition.Perfect;
+
+    /// <summary>The "needs repair" warning was raised for this wear; cleared by a repair.</summary>
+    public bool Warned { get; set; }
 }
 
 /// <summary>A placed feature resolved against the catalog: the stretch of trail it covers.</summary>

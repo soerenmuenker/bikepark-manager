@@ -68,6 +68,7 @@ public partial class Hud : CanvasLayer
     private PanelContainer _followChip = null!;
     private Label _followText = null!;
     private VBoxContainer _toasts = null!;
+    private RepairDialog _repairDialog = null!;
 
     private string? _screenshotPath;
     private double _screenshotTimer = 4;
@@ -200,6 +201,10 @@ public partial class Hud : CanvasLayer
         _followChip.AddChild(follow);
         _root.AddChild(_followChip);
 
+        _repairDialog = new RepairDialog(_ctx);
+        _ctx.OpenRepair = _repairDialog.Open;
+        _root.AddChild(_repairDialog);
+
         _toasts = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Alignment = BoxContainer.AlignmentMode.End };
         _toasts.AddThemeConstantOverride("separation", 6);
         _root.AddChild(_toasts);
@@ -329,6 +334,13 @@ public partial class Hud : CanvasLayer
             _toolChip.Position = new Vector2(MathF.Round((view.X - size.X) / 2), view.Y - UiTheme.BarHeight - UiTheme.Gap - size.Y);
         }
 
+        if (_repairDialog.Visible)
+        {
+            var size = _repairDialog.GetCombinedMinimumSize();
+            _repairDialog.Size = size;
+            _repairDialog.Position = new Vector2(MathF.Round((view.X - size.X) / 2), MathF.Round((view.Y - size.Y) / 3));
+        }
+
         float top = 14;
         if (_toolPanel.Visible)
         {
@@ -361,6 +373,7 @@ public partial class Hud : CanvasLayer
             _ctx.Kpi = KpiReport.From(state, includeHash: false);
             UpdateBar();
             if (_open != Menu.None) _panels[_open].Refresh();
+            _repairDialog.Refresh();
         }
         UpdateClock();
         UpdateToolPanel();
@@ -607,6 +620,7 @@ public partial class Hud : CanvasLayer
         foreach (var s in _subscriptions) s.Dispose();
         _subscriptions.Clear();
         _ctx.Days.Clear();
+        _repairDialog.Clear();
         var events = sim.Events;
         _subscriptions.Add(events.Subscribe<DayEnded>(e =>
         {
@@ -619,9 +633,17 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<WeatherForecast>(e =>
             Toast($"Today: {WeatherText(e.Today)} · tomorrow: {WeatherText(e.Tomorrow)}", e.Today.HasRain ? UiTheme.Warn : UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<RainStarted>(_ => Toast("It's raining: trails wear faster when wet", UiTheme.Warn)));
-        _subscriptions.Add(events.Subscribe<TrailClosed>(e => Toast(e.WornOut
-            ? $"{TrailName(e.WayId)} is worn out and closed until the crew repairs it"
-            : $"{TrailName(e.WayId)} is closed", e.WornOut ? UiTheme.Bad : UiTheme.TextDim)));
+        _subscriptions.Add(events.Subscribe<TrailClosed>(e => Toast(e.Reason switch
+        {
+            TrailClosedReason.WornOut => $"{TrailName(e.WayId)} is worn out and closed until the crew repairs it",
+            TrailClosedReason.Repair => $"{TrailName(e.WayId)} is closed while the crew repairs it",
+            _ => $"{TrailName(e.WayId)} is closed",
+        }, e.Reason == TrailClosedReason.WornOut ? UiTheme.Bad : UiTheme.TextDim)));
+        _subscriptions.Add(events.Subscribe<FeatureWarning>(e =>
+        {
+            if (_repairDialog.Request(e.WayId))
+                Toast($"{TrailName(e.WayId)}: {FeatureName(e.WayId, e.FeatureId)} is worn down to {e.ConditionPermille / 10} %: it needs a repair", UiTheme.Warn);
+        }));
         _subscriptions.Add(events.Subscribe<TrailReopened>(e => Toast($"{TrailName(e.WayId)} is open again", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<ParkClosed>(_ => Toast("The park has closed", UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<CommandRejected>(e => Toast(e.Reason, UiTheme.Bad)));
@@ -635,7 +657,7 @@ public partial class Hud : CanvasLayer
         {
             JobKind.BuildWay => $"{e.Title} is built and open",
             JobKind.BuildFeature => $"Built: {e.Title}",
-            JobKind.RepairTrail => $"Repaired {TrailName(e.WayId)}",
+            JobKind.RepairFeature => $"Repaired: {e.Title.Replace("Repair ", "")}",
             _ => $"Done: {e.Title.ToLowerInvariant().Replace("fell ", "felled ")}",
         }, UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<CrewHired>(e => Toast($"Hired {_ctx.Sim.State.Crew.FirstOrDefault(m => m.Id == e.CrewId)?.Name}", UiTheme.Accent)));
@@ -650,6 +672,15 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<ParkingLotBuilt>(_ => Toast("Built a parking lot", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessBooked>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: true), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessChanged>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: false), UiTheme.Accent)));
+    }
+
+    private string FeatureName(int wayId, int featureId)
+    {
+        var state = _ctx.Sim.State;
+        var way = state.Ways.FirstOrDefault(w => w.Id == wayId);
+        var feature = way?.Features.FirstOrDefault(f => f.Id == featureId);
+        var type = feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId);
+        return $"{type?.Name ?? "A feature"} on {way?.Name} at {feature?.DistanceCm / 100} m";
     }
 
     private string FeatureText(int wayId, int featureId)

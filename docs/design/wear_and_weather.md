@@ -5,12 +5,18 @@ Status: implemented 2026-10-07. Rules that must not break are in `architecture.m
 
 Plan row: *"Segment condition, rain, closures, maintenance jobs. Done when: popular lines degrade and close without care."*
 
+**Reworked on 2026-10-07:** only trail **features** wear (the trail itself never does), and there is **no automatic
+maintenance**. When a feature is below 20 % the player gets a warning pop-up and sends workers; the trail is closed
+while the crew repairs. A feature that reaches 0 % closes the trail by itself.
+
 Decisions:
 - **Weather is a daily seeded forecast**: each day is rolled at midnight, and tomorrow's roll is shown as the forecast.
-- **Repairs are automatic and manual**: every trail has a *Maintain* switch, on by default. When a maintained trail
-  gets worn, a repair job is queued for the crew. The player can also order a repair, or close and open a trail by hand.
-- **Only trails wear.** Gravel paths don't.
-- **A repair restores the whole trail.** The work is fixed when the job is queued, from the wear at that moment.
+- **Only features wear.** Trails without features (and gravel paths) never wear or close.
+- **Repairs are manual**: the player picks the feature and how many workers (pop-up, or Trails menu → Repair…).
+  The repair goes to the front of the crew queue.
+- **The whole trail closes during a repair** (riders are routed per trail), from the moment the crew starts until the
+  feature is perfect again. Riders already on the trail finish their run.
+- **A repair restores the feature to 100 %.** Work = `repairWorkPermille` (50 %) of its build work, scaled by the wear.
 
 ## What the player sees
 
@@ -29,41 +35,44 @@ Decisions:
   | Rain | 45 % |
 
   Riders out in the rain lose mood.
-- **Worn trails** turn darker and rutted below 70 % condition, and reddish below 25 %. Wet ground darkens all trails.
-  Riding a worn segment is slower and less fun.
-- **Closures.** When any segment of a trail drops below 25 %, the trail closes: its stripe turns grey, its label says
-  "CLOSED · worn out", and a toast appears. Riders already heading for it finish; nobody picks it any more. It reopens
-  when a repair finishes. The player can also close or open a trail. A worn-out trail stays closed until it is repaired.
-- **Trails menu**, for each trail:
-  - A condition line, for example "Condition 81 % (worst 75 %) · crew repairs it below 60 %", "repair 40 % done", or
-    "not maintained: closes below 25 %".
-  - Buttons: **Repair**, **Close / Open**, and a **Maintain** check box.
-- **Crew menu.** "Repair Flow Country" jobs (tool icon) sit in the queue like any other job. Cancelling a repair also
-  turns off that trail's maintenance, otherwise the job would be queued again at once.
+- **Worn features.** The stretch of trail under a feature turns darker and rutted below 70 % condition, and reddish below
+  20 %. Wet ground darkens all trails. Riding a worn feature is slower and less fun.
+- **Warning pop-up.** When a feature falls below 20 % ("needs repair") a pop-up shows the trail's worn features with their
+  condition, the crew time needed, a "Workers to send" stepper and a **Repair** button per feature (or **Repair all**,
+  worst first). **Later** dismisses it. It also appears again when a feature reaches 0 % and the trail closes.
+  A toast says which trail needs attention. Several warnings for one trail share one pop-up.
+- **Closures.**
+  - At 0 % on any feature the trail closes: its stripe turns grey and its label says "CLOSED · worn out". It reopens
+    when the repairs leave no feature at 0 %.
+  - While the crew repairs a feature the trail is closed ("CLOSED · repair") and opens again when it is done.
+  - The player can also close or open a trail. A worn-out trail stays closed until repaired.
+  - Riders already heading for a closed trail finish; nobody picks it any more.
+- **Trails menu**, for each trail: the worst feature and its state ("Worst feature: Tabletop at 220 m, 20 % · worn"),
+  and the buttons **Repair…** (opens the pop-up) and **Close / Open**.
+- **Crew menu.** "Repair Berm on Flow Country at 40 m" jobs (tool icon) sit at the top of the queue. Cancelling one opens
+  the trail again; the feature stays worn.
 
 ## Done-when KPI
 
 ```bash
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 10 --commands data/scripts/demo_lift_network.json --daily [--commands data/scripts/demo_no_care.json]
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 14 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --daily [--auto-repair]
 ```
 
-Starter Valley, seed 1337, two workers, default bike access. `demo_no_care.json` turns off maintenance on both trails.
+Starter Valley, seed 1337, 19 demo features on the two trails, 3 workers with tools. `--auto-repair` stands in for the
+player: it sends 3 workers to every feature at the moment it falls below 20 %. Without the flag nobody repairs.
 
-| Run | Weather (10 days) | Flow Country | Red Rocket | Lift rides day 8 / 9 / 10 | Crew-h | Exit mood |
-|---|---|---|---|---|---|---|
-| maintained | 4 sunny, 3 cloudy, 2 showers, 1 rain | open, avg 97 % (worst 96 %), 2 repairs | open, 91 % (89 %), 2 repairs | 1,349 / 1,287 / 1,357 | 45 | 65 % |
-| no care | same for the first 7 days, then it differs | **worn out** day 8 ~16:00, avg 43 % (worst 24 %), closed 1,195 min | **worn out** day 8 ~14:00, 41 % (24 %), closed 1,293 min | 1,081 / **0** / **0** | 0 | 60 % |
+| Run (14 days) | Flow Country | Red Rocket | Lift rides | Crew-h |
+|---|---|---|---|---|
+| no repairs | worn out on day 5, closed 5,024 open-min | worn out on day 5, closed 4,886 open-min | 6,573 (0 a day from day 6) | 76 (all building) |
+| warnings answered at once | open, 21 repairs, closed 439 open-min | open, 19 repairs, closed 497 open-min | 18,706 | 136 |
 
-- A popular line (~800 runs/day each) loses roughly 90–100 ‰ per day on dry ground. It reaches the repair level
-  (60 %) after ~4.5 days and closes (25 %) after ~7.5 days without care. Wet days wear up to three times faster.
-- Two workers keep both trails open with ~4.5 crew-h/day of repairs. The jobs are queued on their own and finish in
-  about half a day (one ends in overtime, day 5 18:48).
-- The 10-day feature run of [crew_and_jobs.md](crew_and_jobs.md) (3 workers) finishes the line on day 3 at
-  11:16 (after the work cuts). Both repairs follow on day 4.
-- The weather changes the guests (rain day: 127 visitors instead of ~280), but barely the lift rides, because the
-  gondola, not the number of guests, limits riding.
+- A feature takes about 800 passes a day, so tabletops (the hardest) fall below 20 % after ~4.5 days, berms and rollers
+  after ~5.5 days. Wet days wear up to three times faster.
+- Answered warnings cost about 60 crew-h over the 14 days, and the trail is closed only while a repair is on.
 - Known gap: with every trail closed, guests still come and pay. They only leave sooner and unhappier. Visitors
   reacting to closures and ratings is Phase 9 (reputation).
+- The weather changes the guests (rain day: 127 visitors instead of ~280), but barely the lift rides, because the
+  gondola, not the number of guests, limits riding.
 
 ## Model
 
@@ -71,15 +80,15 @@ Starter Valley, seed 1337, two workers, default bike access. `demo_no_care.json`
 |---|---|---|
 | Weather | `Weather`: `Today`, `Tomorrow` (`DayWeather`: kind, rain start/end minute), `WetnessPermille`, `RainMinutes`, `RainDays` | raining now (`WeatherMath.IsRaining`) |
 | Weather tuning | `WeatherRules` (scenario `weatherRules`): odds, shower/rain hours, wetting/drying, arrivals per kind, rain mood | – |
-| Condition | `Way.Condition`: millionths per segment index (missing = perfect; empty = mint) | worst / average permille, speed and fun loss |
-| Closures | `Way.Closed` (player), `Way.WornOut` (wear), `Way.Maintain` | `Way.IsRideable` |
-| Wear tuning | `WearRules` (scenario `wearRules`) | – |
-| Repairs | `JobKind.RepairTrail = 3` with `WorkMinutes`; `CrewRules.RepairMinutesPerSegment` | – |
+| Condition | `TrailFeature.Condition` (millionths, default perfect), `TrailFeature.Warned` | speed and fun loss, dirt tint |
+| Closures | `Way.Closed` (player), `Way.WornOut` (a feature at 0), `Way.Repairing` (crew at work) | `Way.IsRideable` |
+| Wear tuning | `WearRules` (scenario `wearRules`): `wearPerPass`, wet factor, rough/speed/fun, `warnBelowPermille` | – |
+| Repairs | `JobKind.RepairFeature = 3` (`WayId`, `FeatureId`, `Workers`); `CrewRules.RepairWorkPermille` | – |
 | Stats | `WayStats.ClosedMinutes`, `Repairs` | – |
 
 All new rules default to off: no weather odds means always sunny with no randomness used, and `WearPerPass = 0`
-means no wear. New fields have defaults, so `SaveGame.CurrentVersion` stays 2. Older saves load sunny and with mint
-trails that are maintained.
+means no wear. **Save version 3** (the 5.2 rework): a version 2 save is migrated by dropping the per-segment trail
+condition, the maintain switch, the old thresholds and any repair jobs; every feature starts perfect.
 
 ### Rules
 
@@ -89,61 +98,61 @@ trails that are maintained.
   - Each minute in the rain the ground gets `wetPerRainMinute` wetter. Otherwise it dries by
     `dryPerMinuteSunny` / `dryPerMinuteCloudy`.
 - **Arrivals** = base × fee factor × arrival profile × today's weather factor.
-- **Wear** (`RiderSystem.Advance`). Each time a rider crosses a trail segment boundary, the segment loses:
+- **Wear** (`RiderSystem.Advance`). Each time a rider on a run passes the start of a built feature, it loses:
 
   ```
-  wearPerPass × (1000 + difficulty) / 1000 × (1000 + wetWearPermille × wetness / 1000) / 1000   (millionths)
+  wearPerPass × (1000 + type.difficulty) / 1000 × (1000 + wetWearPermille × wetness / 1000) / 1000   (millionths)
   ```
 
-  Below `roughBelowPermille` (70 %), speed drops by up to `wornSpeedLossPermille` (30 %) and the segment's fun by up
-  to `wornFunLoss` (400 points), both scaling linearly down to condition 0.
-- **`TrailCareSystem`** runs after `GuestSystem` and before `JobSystem`, every minute. It uses no randomness and only
-  touches the network for trails that have wear. For each built trail:
-  - worst segment < `closeBelowPermille` → `WornOut`, with a `TrailClosed` event;
-  - maintained and worst < `maintainBelowPermille` with no repair job yet → `Jobs.QueueRepair`;
+  Below `roughBelowPermille` (70 %), speed on the feature's stretch drops by up to `wornSpeedLossPermille` (30 %) and
+  the feature's fun by up to `wornFunLoss` (400 points), both scaling linearly down to condition 0.
+- **`TrailCareSystem`** runs after `GuestSystem` and before `JobSystem`, every minute, with no randomness. It never
+  queues work. For each built trail with features:
+  - a feature below `warnBelowPermille` (20 %) → `FeatureWarning` once (`Warned`, cleared by a repair);
+  - a feature at 0 → `WornOut`, `TrailClosed(WornOut)` and another `FeatureWarning` (the pop-up appears again);
+  - a repair job on one of its features that has started (progress or a worker on it) → `Repairing`, `TrailClosed(Repair)`;
+    when it is gone → `TrailReopened`;
   - closed while the park is open → `ClosedMinutes++`.
-- **Repair job.** Its work is `Σ missing condition × repairMinutesPerSegment` (digging, so the shovel set helps).
-  When it completes, the trail is perfect again (`Condition` cleared), `WornOut` is reset and `TrailReopened` is sent.
-  Deleting the trail cancels the job.
-- **Riders** only start laps on `IsRideable` trails. The network keeps the live `Way` objects, so a closure needs no
-  rebuild (and no `WaysRevision` bump).
+- **Repair job.** Its work is fixed when it is queued: `type.workMinutes × repairWorkPermille / 1000 × missing condition`
+  (digging or carpentry like the build). `Workers` limits the crew on it (0 = `maxWorkersPerJob`). When it completes
+  the feature is perfect, `WornOut` is reset if no feature is left at 0, and `TrailReopened` is sent. Deleting the trail
+  or the feature cancels the job.
+- **Riders** only start laps on `IsRideable` trails. The network keeps the live `Way` and `TrailFeature` objects, so
+  wear and closures need no rebuild (and no `WaysRevision` bump).
 
 ### Commands
 
 | Command | Rejected when |
 |---|---|
-| `repairTrail {wayId}` | not a built trail, a repair already queued, or no wear |
+| `repairFeature {wayId, featureId, workers}` | not a built trail or feature, a repair already queued, workers outside 0..max, or perfect condition |
 | `setTrailClosed {wayId, closed}` | not a built trail; opening a worn-out trail leaves it closed |
-| `setTrailMaintain {wayId, maintain}` | not a built trail |
+
+The earlier `repairTrail` and `setTrailMaintain` commands are gone (automatic maintenance was removed).
 
 ### View
 
 - `Hud`: the weather line, plus toasts for the forecast, the start of rain, closures, reopenings and repairs.
+- `ui/RepairDialog.cs`: the warning pop-up (queued per trail, refreshed with the sim, closes when nothing is left to repair).
 - `DayLight`: an overcast factor (sunny 0, showers 0.35, cloudy 0.55, rain day 0.75, raining 1), eased over a few
   seconds. It dims the sun, greys the sun, sky and horizon colours, and thickens the fog.
 - `world/RainView.cs`: GPU particle streaks in a 180 m box above the camera's focus while it rains.
-- `WayView`: dirt colour per sample from the segment's condition and the wetness; a grey stripe and a "CLOSED" label
-  on closed trails. It redraws when a segment's condition crosses a 10 % step, a trail closes, or the wetness crosses a
+- `WayView`: dirt colour per sample, only under worn features, and the wetness; a grey stripe and a "CLOSED" label
+  on closed trails. It redraws when a feature's condition crosses a 10 % step, a trail closes, or the wetness crosses a
   25 % step.
-- Debug: `--script=<file>` queues a command script, e.g. `--demo --script=data/scripts/demo_no_care.json
-  --advance=10980` shows day 8 15:00 with Red Rocket worn out.
+- Debug: `--demo --demo-features --demo-crew --advance=6700 --speed=0 --no-night-skip` shows the pop-up for Flow Country
+  on day 5 (nobody repaired).
 
 ## Tests
 
 - `WearAndWeatherTests`:
-  - no odds → always sunny, no randomness;
-  - the roll follows the odds and the rain windows;
-  - the forecast becomes today;
+  - no odds → always sunny, no randomness; the roll follows the odds; the forecast becomes today;
   - rain wets the ground, which dries afterwards, and arrivals drop;
-  - riders wear trails, three times as much when wet, and paths never;
-  - speed and fun loss;
-  - no wear rules → mint trails;
-  - a worn-out trail closes and riders pick the other one;
-  - a maintained trail gets a repair job that restores it and reopens it;
-  - the repair, close and maintain commands, and cancelling a repair;
-  - a worn-out trail stays closed when the player opens it;
-  - rule validation;
-  - save and load;
-  - command discriminators.
+  - riders wear features (not the trail), three times as much when wet; a trail without features never wears;
+  - speed and fun loss; no wear rules → perfect features;
+  - one warning below 20 % and no automatic repair; a feature at 0 closes the trail and warns again, riders pick another;
+  - a repair closes the trail while the crew works, restores the feature, reopens the trail;
+  - a worn-out trail reopens only when no feature is left at 0;
+  - the repair and close commands (incl. the worker count), a worn-out trail stays closed when opened by hand;
+  - rule validation; save and load; a version 2 save is migrated; command discriminators.
 - `TestWorlds.Script()` gains the new commands (incl. rejections).
 - The existing Starter Valley determinism and save/load tests now run with weather and wear on.

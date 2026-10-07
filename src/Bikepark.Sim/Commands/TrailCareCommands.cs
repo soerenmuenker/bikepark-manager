@@ -15,20 +15,27 @@ internal static class TrailCare
     }
 }
 
-/// <summary>Queues a crew job that repairs a trail's wear (see <see cref="Jobs.QueueRepair"/>).</summary>
-public sealed record RepairTrailCommand(int WayId) : ICommand
+/// <summary>
+/// Sends the crew to repair a worn feature: a repair job at the front of the queue (<see cref="Workers"/> = how many
+/// workers, 0 = as many as allowed). The trail is closed from the moment the crew starts until the feature is perfect again.
+/// </summary>
+public sealed record RepairFeatureCommand(int WayId, int FeatureId, int Workers = 0) : ICommand
 {
     public string? Validate(SimContext ctx)
     {
         if (TrailCare.CheckTrail(ctx, WayId, out var trail) is { } error) return error;
-        if (Jobs.ForRepair(ctx.State, WayId) is not null) return "A repair is already planned.";
-        return trail!.Condition.Any(c => c < TrailCondition.Perfect) ? null : "The trail is in perfect condition.";
+        var feature = trail!.Features.FirstOrDefault(f => f.Id == FeatureId);
+        if (feature is null || !feature.Built) return "No such feature.";
+        if (Jobs.ForRepair(ctx.State, FeatureId) is not null) return "A repair is already planned.";
+        if (Workers < 0 || Workers > ctx.State.CrewRules.MaxWorkersPerJob) return $"Send 0 to {ctx.State.CrewRules.MaxWorkersPerJob} workers.";
+        return feature.Condition < TrailCondition.Perfect ? null : "The feature is in perfect condition.";
     }
 
     public void Apply(SimContext ctx)
     {
         var trail = ctx.State.Ways.First(w => w.Id == WayId);
-        Jobs.QueueRepair(ctx, trail, ctx.Network.Geometry(WayId));
+        var feature = trail.Features.First(f => f.Id == FeatureId);
+        Jobs.QueueRepair(ctx, trail, feature, TrailFeatures.FindType(ctx.State.TrailFeatureTypes, feature.TypeId)!, Workers);
     }
 }
 
@@ -42,15 +49,7 @@ public sealed record SetTrailClosedCommand(int WayId, bool Closed) : ICommand
         var trail = ctx.State.Ways.First(w => w.Id == WayId);
         bool wasRideable = trail.IsRideable;
         trail.Closed = Closed;
-        if (wasRideable && !trail.IsRideable) ctx.Publish(new TrailClosed(ctx.Tick, WayId, WornOut: false));
+        if (wasRideable && !trail.IsRideable) ctx.Publish(new TrailClosed(ctx.Tick, WayId, TrailClosedReason.Player));
         else if (!wasRideable && trail.IsRideable) ctx.Publish(new TrailReopened(ctx.Tick, WayId));
     }
-}
-
-/// <summary>Turns automatic maintenance of a trail on or off (on: the crew gets a repair job when it wears).</summary>
-public sealed record SetTrailMaintainCommand(int WayId, bool Maintain) : ICommand
-{
-    public string? Validate(SimContext ctx) => TrailCare.CheckTrail(ctx, WayId, out _);
-
-    public void Apply(SimContext ctx) => ctx.State.Ways.First(w => w.Id == WayId).Maintain = Maintain;
 }

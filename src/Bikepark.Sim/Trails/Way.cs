@@ -51,25 +51,19 @@ public sealed class Way
 
     public WayStats Stats { get; set; } = new();
 
-    // ---- Wear (trails only, see TrailCondition) ----
-
-    /// <summary>
-    /// Condition per segment index in millionths (1,000,000 = perfect); segments past the end of the list are perfect,
-    /// so an empty list is a trail in mint condition.
-    /// </summary>
-    public List<int> Condition { get; set; } = [];
+    // ---- Closures (trails only; the wear itself is on the features, see TrailCondition) ----
 
     /// <summary>Closed by the player: riders don't start runs on it.</summary>
     public bool Closed { get; set; }
 
-    /// <summary>Closed because a segment wore out; reopens when a repair job finishes.</summary>
+    /// <summary>Closed because a feature wore out (condition 0); reopens when a repair job finishes that leaves none at 0.</summary>
     public bool WornOut { get; set; }
 
-    /// <summary>The crew repairs the trail on its own when it gets worn (a repair job is queued automatically).</summary>
-    public bool Maintain { get; set; } = true;
+    /// <summary>The crew is repairing a feature: the trail is closed until the repair is done.</summary>
+    public bool Repairing { get; set; }
 
     /// <summary>A built trail riders may start runs on.</summary>
-    public bool IsRideable => Built && !Closed && !WornOut;
+    public bool IsRideable => Built && !Closed && !WornOut && !Repairing;
 }
 
 /// <summary>Usage counters of a trail.</summary>
@@ -82,7 +76,7 @@ public sealed class WayStats
     /// <summary>Sum of each run's average fun (0..1000).</summary>
     public long SumFun { get; set; }
 
-    /// <summary>Minutes the trail was closed (by the player or worn out) while the park was open.</summary>
+    /// <summary>Minutes the trail was closed (by the player, worn out or under repair) while the park was open.</summary>
     public long ClosedMinutes { get; set; }
 
     public int Repairs { get; set; }

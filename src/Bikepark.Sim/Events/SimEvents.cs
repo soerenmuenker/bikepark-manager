@@ -118,8 +118,23 @@ public sealed record RainStarted(long Tick) : ISimEvent;
 
 public sealed record RainStopped(long Tick) : ISimEvent;
 
-/// <summary>A trail closed: worn out (a segment fell below the closing condition) or by the player.</summary>
-public sealed record TrailClosed(long Tick, int WayId, bool WornOut) : ISimEvent;
+public enum TrailClosedReason
+{
+    /// <summary>The player closed it.</summary>
+    Player,
+
+    /// <summary>A feature wore down to 0.</summary>
+    WornOut,
+
+    /// <summary>The crew started repairing a feature.</summary>
+    Repair,
+}
+
+/// <summary>A trail closed: by the player, worn out (a feature at 0) or while the crew repairs a feature.</summary>
+public sealed record TrailClosed(long Tick, int WayId, TrailClosedReason Reason) : ISimEvent;
+
+/// <summary>A feature's condition fell below the warning level: the player should send the crew (at 0 the trail closes).</summary>
+public sealed record FeatureWarning(long Tick, int WayId, int FeatureId, int ConditionPermille) : ISimEvent;
 
 /// <summary>A trail is open again (repaired, or opened by the player).</summary>
 public sealed record TrailReopened(long Tick, int WayId) : ISimEvent;

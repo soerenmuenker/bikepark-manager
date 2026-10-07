@@ -132,7 +132,7 @@ public partial class WayView : Node3D
         var jobs = string.Join(';', state.Jobs.Where(j => j.Kind is JobKind.BuildWay or JobKind.BuildFeature)
             .Select(j => $"{j.Id}:{j.TreesFelled}:{WorkCosts.ProgressPermille(state.CrewRules, j) / 20}"));
         var wear = string.Join(';', state.Ways.Where(w => w.Kind == WayKind.Trail)
-            .Select(w => $"{w.Id}{(w.IsRideable ? "" : "x")}:{string.Concat(w.Condition.Select(c => (char)('0' + c / 100_001)))}"));
+            .Select(w => $"{w.Id}{(w.IsRideable ? "" : "x")}:{string.Concat(w.Features.Select(f => (char)('0' + f.Condition / 100_001)))}"));
         return $"{jobs}|{wear}|{state.Weather.WetnessPermille / 250}";
     }
 
@@ -140,12 +140,15 @@ public partial class WayView : Node3D
     private static readonly Color WornOutDirt = new Color(0.55f, 0.20f, 0.12f).SrgbToLinear();
     private static readonly Color ClosedStripe = new(0.55f, 0.55f, 0.55f);
 
-    /// <summary>Dirt colour of a trail sample: darker and rutted as the segment wears, reddish below the closing condition, darker when wet.</summary>
+    /// <summary>Dirt colour of a trail sample: only under a worn feature it gets darker and rutted, reddish at the warning level and below; darker when wet.</summary>
     private static Color DirtAt(WorldState state, Way way, WayGeometry g, int sample)
     {
-        int condition = TrailCondition.Permille(way, g.SegmentIndexAt(g.Distances[sample]));
         var rules = state.WearRules;
-        var color = condition < rules.CloseBelowPermille ? WornOutDirt
+        long at = g.Distances[sample];
+        var worn = way.Features.FirstOrDefault(f => f.Built && at >= f.DistanceCm
+            && TrailFeatures.FindType(state.TrailFeatureTypes, f.TypeId) is { } type && at < f.DistanceCm + type.LengthCm);
+        int condition = worn is null ? 1000 : TrailCondition.Permille(worn);
+        var color = condition < rules.WarnBelowPermille ? WornOutDirt
             : condition < rules.RoughBelowPermille ? WayMeshes.Dirt.Lerp(Rutted, (rules.RoughBelowPermille - condition) / (float)rules.RoughBelowPermille)
             : WayMeshes.Dirt;
         return color.Darkened(0.35f * state.Weather.WetnessPermille / 1000f);
@@ -179,7 +182,7 @@ public partial class WayView : Node3D
             AddRibbon(WayMeshes.Ribbon(grid, g, 1.4f, 0.06f, followGround: true, i => DirtAt(state, way, g, i)), way.Name);
             var stripe = way.IsRideable ? WayMeshes.RatingColor(g.Rating) : ClosedStripe;
             AddRibbon(WayMeshes.Ribbon(grid, g, 0.35f, 0.09f, followGround: true, _ => stripe), way.Name + " stripe");
-            string status = way.WornOut ? "\nCLOSED · worn out" : way.Closed ? "\nCLOSED" : "";
+            string status = way.WornOut ? "\nCLOSED · worn out" : way.Repairing ? "\nCLOSED · repair" : way.Closed ? "\nCLOSED" : "";
             AddLabel($"{way.Name}\n{g.Rating} · {g.LengthCm / 100} m{status}", WayMeshes.ToWorld(g.PositionAt(0)) + Vector3.Up * 4f,
                 way.IsRideable ? stripe : new Color(0.95f, 0.35f, 0.25f));
             AddFeatures(state, grid, network, way, g);

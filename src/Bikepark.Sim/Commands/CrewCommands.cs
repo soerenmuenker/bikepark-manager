@@ -155,10 +155,6 @@ public sealed record CancelJobCommand(int JobId) : ICommand
             case JobKind.BuildFeature:
                 new RemoveTrailFeatureCommand(job.WayId, job.FeatureId).Apply(ctx);
                 break;
-            case JobKind.RepairTrail:
-                if (ctx.State.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail) trail.Maintain = false;
-                Jobs.Cancel(ctx, job);
-                break;
             default:
                 Jobs.Cancel(ctx, job);
                 break;

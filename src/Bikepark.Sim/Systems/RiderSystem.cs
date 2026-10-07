@@ -277,9 +277,12 @@ internal sealed class RiderSystem : ISimSystem
             int gradeAlong = segment.GradePermille * dir;
             bool isRun = legIndex == guest.Route.Count - 1;
             int speed = Speed(guest, rules, geometry.Kind, segment, gradeAlong);
-            // Worn trail segments are slower and less fun; every pass wears them a bit more.
-            var trailWay = geometry.Kind == WayKind.Trail ? network.FindWay(leg.WayId) : null;
-            int condition = trailWay is null ? 1000 : TrailCondition.Permille(trailWay, segment.Index);
+            // Worn features are slower and less fun (the trail between them doesn't wear).
+            int condition = 1000;
+            if (geometry.Kind == WayKind.Trail)
+                foreach (var placed in network.FeaturesOn(leg.WayId))
+                    if (placed.Feature.Built && placed.Covers(position))
+                        condition = TrailCondition.Permille(placed.Feature);
             if (condition < 1000)
                 speed = Math.Max(MinSpeedCmPerS, speed * (1000 - TrailCondition.SpeedLossPermille(ctx.State.WearRules, condition)) / 1000);
 
@@ -305,17 +308,18 @@ internal sealed class RiderSystem : ISimSystem
                     if (feature.StartCm <= position) continue;
                     if (feature.StartCm > position + move) break;
                     if (!feature.Feature.Built) continue; // planned: nothing there to ride yet
-                    guest.RunFun += (long)FeatureFun(guest, feature.Type) * feature.Type.FunWeight;
+                    int featureFun = FeatureFun(guest, feature.Type);
+                    featureFun = Math.Max(0, featureFun - TrailCondition.FunLoss(ctx.State.WearRules, TrailCondition.Permille(feature.Feature)));
+                    guest.RunFun += (long)featureFun * feature.Type.FunWeight;
                     guest.RunSegments += feature.Type.FunWeight;
+                    TrailCondition.Wear(feature.Feature, TrailCondition.PassWear(ctx.State, feature.Type));
                 }
                 if (move == toBoundary)
                 {
-                    guest.RunFun += Math.Max(0, SegmentFun(guest, rules, segment, gradeAlong, speed) - TrailCondition.FunLoss(ctx.State.WearRules, condition));
+                    guest.RunFun += SegmentFun(guest, rules, segment, gradeAlong, speed);
                     guest.RunSegments++;
                 }
             }
-            if (trailWay is not null && move == toBoundary)
-                TrailCondition.Wear(trailWay, segment.Index, TrailCondition.PassWear(ctx.State, segment));
         }
     }
 

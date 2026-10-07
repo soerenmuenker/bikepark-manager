@@ -35,6 +35,9 @@ internal sealed class HudContext
 
     public Simulation Sim => Host.Sim;
 
+    /// <summary>Opens the repair pop-up for a trail (set by the HUD).</summary>
+    public Action<int> OpenRepair { get; set; } = _ => { };
+
     public KpiReport Kpi { get; set; } = null!;
 
     public const int FeeStepCents = 250;
@@ -347,7 +350,7 @@ public partial class TrailsPanel : HudPanel
             }
             var s = way.Stats;
             string avg = s.Runs == 0 ? "no runs yet" : $"{(double)s.SumRunMinutes / s.Runs:F1} min · fun {s.SumFun / s.Runs / 10}%";
-            main.Text = way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
+            main.Text = way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Repairing ? $"{way.Name}  · CLOSED (repair)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
             main.AddThemeColorOverride("font_color", way.IsRideable ? UiTheme.Text : UiTheme.Bad);
             detail.Text = $"{g.Rating} · {g.LengthCm / 100} m · -{(g.StartHeightCm - g.EndHeightCm) / 100} m · steepest {Gradient.Format(-g.MaxDropGradient)}\n" +
                           $"{s.Runs} runs ({s.RunsToday} today) · {avg}\n" +
@@ -356,17 +359,18 @@ public partial class TrailsPanel : HudPanel
         }
     }
 
-    /// <summary>"Condition 82 % (worst 64 %) · repair 40 % done" and what happens next.</summary>
+    /// <summary>The worst feature and what happens next: "Worst feature: Berm 40 m 63 %", closed, or repairing.</summary>
     private static string ConditionSummary(WorldState state, Way way, WayGeometry g)
     {
-        int segments = g.Segments.Count;
-        int average = TrailCondition.AveragePermille(way, segments);
-        int worst = TrailCondition.WorstPermille(way, segments);
-        var repair = Jobs.ForRepair(state, way.Id);
-        string next = repair is not null ? $"repair {WorkCosts.ProgressPermille(state.CrewRules, repair) / 10} % done"
-            : way.Maintain ? $"crew repairs it below {state.WearRules.MaintainBelowPermille / 10} %"
-            : $"not maintained: closes below {state.WearRules.CloseBelowPermille / 10} %";
-        return $"Condition {average / 10} % (worst {worst / 10} %) · {next}";
+        var built = way.Features.Where(f => f.Built).ToList();
+        if (built.Count == 0) return "Nothing to wear: only features wear";
+        var worst = built.OrderBy(f => f.Condition).First();
+        var type = TrailFeatures.FindType(state.TrailFeatureTypes, worst.TypeId);
+        string next = way.WornOut ? "worn out: closed until repaired"
+            : way.Repairing ? $"closed for repair ({WorkCosts.ProgressPermille(state.CrewRules, Jobs.ForRepair(state, worst.Id) ?? Jobs.ForTrailRepair(state, way.Id)!) / 10} % done)"
+            : TrailCondition.Permille(worst) < state.WearRules.WarnBelowPermille ? "needs a repair!"
+            : TrailCondition.Permille(worst) < 1000 ? "worn" : "like new";
+        return $"Worst feature: {type?.Name} at {worst.DistanceCm / 100} m, {TrailCondition.Permille(worst) / 10} % · {next}";
     }
 
     /// <summary>"2 berms · Tabletop · Drop" (in the order types first appear along the trail).</summary>
@@ -378,13 +382,12 @@ public partial class TrailsPanel : HudPanel
         return $"Features: {string.Join(" · ", parts)}{(planned > 0 ? $"  ({planned} planned)" : "")}";
     }
 
-    /// <summary>Ways, their features and trail care settings; the list is rebuilt when it changes.</summary>
+    /// <summary>Ways, their features and closures; the list is rebuilt when it changes (wear in 10 % steps).</summary>
     private string Signature(List<Way> ways) =>
-        string.Join(';', ways.Select(w => $"{w.Id}{(w.Built ? "" : "p")}{(w.Closed ? "c" : "")}{(w.WornOut ? "w" : "")}{(w.Maintain ? "m" : "")}" +
-                                          $"{(Jobs.ForRepair(Ctx.Sim.State, w.Id) is null ? "" : "r")}{(w.Condition.Count > 0 ? "x" : "")}:" +
+        string.Join(';', ways.Select(w => $"{w.Id}{(w.Built ? "" : "p")}{(w.Closed ? "c" : "")}{(w.WornOut ? "w" : "")}{(w.Repairing ? "r" : "")}:" +
                                           string.Join(',', w.Features.Select(f => f.Built ? $"{f.Id}" : $"{f.Id}p"))));
 
-    /// <summary>Repair now, close/open, and the "maintain" switch (the crew repairs it on its own when it wears).</summary>
+    /// <summary>Repair… (opens the pop-up) and close/open.</summary>
     private Control TrailCareButtons(Way way)
     {
         int id = way.Id;
@@ -392,20 +395,12 @@ public partial class TrailsPanel : HudPanel
         box.AddThemeConstantOverride("separation", 3);
         Button Small(Button b) { b.AddThemeFontSizeOverride("font_size", 12); return b; }
 
-        bool repairing = Jobs.ForRepair(Ctx.Sim.State, id) is not null;
-        var repair = Small(UiTheme.Button(repairing ? "Repairing…" : "Repair", () => Ctx.Host.Enqueue(new RepairTrailCommand(id)),
-            "Queue a crew job that restores the whole trail (work depends on the wear)"));
-        repair.Disabled = repairing || way.Condition.Count == 0;
+        var repair = Small(UiTheme.Button("Repair…", () => Ctx.OpenRepair(id), "Send the crew to repair worn features (the trail is closed meanwhile)"));
+        repair.Disabled = !way.Features.Any(f => f.Built && f.Condition < TrailCondition.Perfect);
         box.AddChild(repair);
 
         box.AddChild(Small(UiTheme.Button(way.Closed ? "Open" : "Close", () => Ctx.Host.Enqueue(new SetTrailClosedCommand(id, !way.Closed)),
             way.Closed ? "Let riders on it again (a worn-out trail stays closed until repaired)" : "Close it to riders (those on it finish their run)")));
-
-        var maintain = new CheckBox { Text = "Maintain", ButtonPressed = way.Maintain, FocusMode = FocusModeEnum.None,
-            TooltipText = "The crew repairs the trail on its own when it gets worn" };
-        maintain.AddThemeFontSizeOverride("font_size", 12);
-        maintain.Toggled += on => Ctx.Host.Enqueue(new SetTrailMaintainCommand(id, on));
-        box.AddChild(maintain);
         return box;
     }
 
@@ -650,7 +645,7 @@ public partial class CrewPanel : HudPanel
             {
                 JobKind.FellTrees => UiIcon.Felling,
                 JobKind.BuildWay => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Kind == WayKind.AccessPath ? UiIcon.Path : UiIcon.Trail,
-                JobKind.RepairTrail => UiIcon.Tool,
+                JobKind.RepairFeature => UiIcon.Tool,
                 _ => FeatureIconFor(state, job),
             };
             h.AddChild(new IconView(icon, 30, UiTheme.Accent) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
@@ -668,7 +663,7 @@ public partial class CrewPanel : HudPanel
             h.AddChild(new RoundButton(UiIcon.Close, 26, "", job.Kind switch
                 {
                     JobKind.FellTrees => "Cancel (trees cut so far stay cut)",
-                    JobKind.RepairTrail => "Cancel the repair (turns off the trail's maintenance)",
+                    JobKind.RepairFeature => "Cancel the repair (the trail opens again)",
                     _ => "Cancel: removes the planned way or feature",
                 }, () => Ctx.Host.Enqueue(new CancelJobCommand(jobId))) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
             _list.AddChild(row);

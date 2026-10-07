@@ -13,9 +13,13 @@ public static class Jobs
     public static Job? ForWay(WorldState state, int wayId) =>
         state.Jobs.FirstOrDefault(j => j.Kind == JobKind.BuildWay && j.WayId == wayId);
 
-    /// <summary>The job repairing this trail, if one is queued.</summary>
-    public static Job? ForRepair(WorldState state, int wayId) =>
-        state.Jobs.FirstOrDefault(j => j.Kind == JobKind.RepairTrail && j.WayId == wayId);
+    /// <summary>The job repairing this feature, if one is queued.</summary>
+    public static Job? ForRepair(WorldState state, int featureId) =>
+        state.Jobs.FirstOrDefault(j => j.Kind == JobKind.RepairFeature && j.FeatureId == featureId);
+
+    /// <summary>The job repairing any feature of this trail, if one is queued.</summary>
+    public static Job? ForTrailRepair(WorldState state, int wayId) =>
+        state.Jobs.FirstOrDefault(j => j.Kind == JobKind.RepairFeature && j.WayId == wayId);
 
     public static Job? ForFeature(WorldState state, int featureId) =>
         state.Jobs.FirstOrDefault(j => j.Kind == JobKind.BuildFeature && j.FeatureId == featureId);
@@ -32,8 +36,10 @@ public static class Jobs
                 var feature = way?.Features.FirstOrDefault(f => f.Id == job.FeatureId);
                 var type = feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId);
                 return $"{type?.Name ?? "Feature"} on {way?.Name ?? "a trail"}{(feature is null ? "" : $" at {feature.DistanceCm / 100} m")}";
-            case JobKind.RepairTrail:
-                return $"Repair {way?.Name ?? "a trail"}";
+            case JobKind.RepairFeature:
+                var worn = way?.Features.FirstOrDefault(f => f.Id == job.FeatureId);
+                var wornType = worn is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, worn.TypeId);
+                return $"Repair {wornType?.Name ?? "feature"} on {way?.Name ?? "a trail"}{(worn is null ? "" : $" at {worn.DistanceCm / 100} m")}";
             default:
                 return $"Fell {job.Trees.Count} trees";
         }
@@ -63,15 +69,26 @@ public static class Jobs
         });
     }
 
-    /// <summary>Queues repairing a trail's wear (the work is fixed now, from its condition at this moment).</summary>
-    public static Job QueueRepair(SimContext ctx, Way way, WayGeometry geometry) =>
-        Queue(ctx, new Job
+    /// <summary>
+    /// Queues repairing a worn feature at the front of the queue (the work is fixed now, from its condition at this moment).
+    /// <paramref name="workers"/> is how many workers the player sends (0 = the rules' maximum).
+    /// </summary>
+    public static Job QueueRepair(SimContext ctx, Way way, TrailFeature feature, TrailFeatureType type, int workers)
+    {
+        var job = new Job
         {
-            Kind = JobKind.RepairTrail,
+            Kind = JobKind.RepairFeature,
             WayId = way.Id,
-            WorkMinutes = WorkCosts.RepairMinutes(ctx.State.CrewRules, way, geometry.Segments.Count),
-            MainWorkType = WorkType.Digging,
-        });
+            FeatureId = feature.Id,
+            Workers = workers,
+            WorkMinutes = WorkCosts.RepairMinutes(ctx.State.CrewRules, type, feature),
+            MainWorkType = WorkCosts.RepairWorkType(type),
+        };
+        Queue(ctx, job);
+        ctx.State.Jobs.Remove(job);
+        ctx.State.Jobs.Insert(0, job);
+        return job;
+    }
 
     public static Job QueueFeature(SimContext ctx, int wayId, TrailFeature feature, TrailFeatureType type) =>
         Queue(ctx, new Job
@@ -94,6 +111,8 @@ public static class Jobs
             state.CrewStats.WoodUsed -= job.Wood;
         }
         Release(state, job);
+        if (job.Kind == JobKind.RepairFeature && state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail)
+            Reopen(ctx, trail);
         ctx.Publish(new JobCancelled(ctx.Tick, job.Id, job.Kind));
     }
 
@@ -130,14 +149,12 @@ public static class Jobs
                 feature.Built = true;
                 state.WaysRevision++;
                 break;
-            case JobKind.RepairTrail when state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail:
-                TrailCondition.Restore(trail);
+            case JobKind.RepairFeature when state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail:
+                if (trail.Features.FirstOrDefault(f => f.Id == job.FeatureId) is { } repaired)
+                    TrailCondition.Restore(repaired);
                 trail.Stats.Repairs++;
-                if (trail.WornOut)
-                {
-                    trail.WornOut = false;
-                    if (trail.IsRideable) ctx.Publish(new TrailReopened(ctx.Tick, trail.Id));
-                }
+                Release(state, job);
+                Reopen(ctx, trail);
                 break;
         }
         state.CrewStats.JobsCompleted++;
@@ -145,6 +162,24 @@ public static class Jobs
         Release(state, job);
         ctx.Publish(new JobCompleted(ctx.Tick, job.Id, job.Kind, job.WayId, job.FeatureId, title));
     }
+
+    /// <summary>
+    /// After a repair (or a cancelled one): the trail is no longer under repair and, if no feature is worn out any more,
+    /// no longer worn out. Publishes <see cref="TrailReopened"/> when riders may use it again.
+    /// </summary>
+    public static void Reopen(SimContext ctx, Way trail)
+    {
+        bool wasRideable = trail.IsRideable;
+        trail.Repairing = ForTrailRepair(ctx.State, trail.Id) is { } other && IsBeingRepaired(ctx.State, other);
+        if (trail.WornOut && !trail.Features.Any(f => f.Built && f.Condition <= 0))
+            trail.WornOut = false;
+        if (!wasRideable && trail.IsRideable)
+            ctx.Publish(new TrailReopened(ctx.Tick, trail.Id));
+    }
+
+    /// <summary>True once the crew has started on the job (a repair that hasn't started doesn't close the trail).</summary>
+    public static bool IsBeingRepaired(WorldState state, Job job) =>
+        job.Kind == JobKind.RepairFeature && (job.Progress > 0 || state.Crew.Any(m => m.JobId == job.Id));
 
     private static void Release(WorldState state, Job job)
     {

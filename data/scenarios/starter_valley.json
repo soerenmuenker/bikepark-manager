@@ -78,17 +78,16 @@
     "rainArrivalPermille": 450,
     "rainMoodPerMinute": 1
   },
-  // Trail wear: each rider passing a 10 m segment takes wearPerPass millionths off its condition (more on harder
-  // segments, up to 3x on wet ground). Below 70 % riding gets slower and less fun, below 25 % the trail closes until
-  // repaired; trails set to "maintain" get a repair job below 60 %.
+  // Wear: only trail features wear (the trail itself doesn't). Each rider passing a feature takes wearPerPass millionths
+  // off its condition (more on harder features, up to 3x on wet ground). Below 70 % it is slower and less fun; below 20 %
+  // the player gets a warning to send the crew; at 0 % the trail closes until the feature is repaired.
   "wearRules": {
-    "wearPerPass": 60,
+    "wearPerPass": 120,
     "wetWearPermille": 2000,
     "roughBelowPermille": 700,
     "wornSpeedLossPermille": 300,
     "wornFunLoss": 400,
-    "closeBelowPermille": 250,
-    "maintainBelowPermille": 600
+    "warnBelowPermille": 200
   },
   // Terrain is regenerated from these settings; "seed" defaults to the scenario seed.
   "terrain": {
@@ -122,7 +121,7 @@
     "pathWorkMinutesPerMeter": 3,
     "steepExtraPermille": 500,
     "fellMinutesPerTree": 8,
-    "repairMinutesPerSegment": 20,
+    "repairWorkPermille": 500,
     "woodPerTree": 2,
     "woodPriceCents": 2500,
     "minClearingRadiusMeters": 5,

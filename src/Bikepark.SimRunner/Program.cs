@@ -81,7 +81,14 @@ public static class Program
                 RunDayHourly(sim, hourly, () => (runsThisHour, lunchesThisHour), () => runsThisHour = lunchesThisHour = 0);
             else
             {
-                sim.RunDays(1);
+                if (options.AutoRepair)
+                    for (int minute = 0; minute < GameTime.MinutesPerDay; minute++)
+                    {
+                        sim.Step();
+                        SendCrewToWarnings(sim);
+                    }
+                else
+                    sim.RunDays(1);
                 sim.Events.Dispatch();
             }
         }
@@ -136,6 +143,17 @@ public static class Program
         }
     }
 
+    /// <summary>Stand-in for the player (<c>--auto-repair</c>): sends a full crew to every feature below the warning level.</summary>
+    private static void SendCrewToWarnings(Simulation sim)
+    {
+        var state = sim.State;
+        foreach (var trail in state.Ways)
+            foreach (var feature in trail.Features)
+                if (feature.Built && feature.Condition / 1000 < state.WearRules.WarnBelowPermille
+                    && Bikepark.Sim.Crew.Jobs.ForRepair(state, feature.Id) is null)
+                    sim.Commands.Enqueue(new RepairFeatureCommand(trail.Id, feature.Id, state.CrewRules.MaxWorkersPerJob));
+    }
+
     private static List<WayReport> WayReports(Simulation sim) => sim.State.Ways.Select(w =>
     {
         var geometry = sim.Network.Geometry(w.Id);
@@ -154,8 +172,8 @@ public static class Program
             w.Stats.Runs == 0 ? null : Math.Round((double)w.Stats.SumRunMinutes / w.Stats.Runs, 1),
             w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs),
             trail && w.Built ? !w.IsRideable ? w.WornOut ? "worn out" : "closed" : "open" : null,
-            trail ? TrailCondition.AveragePermille(w, geometry.Segments.Count) : null,
-            trail ? TrailCondition.WorstPermille(w, geometry.Segments.Count) : null,
+            trail ? w.Features.Where(f => f.Built).Select(f => $"{f.TypeId}@{f.DistanceCm / 100}m {TrailCondition.Permille(f) / 10.0:0.#} %").ToList() : null,
+            trail ? TrailCondition.WorstPermille(w) : null,
             trail ? w.Stats.ClosedMinutes : null,
             trail ? w.Stats.Repairs : null);
     }).ToList();
@@ -268,8 +286,8 @@ internal sealed record WayReport(
     double? AverageRunMinutes,
     int? AverageFun,
     string? Status,
-    int? ConditionPermille,
-    int? WorstConditionPermille,
+    List<string>? FeatureConditions,
+    int? WorstFeaturePermille,
     long? ClosedMinutes,
     int? Repairs);
 
@@ -300,10 +318,11 @@ internal sealed record RunnerOptions(
     IReadOnlyList<string> CommandsPaths,
     bool IncludeDaily,
     string? SavePath,
-    bool IncludeHourly = false)
+    bool IncludeHourly = false,
+    bool AutoRepair = false)
 {
     public const string Usage =
-        "usage: Bikepark.SimRunner --scenario <path> [--days N=30] [--seed S] [--commands <path>]... [--daily] [--hourly] [--save <path>]";
+        "usage: Bikepark.SimRunner --scenario <path> [--days N=30] [--seed S] [--commands <path>]... [--daily] [--hourly] [--auto-repair] [--save <path>]";
 
     public static RunnerOptions Parse(string[] args)
     {
@@ -313,6 +332,7 @@ internal sealed record RunnerOptions(
         var commands = new List<string>();
         bool daily = false;
         bool hourly = false;
+        bool autoRepair = false;
         string? save = null;
 
         for (int i = 0; i < args.Length; i++)
@@ -331,6 +351,7 @@ internal sealed record RunnerOptions(
                 case "--commands": commands.Add(Next()); break;
                 case "--daily": daily = true; break;
                 case "--hourly": hourly = true; break;
+                case "--auto-repair": autoRepair = true; break;
                 case "--save": save = Next(); break;
                 case "-h" or "--help": throw new ArgumentException("help requested");
                 default: throw new ArgumentException($"unknown argument '{args[i]}'");
@@ -339,6 +360,6 @@ internal sealed record RunnerOptions(
 
         if (scenario is null)
             throw new ArgumentException("--scenario is required");
-        return new RunnerOptions(scenario, days, seed, commands, daily, save, hourly);
+        return new RunnerOptions(scenario, days, seed, commands, daily, save, hourly, autoRepair);
     }
 }

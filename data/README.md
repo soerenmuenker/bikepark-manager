@@ -40,7 +40,7 @@ and the routing costs of a lift minute and a queue minute.
 `toolsFile` (e.g. `../tools.json`) loads the tool catalog; `toolTypes` can also be given inline. `crewRules`
 (`CrewRules`, all optional): `wagePerDayCents`, `maxCrew`, `maxWorkersPerJob`, `workStartMinute`/`workEndMinute`,
 `trailWorkMinutesPerMeter`/`pathWorkMinutesPerMeter` (crew-minutes at base speed), `steepExtraPermille`,
-`fellMinutesPerTree`, `woodPerTree`, `woodPriceCents`, `min/maxClearingRadiusMeters`. `startingWood`: wood in stock at
+`fellMinutesPerTree`, `repairWorkPermille`, `woodPerTree`, `woodPriceCents`, `min/maxClearingRadiusMeters`. `startingWood`: wood in stock at
 the start.
 
 Starter Valley's tick-0 `commands` build what is already there: the gondola (`buildLift` with

@@ -103,26 +103,47 @@ public class WearAndWeatherTests
 
     // ---------------------------------------------------------------- wear
 
-    [Fact]
-    public void Riders_WearTheTrails_MoreOnWetGround()
+    /// <summary>Puts a built feature on a trail (as if the crew had finished it).</summary>
+    private static TrailFeature AddFeature(Simulation sim, int wayId, string typeId, long distanceCm)
     {
-        var sim = Valley(12 * 60);
-        var flow = Trail(sim, FlowCountry);
-        Assert.NotEmpty(flow.Condition);
-        Assert.Contains(flow.Condition, c => c < TrailCondition.Perfect);
-        Assert.All(sim.State.Ways.Where(w => w.Kind == WayKind.AccessPath), w => Assert.Empty(w.Condition));
+        var feature = new TrailFeature { Id = sim.State.AllocateEntityId(), TypeId = typeId, DistanceCm = distanceCm, Built = true };
+        var trail = Trail(sim, wayId);
+        trail.Features.Add(feature);
+        trail.Features.Sort((a, b) => a.DistanceCm.CompareTo(b.DistanceCm));
+        sim.State.WaysRevision++;
+        return feature;
+    }
 
-        var segment = sim.Network.Geometry(FlowCountry).Segments[3];
+    [Fact]
+    public void Riders_WearFeatures_NotTheTrail_MoreOnWetGround()
+    {
+        var sim = Valley(1);
+        var berm = AddFeature(sim, FlowCountry, "berm", 20_000);
+        var flat = AddFeature(sim, RedRocket, "table", 20_000);
+        sim.RunTicks(12 * 60);
+        Assert.True(berm.Condition < TrailCondition.Perfect);
+        Assert.True(flat.Condition < TrailCondition.Perfect);
+        Assert.All(sim.State.Ways, w => Assert.DoesNotContain(w.Features, f => f.Condition > TrailCondition.Perfect));
+
+        var type = sim.State.TrailFeatureTypes.Single(t => t.Id == "berm");
         sim.State.Weather.WetnessPermille = 0;
-        int dry = TrailCondition.PassWear(sim.State, segment);
+        int dry = TrailCondition.PassWear(sim.State, type);
         sim.State.Weather.WetnessPermille = 1000;
-        int wet = TrailCondition.PassWear(sim.State, segment);
-        Assert.Equal(60 * (1000 + segment.Difficulty) / 1000, dry);
+        int wet = TrailCondition.PassWear(sim.State, type);
+        Assert.Equal(sim.State.WearRules.WearPerPass * (1000 + type.Difficulty) / 1000, dry);
         Assert.InRange(wet, dry * 3 - 1, dry * 3 + 1);
     }
 
     [Fact]
-    public void WornSegments_AreSlowerAndLessFun()
+    public void ATrailWithoutFeatures_NeverWearsOrCloses()
+    {
+        var sim = Valley(3 * GameTime.MinutesPerDay);
+        Assert.True(sim.State.Ways.Sum(w => w.Stats.Runs) > 1000);
+        Assert.All(sim.State.Ways, w => Assert.True(w.IsRideable));
+    }
+
+    [Fact]
+    public void WornFeatures_AreSlowerAndLessFun()
     {
         var rules = TestWorlds.LiftScenario().WearRules;
         Assert.Equal(0, TrailCondition.SpeedLossPermille(rules, 800));
@@ -133,24 +154,46 @@ public class WearAndWeatherTests
     }
 
     [Fact]
-    public void WithoutWearRules_TrailsStayPerfect()
+    public void WithoutWearRules_FeaturesStayPerfect()
     {
         var sim = new Simulation(TestWorlds.Create());
         foreach (var c in TestWorlds.DemoNetwork()) sim.Commands.Enqueue(c.Command, c.Tick);
+        sim.Step();
+        var feature = AddFeature(sim, 2, "berm", 18_000);
         sim.RunDays(1);
         Assert.True(sim.State.Ways.Sum(w => w.Stats.Runs) > 0);
-        Assert.All(sim.State.Ways, w => Assert.Empty(w.Condition));
+        Assert.Equal(TrailCondition.Perfect, feature.Condition);
     }
 
-    // ---------------------------------------------------------------- closures and repairs
+    // ---------------------------------------------------------------- warning, closure and repairs
 
     [Fact]
-    public void AWornOutTrail_Closes_AndRidersPickAnother()
+    public void AFeatureBelowTheWarningLevel_RaisesOneWarning_AndNothingRepairsItself()
+    {
+        var sim = Valley(10 * 60);
+        var berm = AddFeature(sim, RedRocket, "berm", 20_000);
+        berm.Condition = 190_000; // 19 %
+        var warnings = new List<FeatureWarning>();
+        sim.Events.Clear();
+        sim.Events.Subscribe<FeatureWarning>(warnings.Add);
+        sim.RunTicks(120);
+        sim.Events.Dispatch();
+
+        var warning = Assert.Single(warnings);
+        Assert.Equal((RedRocket, berm.Id), (warning.WayId, warning.FeatureId));
+        Assert.True(berm.Warned);
+        Assert.True(berm.Condition < 190_000); // riders keep riding it
+        Assert.True(Trail(sim, RedRocket).IsRideable);
+        Assert.Null(Jobs.ForRepair(sim.State, berm.Id)); // no automatic maintenance
+    }
+
+    [Fact]
+    public void AFeatureAtZero_ClosesTheTrail_AndWarnsAgain()
     {
         var sim = Valley(10 * 60);
         var red = Trail(sim, RedRocket);
-        red.Maintain = false;
-        TrailCondition.Wear(red, 5, TrailCondition.Perfect - 200_000); // 200 ‰
+        var berm = AddFeature(sim, RedRocket, "berm", 20_000);
+        berm.Condition = 0;
         sim.Events.Clear();
         var started = new List<RunStarted>();
         sim.Events.Subscribe<RunStarted>(started.Add);
@@ -159,8 +202,8 @@ public class WearAndWeatherTests
         sim.Step();
         Assert.True(red.WornOut);
         Assert.False(red.IsRideable);
-        Assert.Contains(sim.Events.Pending, e => e is TrailClosed { WayId: RedRocket, WornOut: true });
-        Assert.Null(Jobs.ForRepair(sim.State, RedRocket)); // not maintained
+        Assert.Contains(sim.Events.Pending, e => e is TrailClosed { WayId: RedRocket, Reason: TrailClosedReason.WornOut });
+        Assert.Contains(sim.Events.Pending, e => e is FeatureWarning { WayId: RedRocket, ConditionPermille: 0 });
 
         sim.RunTicks(90);
         sim.Events.Dispatch();
@@ -171,59 +214,98 @@ public class WearAndWeatherTests
     }
 
     [Fact]
-    public void MaintainedTrail_GetsARepairJob_AndTheCrewRestoresIt()
+    public void ARepair_ClosesTheTrailWhileTheCrewWorks_AndRestoresTheFeature()
     {
-        var sim = Valley(8 * 60);
+        var sim = Valley(7 * 60);
         var red = Trail(sim, RedRocket);
-        for (int i = 0; i < 10; i++)
-            TrailCondition.Wear(red, i, TrailCondition.Get(red, i) - 100_000); // ten segments at 100 ‰
+        var berm = AddFeature(sim, RedRocket, "berm", 20_000);
+        berm.Condition = 100_000; // 10 %
+        sim.Commands.Enqueue(new HireCrewCommand());
+        sim.Commands.Enqueue(new HireCrewCommand());
+        sim.Commands.Enqueue(new RepairFeatureCommand(RedRocket, berm.Id, 2));
         sim.Step();
-        Assert.True(red.WornOut);
-        var job = Jobs.ForRepair(sim.State, RedRocket);
-        Assert.NotNull(job);
-        Assert.Equal("Repair Red Rocket", Jobs.Title(sim.State, job));
-        long expected = WorkCosts.RepairMinutes(sim.State.CrewRules, red, sim.Network.Geometry(RedRocket).Segments.Count);
-        Assert.Equal(expected, job.WorkMinutes);
-        Assert.True(job.WorkMinutes >= 10 * 18); // 900 ‰ missing on ten segments at 20 min each
 
+        var job = Jobs.ForRepair(sim.State, berm.Id);
+        Assert.NotNull(job);
+        Assert.Equal(job, sim.State.Jobs[0]); // front of the queue
+        Assert.Equal(2, job.Workers);
+        Assert.Equal("Repair Berm on Red Rocket at 200 m", Jobs.Title(sim.State, job));
+        var type = sim.State.TrailFeatureTypes.Single(t => t.Id == "berm");
+        Assert.Equal(type.WorkMinutes * sim.State.CrewRules.RepairWorkPermille / 1000 * 900_000 / 1_000_000, job.WorkMinutes);
+        Assert.True(red.IsRideable); // the crew hasn't started yet (shift starts 07:30)
+
+        var closed = new List<TrailClosed>();
         var reopened = new List<TrailReopened>();
         sim.Events.Clear();
+        sim.Events.Subscribe<TrailClosed>(closed.Add);
         sim.Events.Subscribe<TrailReopened>(reopened.Add);
+        sim.RunTicks(sim.State.CrewRules.WorkStartMinute - sim.State.Tick + 3);
+        Assert.Equal(2, sim.State.Crew.Count(m => m.JobId == job.Id));
+        Assert.True(red.Repairing);
+        Assert.False(red.IsRideable);
+
         sim.RunTicks(GameTime.MinutesPerDay);
         sim.Events.Dispatch();
-        Assert.Null(Jobs.ForRepair(sim.State, RedRocket));
-        Assert.False(red.WornOut);
+        Assert.Null(Jobs.ForRepair(sim.State, berm.Id));
+        Assert.False(red.Repairing);
+        Assert.True(red.IsRideable);
         Assert.Equal(1, red.Stats.Repairs);
+        Assert.True(berm.Condition > 300_000); // perfect after the repair, worn a bit again by the riders since
+        Assert.Contains(closed, c => c.WayId == RedRocket && c.Reason == TrailClosedReason.Repair);
         Assert.Contains(reopened, r => r.WayId == RedRocket);
-        Assert.True(TrailCondition.WorstPermille(red, sim.Network.Geometry(RedRocket).Segments.Count) > 800);
     }
 
     [Fact]
-    public void Commands_RepairCloseAndMaintain()
+    public void AWornOutTrail_ReopensOnlyWhenNoFeatureIsAtZero()
+    {
+        var sim = Valley(7 * 60);
+        var red = Trail(sim, RedRocket);
+        var a = AddFeature(sim, RedRocket, "berm", 20_000);
+        var b = AddFeature(sim, RedRocket, "table", 40_000);
+        a.Condition = 0;
+        b.Condition = 0;
+        sim.Commands.Enqueue(new HireCrewCommand());
+        sim.Commands.Enqueue(new RepairFeatureCommand(RedRocket, a.Id, 1));
+        sim.RunTicks(2 * GameTime.MinutesPerDay);
+        Assert.Equal(TrailCondition.Perfect, a.Condition);
+        Assert.True(red.WornOut); // the table is still at 0
+        Assert.False(red.IsRideable);
+
+        sim.Commands.Enqueue(new RepairFeatureCommand(RedRocket, b.Id, 1));
+        sim.RunTicks(2 * GameTime.MinutesPerDay);
+        Assert.False(red.WornOut);
+        Assert.True(red.IsRideable);
+    }
+
+    [Fact]
+    public void Commands_RepairAndClose()
     {
         var sim = Valley(1);
-        Assert.Contains("perfect", Reject(sim, new RepairTrailCommand(RedRocket)));
-        Assert.Contains("trail", Reject(sim, new RepairTrailCommand(8))); // the hiking route is a path
+        var red = Trail(sim, RedRocket);
+        var berm = AddFeature(sim, RedRocket, "berm", 20_000);
+        Assert.Contains("perfect", Reject(sim, new RepairFeatureCommand(RedRocket, berm.Id)));
+        Assert.Contains("trail", Reject(sim, new RepairFeatureCommand(8, 1))); // the hiking route is a path
+        Assert.Contains("No such feature", Reject(sim, new RepairFeatureCommand(RedRocket, 999)));
         Assert.Contains("trail", Reject(sim, new SetTrailClosedCommand(999, true)));
 
-        var red = Trail(sim, RedRocket);
-        TrailCondition.Wear(red, 0, 500_000);
-        Assert.Null(Reject(sim, new RepairTrailCommand(RedRocket)));
-        var job = Jobs.ForRepair(sim.State, RedRocket)!;
-        Assert.Equal(10, job.WorkMinutes); // half a segment at 20 min
-        Assert.Contains("already", Reject(sim, new RepairTrailCommand(RedRocket)));
-
+        berm.Condition = 500_000;
+        Assert.Contains("workers", Reject(sim, new RepairFeatureCommand(RedRocket, berm.Id, 9)));
+        Assert.Null(Reject(sim, new RepairFeatureCommand(RedRocket, berm.Id)));
+        var job = Jobs.ForRepair(sim.State, berm.Id)!;
+        Assert.Equal(0, job.Workers);
+        Assert.Equal(type(sim, "berm").WorkMinutes / 2 / 2, job.WorkMinutes); // half the wear, half the build work
+        Assert.Contains("already", Reject(sim, new RepairFeatureCommand(RedRocket, berm.Id)));
         Assert.Null(Reject(sim, new CancelJobCommand(job.Id)));
-        Assert.False(red.Maintain); // or it would come straight back
-        Assert.Null(Reject(sim, new SetTrailMaintainCommand(RedRocket, true)));
-        Assert.True(red.Maintain);
+        Assert.Null(Jobs.ForRepair(sim.State, berm.Id));
 
         Assert.Null(Reject(sim, new SetTrailClosedCommand(RedRocket, true)));
-        Assert.Contains(sim.Events.Pending, e => e is TrailClosed { WayId: RedRocket, WornOut: false });
+        Assert.Contains(sim.Events.Pending, e => e is TrailClosed { WayId: RedRocket, Reason: TrailClosedReason.Player });
         Assert.False(red.IsRideable);
         Assert.Null(Reject(sim, new SetTrailClosedCommand(RedRocket, false)));
         Assert.Contains(sim.Events.Pending, e => e is TrailReopened { WayId: RedRocket });
         Assert.True(red.IsRideable);
+
+        static TrailFeatureType type(Simulation s, string id) => s.State.TrailFeatureTypes.Single(t => t.Id == id);
     }
 
     [Fact]
@@ -247,17 +329,20 @@ public class WearAndWeatherTests
         Assert.NotEmpty(new WeatherRules { SunnyPermille = 500 }.Validate()); // odds must add up to 1000
         Assert.NotEmpty(new WeatherRules { RainMinHours = 5, RainMaxHours = 2 }.Validate());
         Assert.NotEmpty(new WearRules { WearPerPass = -1 }.Validate());
-        Assert.NotEmpty(new WearRules { CloseBelowPermille = 2000 }.Validate());
+        Assert.NotEmpty(new WearRules { WarnBelowPermille = 2000 }.Validate());
     }
 
     [Fact]
     public void WearAndWeather_SurviveSaveAndLoad()
     {
-        var sim = Valley(GameTime.MinutesPerDay + 13 * 60);
+        var sim = Valley(1);
+        var berm = AddFeature(sim, RedRocket, "berm", 20_000);
+        sim.RunTicks(GameTime.MinutesPerDay + 13 * 60);
         Trail(sim, RedRocket).Closed = true;
         var loaded = SaveGame.Deserialize(SaveGame.Serialize(sim.State));
         var red = loaded.Ways.Single(w => w.Id == RedRocket);
-        Assert.Equal(Trail(sim, RedRocket).Condition, red.Condition);
+        Assert.Equal(berm.Condition, red.Features.Single().Condition);
+        Assert.True(berm.Condition < TrailCondition.Perfect);
         Assert.True(red.Closed);
         Assert.Equal(sim.State.Weather.Today, loaded.Weather.Today);
         Assert.Equal(sim.State.Weather.Tomorrow, loaded.Weather.Tomorrow);
@@ -266,13 +351,35 @@ public class WearAndWeatherTests
     }
 
     [Fact]
+    public void AVersion2Save_IsMigrated()
+    {
+        var sim = Valley(1);
+        AddFeature(sim, RedRocket, "berm", 20_000);
+        string json = SaveGame.Serialize(sim.State);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+        root["version"] = 2;
+        var world = root["world"]!.AsObject();
+        foreach (var way in world["ways"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>())
+        {
+            way["condition"] = new System.Text.Json.Nodes.JsonArray(900_000);
+            way["maintain"] = true;
+        }
+        world["wearRules"]!["closeBelowPermille"] = 250;
+        world["wearRules"]!["maintainBelowPermille"] = 600;
+        world["crewRules"]!["repairMinutesPerSegment"] = 20;
+
+        var loaded = SaveGame.Deserialize(root.ToJsonString());
+        Assert.Equal(TrailCondition.Perfect, loaded.Ways.Single(w => w.Id == RedRocket).Features.Single().Condition);
+        Assert.Equal(500, loaded.CrewRules.RepairWorkPermille);
+    }
+
+    [Fact]
     public void NewCommands_HaveStableDiscriminators()
     {
         foreach (var (command, type) in new (ICommand, string)[]
                  {
-                     (new RepairTrailCommand(1), "repairTrail"),
+                     (new RepairFeatureCommand(1, 2, 3), "repairFeature"),
                      (new SetTrailClosedCommand(1, true), "setTrailClosed"),
-                     (new SetTrailMaintainCommand(1, false), "setTrailMaintain"),
                  })
             Assert.Contains($"\"type\":\"{type}\"", System.Text.Json.JsonSerializer.Serialize(command, SimJson.Compact));
     }

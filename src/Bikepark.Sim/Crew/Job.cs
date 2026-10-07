@@ -23,8 +23,8 @@ public enum JobKind : byte
     /// <summary>Fell the trees in a circle (<see cref="Job.Center"/>, <see cref="Job.RadiusCm"/>).</summary>
     FellTrees = 2,
 
-    /// <summary>Repair a worn trail (<see cref="Job.WayId"/>): when done, every segment is in perfect condition.</summary>
-    RepairTrail = 3,
+    /// <summary>Repair a worn feature (<see cref="Job.WayId"/>, <see cref="Job.FeatureId"/>): when done it is in perfect condition. The trail is closed meanwhile.</summary>
+    RepairFeature = 3,
 }
 
 /// <summary>
@@ -39,6 +39,9 @@ public sealed class Job
 
     public int WayId { get; set; }
     public int FeatureId { get; set; }
+
+    /// <summary>Workers the player assigned (repair jobs); 0 = as many as the rules allow.</summary>
+    public int Workers { get; set; }
 
     /// <summary>Felling area (FellTrees jobs only).</summary>
     public PointCm Center { get; set; }

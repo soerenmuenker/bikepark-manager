@@ -54,7 +54,7 @@ public sealed class JobSystem : ISimSystem
     public static bool IsWorkable(WorldState state, Job job) => job.Kind switch
     {
         JobKind.FellTrees => job.IsFelling,
-        JobKind.RepairTrail => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Built == true,
+        JobKind.RepairFeature => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Features.Any(f => f.Id == job.FeatureId && f.Built) == true,
         JobKind.BuildFeature => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Built == true
                                 && (job.WoodTaken || state.WoodStock >= job.Wood),
         _ => true,
@@ -63,7 +63,7 @@ public sealed class JobSystem : ISimSystem
     /// <summary>Workers a job can use now: felling takes one per tree still standing in it, other work <see cref="CrewRules.MaxWorkersPerJob"/>.</summary>
     public static int WorkerLimit(WorldState state, Job job) => job.IsFelling
         ? Math.Max(state.CrewRules.MaxWorkersPerJob, job.Trees.Count - job.TreesFelled)
-        : state.CrewRules.MaxWorkersPerJob;
+        : job.Workers > 0 ? Math.Min(job.Workers, state.CrewRules.MaxWorkersPerJob) : state.CrewRules.MaxWorkersPerJob;
 
     private static void Assign(WorldState state)
     {

@@ -259,13 +259,17 @@ Details: [wear_and_weather.md](wear_and_weather.md).
 
 - **Weather is state, rolled once a day** by `WeatherSystem` (first system): `Today`, `Tomorrow` (the forecast),
   ground wetness. No odds in the scenario ⇒ always sunny and no RNG draws, so older scripts keep their hashes.
-- **Condition is stored per segment index on the trail** (`Way.Condition`, millionths, missing = perfect), never in
-  the derived `WaySegment` and never via `WaysRevision`: wear changes every minute, the geometry doesn't.
-- **Closures are filters, not graph changes**: `Way.IsRideable` (`Built && !Closed && !WornOut`) is checked when a
-  rider picks a trail; the network keeps the live `Way` objects. Riders already on their way finish.
-- **`TrailCareSystem`** (after `GuestSystem`, before `JobSystem`, no RNG) is the only place that closes worn trails and
-  queues automatic repairs; only a finished repair job reopens a worn-out trail.
-- All wear and work numbers come from `WearRules` / `CrewRules` (`TrailCondition`, `WorkCosts.RepairMinutes`).
+- **Only trail features wear.** Condition is `TrailFeature.Condition` (millionths, perfect by default), never in the
+  derived `WaySegment` and never via `WaysRevision`: wear changes every minute, the geometry doesn't. Trails themselves
+  do not wear.
+- **Closures are filters, not graph changes**: `Way.IsRideable` (`Built && !Closed && !WornOut && !Repairing`) is
+  checked when a rider picks a trail; the network keeps the live `Way`/`TrailFeature` objects. Riders already on their
+  way finish.
+- **`TrailCareSystem`** (after `GuestSystem`, before `JobSystem`, no RNG) raises the "needs repair" warning, closes a
+  trail whose feature is at 0 and closes it while a repair runs. It never queues work: repairs are manual
+  (`RepairFeatureCommand`); only a finished repair reopens a worn-out trail.
+- Save version 3 migrates away the per-segment condition and the maintain switch.
+- All wear and work numbers come from `WearRules` / `CrewRules` (`TrailCondition`, `WorkCosts.RepairMinutes`: `crewRules.repairWorkPermille` of the build work).
 
 ## Open questions / next steps
 
