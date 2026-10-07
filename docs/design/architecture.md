@@ -263,7 +263,7 @@ Details: [wear_and_weather.md](wear_and_weather.md).
   derived `WaySegment` and never via `WaysRevision`: wear changes every minute, the geometry doesn't. Trails themselves
   do not wear.
 - **Closures are filters, not graph changes**: `Way.IsRideable` (`Built && !Closed && !WornOut && !Repairing`) is
-  checked when a rider picks a trail; the network keeps the live `Way`/`TrailFeature` objects. Riders already on their
+  checked when a rider picks a trail and again when they reach its start (then they pick another); the network keeps the live `Way`/`TrailFeature` objects. Riders already on their
   way finish.
 - **`TrailCareSystem`** (after `GuestSystem`, before `JobSystem`, no RNG) raises the "needs repair" warning, closes a
   trail whose feature is at 0 and closes it while a repair runs. It never queues work: repairs are manual

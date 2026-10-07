@@ -208,8 +208,9 @@ public class WearAndWeatherTests
         sim.RunTicks(90);
         sim.Events.Dispatch();
         Assert.Contains(started, s => s.TrailId == FlowCountry);
-        // Riders who picked it before (in the queue, on the lift) still ride it; nobody picks it any more.
-        Assert.DoesNotContain(started, s => s.TrailId == RedRocket && s.Tick > closedAt + 60);
+        // Riders who picked it before (in the queue, on the lift) choose another trail at the top; only those already
+        // on the trail finish it.
+        Assert.DoesNotContain(started, s => s.TrailId == RedRocket && s.Tick > closedAt);
         Assert.True(red.Stats.ClosedMinutes >= 90);
     }
 

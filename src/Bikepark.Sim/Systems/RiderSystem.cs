@@ -347,7 +347,20 @@ internal sealed class RiderSystem : ISimSystem
         if (leg.Kind == LegKind.Lift)
             ctx.Publish(new RiderUnloaded(ctx.Tick, guest.Id, leg.WayId));
         if (legIndex + 1 < guest.Route.Count)
+        {
+            // Riders who picked a trail that closed meanwhile don't start it: they choose again from where they stand.
+            if (legIndex + 2 == guest.Route.Count && network.FindWay(guest.TrailId) is { IsRideable: false } closed)
+            {
+                guest.LocationHubId = 0;
+                guest.LocationWayId = closed.Id;
+                guest.LocationCm = 0;
+                ClearLap(ctx.State, guest);
+                if (!StartLap(ctx, network, guest))
+                    PlaceAtBase(ctx.State, guest, network);
+                return;
+            }
             EnterLeg(ctx, network, guest, legIndex + 1);
+        }
         else
             FinishRun(ctx, network, guest);
     }
