@@ -641,7 +641,7 @@ public partial class Hud : CanvasLayer
         }, e.Reason == TrailClosedReason.WornOut ? UiTheme.Bad : UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<FeatureWarning>(e =>
         {
-            if (_repairDialog.Request(e.WayId))
+            if (_repairDialog.Request(e.WayId, force: e.ConditionPermille == 0))
                 Toast($"{TrailName(e.WayId)}: {FeatureName(e.WayId, e.FeatureId)} is worn down to {e.ConditionPermille / 10} %: it needs a repair", UiTheme.Warn);
         }));
         _subscriptions.Add(events.Subscribe<TrailReopened>(e => Toast($"{TrailName(e.WayId)} is open again", UiTheme.Good)));

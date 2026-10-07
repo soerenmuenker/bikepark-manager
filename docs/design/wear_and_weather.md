@@ -39,8 +39,11 @@ Decisions:
   20 %. Wet ground darkens all trails. Riding a worn feature is slower and less fun.
 - **Warning pop-up.** When a feature falls below 20 % ("needs repair") a pop-up shows the trail's worn features with their
   condition, the crew time needed, a "Workers to send" stepper and a **Repair** button per feature (or **Repair all**,
-  worst first). **Later** dismisses it. It also appears again when a feature reaches 0 % and the trail closes.
+  worst first). **✕** (top right) or **Later** closes it. It also appears again when a feature reaches 0 % and the
+  trail closes; a trail you closed it for stays quiet until then (or until its features are repaired).
   A toast says which trail needs attention. Several warnings for one trail share one pop-up.
+  **Time:** the game pauses when a warning pops up and continues at 1x when the last pop-up is closed (also when the
+  repairs were sent). The pop-up opened from the Trails menu doesn't pause.
 - **Closures.**
   - At 0 % on any feature the trail closes: its stripe turns grey and its label says "CLOSED · worn out". It reopens
     when the repairs leave no feature at 0 %.

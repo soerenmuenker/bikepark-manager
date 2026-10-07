@@ -15,6 +15,8 @@ internal sealed partial class RepairDialog : PanelContainer
 {
     private readonly HudContext _ctx;
     private readonly Queue<int> _waiting = new();
+    private readonly HashSet<int> _dismissed = [];
+    private bool _pausedByWarning;
     private int _wayId;
     private int _workers = 3;
     private Label _title = null!, _subtitle = null!, _workersLabel = null!;
@@ -32,8 +34,12 @@ internal sealed partial class RepairDialog : PanelContainer
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(430, 0) };
         box.AddThemeConstantOverride("separation", 8);
         AddChild(box);
+        var titleRow = new HBoxContainer();
         _title = UiTheme.Label("", 16, UiTheme.Warn, bold: true);
-        box.AddChild(_title);
+        _title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        titleRow.AddChild(_title);
+        titleRow.AddChild(new RoundButton(UiIcon.Close, 26, "", "Close (decide later)", () => Close(byPlayer: true)) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
+        box.AddChild(titleRow);
         _subtitle = UiTheme.Label("", 12, UiTheme.TextDim);
         _subtitle.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         box.AddChild(_subtitle);
@@ -56,29 +62,41 @@ internal sealed partial class RepairDialog : PanelContainer
         var buttons = new HBoxContainer();
         buttons.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         buttons.AddChild(UiTheme.Button("Repair all", RepairAll, "Send the crew to every worn feature of this trail, the worst first"));
-        buttons.AddChild(UiTheme.Button("Later", Dismiss, "Decide later (the Trails menu has a Repair button)"));
+        buttons.AddChild(UiTheme.Button("Later", () => Close(byPlayer: true), "Decide later (the Trails menu has a Repair… button)"));
         box.AddChild(buttons);
     }
 
     /// <summary>True while the pop-up shows a trail.</summary>
     public bool IsShowing => Visible;
 
-    /// <summary>A warning came in: show it now, or after the ones before it.</summary>
-    /// <returns>False if it was already showing or waiting.</returns>
-    public bool Request(int wayId)
+    /// <summary>
+    /// A warning came in: show it now (pausing the game), or after the ones before it. A trail the player closed the
+    /// pop-up for stays quiet until <paramref name="force"/> (its trail closed because a feature wore out).
+    /// </summary>
+    /// <returns>False if it was ignored, already showing or already waiting.</returns>
+    public bool Request(int wayId, bool force = false)
     {
+        if (force) _dismissed.Remove(wayId);
+        if (_dismissed.Contains(wayId)) return false;
         if (Visible && _wayId == wayId || _waiting.Contains(wayId)) return false;
         if (Visible) _waiting.Enqueue(wayId);
-        else Open(wayId);
+        else Open(wayId, fromWarning: true);
         return true;
     }
 
-    /// <summary>Open the pop-up for a trail now (from the Trails menu).</summary>
-    public void Open(int wayId)
+    /// <summary>Open the pop-up for a trail now (from the Trails menu; warnings pause the game, this doesn't).</summary>
+    public void Open(int wayId) => Open(wayId, fromWarning: false);
+
+    private void Open(int wayId, bool fromWarning)
     {
         _wayId = wayId;
         _workers = Math.Clamp(_ctx.Sim.State.Crew.Count, 1, Math.Max(1, _ctx.Sim.State.CrewRules.MaxWorkersPerJob));
         _signature = "";
+        if (fromWarning && !_pausedByWarning && _ctx.Host.Speed > 0)
+        {
+            _ctx.Host.SetSpeedIndex(0);
+            _pausedByWarning = true;
+        }
         Visible = true;
         Refresh();
     }
@@ -86,20 +104,30 @@ internal sealed partial class RepairDialog : PanelContainer
     public void Clear()
     {
         _waiting.Clear();
+        _dismissed.Clear();
+        _pausedByWarning = false;
         Visible = false;
     }
 
-    private void Dismiss()
+    /// <summary>Closes the pop-up and shows the next waiting trail; when none is left, a game it paused goes on at 1x.</summary>
+    private void Close(bool byPlayer)
     {
+        if (byPlayer) _dismissed.Add(_wayId);
+        else _dismissed.Remove(_wayId);
         Visible = false;
         while (_waiting.Count > 0)
         {
             int next = _waiting.Dequeue();
             if (NeedsAttention(next))
             {
-                Open(next);
+                Open(next, fromWarning: true);
                 return;
             }
+        }
+        if (_pausedByWarning)
+        {
+            _pausedByWarning = false;
+            _ctx.Host.SetSpeedIndex(1);
         }
     }
 
@@ -131,7 +159,7 @@ internal sealed partial class RepairDialog : PanelContainer
         var way = state.Ways.FirstOrDefault(w => w.Id == _wayId);
         if (way is null || !NeedsAttention(_wayId))
         {
-            Dismiss();
+            Close(byPlayer: false);
             return;
         }
 
