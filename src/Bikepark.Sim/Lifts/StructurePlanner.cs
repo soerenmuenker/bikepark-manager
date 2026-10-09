@@ -47,7 +47,7 @@ public static class StructurePlanner
 
     public static LiftPlan PlanLift(
         TerrainGrid grid, WayNetwork network, WorldState state, string typeId, PointCm valley, PointCm mountain,
-        int plateauLengthMeters = 0, int plateauWidthMeters = 0, string? operatorId = null, int initialTier = 0)
+        int plateauLengthMeters = 0, int plateauWidthMeters = 0, string? operatorId = null, int initialTier = 0, bool scenario = false)
     {
         var issues = new List<WayIssue>();
         var type = LiftNetwork.FindType(state, typeId);
@@ -83,8 +83,8 @@ public static class StructurePlanner
                 issues.Add(Error("tooSteep", $"Too steep for a {type.Name}: {Gradient.Format(gradient)} (limit {Gradient.Format(type.MaxGradient)})."));
         }
 
-        CheckPad(grid, network, state, rules, valleyPad, "Valley station", issues);
-        CheckPad(grid, network, state, rules, mountainPad, "Plateau", issues);
+        CheckPad(grid, network, state, rules, valleyPad, "Valley station", issues, checkLand: !scenario);
+        CheckPad(grid, network, state, rules, mountainPad, "Plateau", issues, checkLand: !scenario);
         if (PadsOverlap(valleyPad, mountainPad))
             issues.Add(Error("stationsOverlap", "The stations overlap."));
 
@@ -104,7 +104,8 @@ public static class StructurePlanner
     // ---------------------------------------------------------------- parking
 
     /// <summary>A parking lot centred at <paramref name="center"/>, its length pointing towards <paramref name="toward"/>.</summary>
-    public static ParkingPlan PlanParking(TerrainGrid grid, WayNetwork network, WorldState state, PointCm center, PointCm toward, int spaces)
+    public static ParkingPlan PlanParking(TerrainGrid grid, WayNetwork network, WorldState state, PointCm center, PointCm toward, int spaces,
+        bool scenario = false)
     {
         var issues = new List<WayIssue>();
         var rules = state.LiftRules;
@@ -116,7 +117,7 @@ public static class StructurePlanner
         var (lengthM, widthM) = ParkingSize(rules, spaces);
         var (dirX, dirZ) = TerrainPad.Direction(toward.X - center.X, toward.Z - center.Z);
         var pad = MakePad(grid, rules, center, lengthM, widthM, dirX, dirZ);
-        CheckPad(grid, network, state, rules, pad, "Parking lot", issues);
+        CheckPad(grid, network, state, rules, pad, "Parking lot", issues, checkLand: !scenario);
 
         // It serves the nearest valley station within reach.
         int liftId = 0;
@@ -153,13 +154,16 @@ public static class StructurePlanner
         return probe with { TargetHeightCm = target };
     }
 
-    private static void CheckPad(TerrainGrid grid, WayNetwork network, WorldState state, LiftRules rules, TerrainPad pad, string what, List<WayIssue> issues)
+    private static void CheckPad(TerrainGrid grid, WayNetwork network, WorldState state, LiftRules rules, TerrainPad pad, string what,
+        List<WayIssue> issues, bool checkLand = true)
     {
         if (pad.Corners().Any(c => !grid.Contains(c.X, c.Z)))
         {
             issues.Add(Error("outsideMap", $"{what} must lie on the map."));
             return;
         }
+        if (checkLand && (!Land.LandMath.IsOwned(state, pad.CenterX, pad.CenterZ) || pad.Corners().Any(c => !Land.LandMath.IsOwned(state, c.X, c.Z))))
+            issues.Add(Error("notYourLand", $"{what}: not your land. Buy the parcel first (Land menu)."));
 
         int worst = 0;
         ForEachSampleInside(grid, pad, (x, z) => worst = Math.Max(worst, Math.Abs(grid.HeightAtSample(x, z) - pad.TargetHeightCm)));

@@ -173,7 +173,7 @@ public class LiftTests
         var sim = LiftWorld(out _, withTrails: true, startTick: Opening);
         var lift = sim.State.Lifts[0];
         var type = LiftNetwork.FindType(sim.State, lift.TypeId)!;
-        Assert.Equal(150, LiftMath.BikeRidersPerHour(type, lift.BikeCarrierPermille));
+        Assert.Equal(225, LiftMath.BikeRidersPerHour(type, lift.BikeCarrierPermille)); // tier 1: every 4th cabin, 3 bikes each
 
         // 400 riders already in line: more than an hour's worth.
         var queued = Enumerable.Range(0, 400).Select(_ => QueueRider(sim, lift)).ToList();
@@ -184,8 +184,8 @@ public class LiftTests
         sim.RunTicks(60);
         sim.Events.Dispatch();
 
-        Assert.Equal(150, lift.Stats.Riders - before);
-        Assert.Equal(queued.Take(150).Select(g => g.Id), boarded.Take(150).Select(b => b.GuestId));
+        Assert.Equal(225, lift.Stats.Riders - before);
+        Assert.Equal(queued.Take(225).Select(g => g.Id), boarded.Take(225).Select(b => b.GuestId));
     }
 
     [Fact]

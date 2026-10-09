@@ -49,7 +49,8 @@ public sealed record BuildWayCommand(
     }
 
     private WayPlan Plan(SimContext ctx) =>
-        WayPlanner.Plan(ctx.Terrain, ctx.Network, ctx.State.TrailRules, Kind, Points);
+        WayPlanner.Plan(ctx.Terrain, ctx.Network, ctx.State.TrailRules, Kind, Points,
+            Origin == WayOrigin.Scenario ? null : Land.LandMath.OwnedPredicate(ctx.State));
 
     // Value equality over the points, so identical commands compare equal (records compare lists by reference).
     public bool Equals(BuildWayCommand? other) =>

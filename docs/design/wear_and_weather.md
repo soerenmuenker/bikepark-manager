@@ -69,7 +69,7 @@ Decisions:
 ## Done-when KPI
 
 ```bash
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 14 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --daily [--auto-repair]
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 14 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --daily [--auto-repair]
 ```
 
 Starter Valley, seed 1337, 19 demo features on the two trails, 3 workers with tools. `--auto-repair` stands in for the

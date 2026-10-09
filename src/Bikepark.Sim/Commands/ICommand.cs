@@ -29,6 +29,8 @@ namespace Bikepark.Sim.Commands;
 [JsonDerivedType(typeof(CancelJobCommand), "cancelJob")]
 [JsonDerivedType(typeof(RepairFeatureCommand), "repairFeature")]
 [JsonDerivedType(typeof(SetTrailClosedCommand), "setTrailClosed")]
+[JsonDerivedType(typeof(BuyParcelCommand), "buyParcel")]
+[JsonDerivedType(typeof(RestoreLiftCommand), "restoreLift")]
 public interface ICommand
 {
     /// <summary>Returns null if the command can be applied, otherwise a human-readable rejection reason.</summary>

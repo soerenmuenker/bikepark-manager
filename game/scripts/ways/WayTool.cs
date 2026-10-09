@@ -149,7 +149,7 @@ public partial class WayTool : Node3D
             candidate.Add(cursor);
         var sim = _host.Sim;
         Plan = candidate.Count >= 2
-            ? WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, candidate)
+            ? WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, candidate, Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State))
             : null;
         UpdateEstimate(sim, grid, candidate);
 
@@ -187,7 +187,7 @@ public partial class WayTool : Node3D
             return;
         }
         var sim = _host.Sim;
-        var plan = WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, _points);
+        var plan = WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, _points, Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State));
         if (!plan.IsValid)
         {
             Status = plan.FirstError ?? "Not valid.";

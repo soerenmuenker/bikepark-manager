@@ -54,11 +54,28 @@ internal static class TestWorlds
     /// </summary>
     public static ScenarioDefinition LiftScenario(ulong seed = 1337)
     {
+        var scenario = ScenarioLoader.LoadFile(Path.Combine(RepoRoot(), "data", "scenarios", "demo_valley.json"));
+        scenario.Seed = seed;
+        scenario.Terrain = scenario.Terrain with { Seed = 1337 };
+        return scenario;
+    }
+
+    /// <summary>
+    /// The Starter Valley career (data/scenarios/starter_valley.json): the old ski hill with the derelict T-bar (lift 1),
+    /// its parking (6) and track (way 8); the company gondola (lift 9, tier 0) with its parking and the hiking route (16).
+    /// The terrain is pinned to seed 1337.
+    /// </summary>
+    public static ScenarioDefinition CareerScenario(ulong seed = 1337)
+    {
         var scenario = ScenarioLoader.LoadFile(Path.Combine(RepoRoot(), "data", "scenarios", "starter_valley.json"));
         scenario.Seed = seed;
         scenario.Terrain = scenario.Terrain with { Seed = 1337 };
         return scenario;
     }
+
+    /// <summary>data/scripts/career_opening.json: restore the T-bar, hire two, plan two trails, buy the foot forest.</summary>
+    public static IReadOnlyList<TimedCommand> CareerOpening() =>
+        JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(Path.Combine(RepoRoot(), "data", "scripts", "career_opening.json")), SimJson.Indented)!;
 
     /// <summary>The demo trails from the plateau (data/scripts/demo_lift_network.json), built at tick 0.</summary>
     public static IReadOnlyList<TimedCommand> DemoLiftNetwork() =>
@@ -117,6 +134,9 @@ internal static class TestWorlds
         new(800, new SetTrailClosedCommand(3, false)),
         new(660, new RepairFeatureCommand(2, 4, 2)), // rejected: not built / in perfect condition
         new(660, new SetTrailClosedCommand(1, true)), // rejected: a path
+        // Land and lifts (no parcels or lifts in the test world).
+        new(700, new BuyParcelCommand("nowhere")), // rejected: unknown parcel
+        new(700, new RestoreLiftCommand(99)), // rejected: no such lift
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

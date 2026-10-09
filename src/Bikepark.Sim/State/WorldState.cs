@@ -1,6 +1,7 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Crew;
+using Bikepark.Sim.Land;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Safety;
@@ -73,6 +74,12 @@ public sealed class WorldState
     public List<Lift> Lifts { get; set; } = [];
 
     public List<ParkingLot> ParkingLots { get; set; } = [];
+
+    /// <summary>Land the park can own (content, from the scenario). None = all land is the park's.</summary>
+    public List<Parcel> Parcels { get; set; } = [];
+
+    /// <summary>Ids of the parcels the park owns, in the order bought (those owned at start first).</summary>
+    public List<string> OwnedParcelIds { get; set; } = [];
 
     public CrewRules CrewRules { get; set; } = new();
 
@@ -229,6 +236,14 @@ public sealed class FinanceState
     public long WagesTodayCents { get; set; }
     public long TotalToolsCents { get; set; }
     public long TotalWoodCents { get; set; }
+
+    /// <summary>Land bought, lifts built or restored by contractors (included in the expenses).</summary>
+    public long TotalLandCents { get; set; }
+    public long TotalLiftBuildCents { get; set; }
+
+    /// <summary>Daily upkeep of the park's own lifts (included in the expenses).</summary>
+    public long TotalLiftUpkeepCents { get; set; }
+    public long LiftUpkeepTodayCents { get; set; }
 
     public void Earn(long cents)
     {

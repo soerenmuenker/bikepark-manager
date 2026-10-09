@@ -38,6 +38,16 @@ public sealed class Lift
     public int DispatchRemainderMs { get; set; }
 
     public LiftStats Stats { get; set; } = new();
+
+    /// <summary>Rusty and out of service (the park can restore it); carries nobody.</summary>
+    public bool Derelict { get; set; }
+
+    /// <summary>A contractor is building or restoring it: it runs from this tick on (0 = not under construction).</summary>
+    public long ReadyTick { get; set; }
+
+    /// <summary>Running and taking riders (not derelict, not under construction).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool InService => !Derelict && ReadyTick == 0;
 }
 
 /// <summary>A station: its own id (the network hub) and the pad it stands on.</summary>

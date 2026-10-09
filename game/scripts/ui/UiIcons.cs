@@ -43,6 +43,7 @@ public enum UiIcon
     Up,
     Star,
     Level,
+    Land,
 }
 
 /// <summary>Line icons drawn with canvas primitives (no image assets), scaled to any square.</summary>
@@ -231,6 +232,11 @@ internal static class UiIcons
             case UiIcon.Star:
                 ci.DrawColoredPolygon(StarsView.Star(new Rect2(P(0.1f, 0.1f), new Vector2(0.8f, 0.8f) * s)), color);
                 break;
+            case UiIcon.Land: // a staked plot with a flag
+                Polyline(0.12f, 0.70f, 0.50f, 0.86f, 0.88f, 0.70f, 0.50f, 0.54f, 0.12f, 0.70f);
+                Line(0.50f, 0.70f, 0.50f, 0.16f);
+                Poly(0.50f, 0.16f, 0.78f, 0.25f, 0.50f, 0.34f);
+                break;
             case UiIcon.Level: // badge with a chevron
                 Circle(0.5f, 0.5f, 0.36f);
                 Polyline(0.32f, 0.60f, 0.5f, 0.40f, 0.68f, 0.60f);
@@ -301,7 +307,7 @@ public partial class RoundButton : Control
         _caption = caption;
         TooltipText = tooltip;
         Pressed += onPressed;
-        CustomMinimumSize = new Vector2(Math.Max(diameter, caption.Length == 0 ? 0 : 60), diameter + (caption.Length == 0 ? 0 : 18));
+        CustomMinimumSize = new Vector2(Math.Max(diameter, caption.Length == 0 ? 0 : 58), diameter + (caption.Length == 0 ? 0 : 18));
         MouseFilter = MouseFilterEnum.Stop;
         MouseDefaultCursorShape = CursorShape.PointingHand;
         MouseEntered += () => { _hover = true; QueueRedraw(); };

@@ -291,6 +291,10 @@ public partial class RiderView : Node3D
         {
             position = LiftShapes.OnRope(from, to, t, up: true) + Vector3.Down * (LiftShapes.CabinDrop + 1.0f);
             forward = LiftShapes.Forward(from);
+            // A T-bar pulls its riders up on the ground.
+            var lift = sim.State.Lifts.FirstOrDefault(l => l.Id == leg.WayId);
+            if (lift is not null && LiftNetwork.FindType(sim.State, lift.TypeId)?.Kind == LiftKind.TBar)
+                position.Y = sim.Terrain.HeightAt((long)(position.X * 100), (long)(position.Z * 100)) / 100f;
             return true;
         }
         var a = LiftShapes.Center(from);

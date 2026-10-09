@@ -10,9 +10,11 @@ using Godot;
 namespace Bikepark.Game.Lifts;
 
 /// <summary>
-/// Draws lifts and parking lots: platform surfaces, placeholder station buildings, ropes, towers, moving cabins
-/// (bike-equipped cabins in orange, using the Sim's <see cref="LiftMath.IsBikeCarrier"/>) and parked cars by
-/// occupancy. Cabins only move while the park is open. Pure view.
+/// Draws lifts and parking lots: platform surfaces, placeholder station buildings, ropes, towers, moving carriers by lift
+/// type (gondola cabins, open chairs with bikes hung on the back, T-bar hangers reaching down to the riders on the
+/// ground; bike-equipped ones in orange, using the Sim's <see cref="LiftMath.IsBikeCarrier"/>) and parked cars by
+/// occupancy. Carriers only move while the lift runs. A derelict lift is drawn rusty without carriers, one under
+/// construction as bare towers. Pure view.
 /// </summary>
 public partial class LiftView : Node3D
 {
@@ -27,7 +29,7 @@ public partial class LiftView : Node3D
     private SimHost _host = null!;
     private TerrainView _terrain = null!;
     private Node3D? _static;
-    private MultiMeshInstance3D _cabins = null!;
+    private MultiMeshInstance3D _cabins = null!, _chairs = null!, _hangers = null!;
     private MultiMeshInstance3D _cars = null!;
     private StandardMaterial3D _material = null!;
     private readonly List<IDisposable> _subscriptions = [];
@@ -40,6 +42,8 @@ public partial class LiftView : Node3D
         _terrain = GetNode<TerrainView>(TerrainPath);
         _material = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.85f };
         _cabins = Instances("Cabins", CabinMesh());
+        _chairs = Instances("Chairs", ChairMesh());
+        _hangers = Instances("Hangers", HangerMesh());
         _cars = Instances("Cars", CarMesh());
         _terrain.TerrainBuilt += _ => _dirty = true;
         _host.SimulationReplaced += OnSimulationReplaced;
@@ -58,6 +62,8 @@ public partial class LiftView : Node3D
         _subscriptions.Clear();
         _subscriptions.Add(sim.Events.Subscribe<LiftBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<LiftDeleted>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<LiftConstructionStarted>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<LiftReady>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<ParkingLotBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<ParkingLotDeleted>(_ => _dirty = true));
         _dirty = true;
@@ -99,14 +105,22 @@ public partial class LiftView : Node3D
             var mountain = LiftNetwork.Pad(state, lift.Mountain.TerrainEditId);
             if (valley is null || mountain is null) continue;
 
-            AddMesh(Surface(valley, new Color(0.62f, 0.60f, 0.56f)), $"{lift.Name} valley platform");
-            AddMesh(Surface(mountain, new Color(0.62f, 0.60f, 0.56f)), $"{lift.Name} plateau");
-            AddMesh(Station(valley), $"{lift.Name} valley station");
-            AddMesh(Station(mountain), $"{lift.Name} mountain station");
-            AddMesh(Ropes(valley, mountain), $"{lift.Name} ropes");
-            AddMesh(Towers(grid, valley, mountain), $"{lift.Name} towers");
+            var kind = LiftNetwork.FindType(state, lift.TypeId)?.Kind ?? LiftKind.Gondola;
+            bool building = lift.ReadyTick > 0 && !lift.Derelict;
+            // Rusty while derelict (also while being restored), bare scaffold-orange towers while being built.
+            Color Tint(Color c) => lift.Derelict ? c.Lerp(Rust, 0.65f) : c;
+            AddMesh(Surface(valley, building ? Gravel : new Color(0.62f, 0.60f, 0.56f)), $"{lift.Name} valley platform");
+            AddMesh(Surface(mountain, building ? Gravel : new Color(0.62f, 0.60f, 0.56f)), $"{lift.Name} plateau");
+            if (!building)
+            {
+                AddMesh(Station(valley, kind, Tint), $"{lift.Name} valley station");
+                AddMesh(Station(mountain, kind, Tint), $"{lift.Name} mountain station");
+                AddMesh(Ropes(valley, mountain, Tint(new Color(0.12f, 0.12f, 0.12f))), $"{lift.Name} ropes");
+            }
+            AddMesh(Towers(grid, valley, mountain, kind, building ? Scaffold : Tint(new Color(0.45f, 0.47f, 0.50f))), $"{lift.Name} towers");
             string owner = LiftNetwork.FindOperator(state, lift.OperatorId)?.Name ?? "park";
-            AddLabel($"{lift.Name}\n{owner}", LiftShapes.Center(valley, 14f));
+            string status = lift.Derelict ? lift.ReadyTick > 0 ? "\nbeing restored" : "\nrusty, out of service" : building ? "\nunder construction" : "";
+            AddLabel($"{lift.Name}\n{owner}{status}", LiftShapes.Center(valley, 14f));
             AddLabel("Plateau", LiftShapes.Center(mountain, 12f));
         }
     }
@@ -124,20 +138,36 @@ public partial class LiftView : Node3D
         return b.ToMesh();
     }
 
-    /// <summary>Placeholder station: a hall over the rope end with a bull-wheel housing on top.</summary>
-    private static ArrayMesh Station(TerrainPad pad)
+    private static readonly Color Rust = new(0.55f, 0.30f, 0.15f);
+    private static readonly Color Scaffold = new(0.95f, 0.60f, 0.15f);
+    private static readonly Color Gravel = new(0.55f, 0.50f, 0.42f);
+
+    /// <summary>
+    /// Placeholder station: a hall over the rope end with a bull-wheel housing on top (gondola, chairlift), or a small
+    /// hut next to an open bull-wheel frame (T-bar).
+    /// </summary>
+    private static ArrayMesh Station(TerrainPad pad, LiftKind kind, Func<Color, Color> tint)
     {
         var b = new FlatMeshBuilder();
-        b.Box(new Vector3(-6, 0, -5), new Vector3(6, 6.5f, 5), new Color(0.80f, 0.78f, 0.72f));
-        b.Box(new Vector3(-7, 6.5f, -6), new Vector3(7, 7.2f, 6), new Color(0.35f, 0.18f, 0.12f));
-        b.Box(new Vector3(-2, 7.2f, -4), new Vector3(2, LiftShapes.CableHeight + 0.6f, 4), new Color(0.3f, 0.3f, 0.32f));
+        if (kind == LiftKind.TBar)
+        {
+            b.Box(new Vector3(-1.5f, 0, -4.5f), new Vector3(1.5f, 2.6f, -2.0f), tint(new Color(0.55f, 0.40f, 0.25f)));
+            b.Box(new Vector3(-1.7f, 2.6f, -4.7f), new Vector3(1.7f, 3.0f, -1.8f), tint(new Color(0.35f, 0.18f, 0.12f)));
+            b.Box(new Vector3(-0.3f, 0, -0.3f), new Vector3(0.3f, LiftShapes.CableHeight + 0.4f, 0.3f), tint(new Color(0.45f, 0.47f, 0.50f)));
+            b.Box(new Vector3(-0.6f, LiftShapes.CableHeight - 0.2f, -LiftShapes.RopeOffset - 0.4f),
+                new Vector3(0.6f, LiftShapes.CableHeight + 0.4f, LiftShapes.RopeOffset + 0.4f), tint(new Color(0.3f, 0.3f, 0.32f)));
+            return Placed(b.ToMesh(), pad);
+        }
+        float wall = kind == LiftKind.Chairlift ? 4.5f : 6.5f;
+        b.Box(new Vector3(-6, 0, -5), new Vector3(6, wall, 5), tint(new Color(0.80f, 0.78f, 0.72f)));
+        b.Box(new Vector3(-7, wall, -6), new Vector3(7, wall + 0.7f, 6), tint(new Color(0.35f, 0.18f, 0.12f)));
+        b.Box(new Vector3(-2, wall + 0.7f, -4), new Vector3(2, LiftShapes.CableHeight + 0.6f, 4), tint(new Color(0.3f, 0.3f, 0.32f)));
         return Placed(b.ToMesh(), pad);
     }
 
-    private static ArrayMesh Ropes(TerrainPad valley, TerrainPad mountain)
+    private static ArrayMesh Ropes(TerrainPad valley, TerrainPad mountain, Color color)
     {
         var b = new FlatMeshBuilder();
-        var color = new Color(0.12f, 0.12f, 0.12f);
         foreach (bool up in new[] { true, false })
         {
             var a = LiftShapes.OnRope(valley, mountain, 0f, up);
@@ -151,13 +181,12 @@ public partial class LiftView : Node3D
         return b.ToMesh();
     }
 
-    /// <summary>A tower about every 100 m, reaching from the ground up to the ropes.</summary>
-    private static ArrayMesh Towers(TerrainGrid grid, TerrainPad valley, TerrainPad mountain)
+    /// <summary>A tower about every 100 m (T-bar: every 60 m), reaching from the ground up to the ropes.</summary>
+    private static ArrayMesh Towers(TerrainGrid grid, TerrainPad valley, TerrainPad mountain, LiftKind kind, Color color)
     {
         var b = new FlatMeshBuilder();
-        var color = new Color(0.45f, 0.47f, 0.50f);
         float length = LiftShapes.Center(valley).DistanceTo(LiftShapes.Center(mountain));
-        int count = Math.Max(1, (int)(length / 100f));
+        int count = Math.Max(1, (int)(length / (kind == LiftKind.TBar ? 60f : 100f)));
         var right = LiftShapes.Right(valley);
         for (int i = 1; i <= count; i++)
         {
@@ -207,9 +236,12 @@ public partial class LiftView : Node3D
     {
         var state = sim.State;
         var transforms = new List<(Transform3D Transform, Color Color)>();
+        var chairs = new List<(Transform3D Transform, Color Color)>();
+        var hangers = new List<(Transform3D Transform, Color Color)>();
 
         foreach (var lift in state.Lifts)
         {
+            if (!lift.InService) continue; // rusty or with the contractor: no carriers on the rope
             float alpha = ParkSchedule.LiftRunning(state, lift, state.Tick) ? _host.InterpolationAlpha : 0f;
             var type = LiftNetwork.FindType(state, lift.TypeId);
             var valley = LiftNetwork.Pad(state, lift.Valley.TerrainEditId);
@@ -232,10 +264,13 @@ public partial class LiftView : Node3D
                 if (t < 0f) continue;
                 var position = LiftShapes.OnRope(valley, mountain, t, up) + Vector3.Down * LiftShapes.CabinDrop;
                 bool bikes = LiftMath.IsBikeCarrier(lift.CarriersDispatched - 1 - j, lift.BikeCarrierPermille);
-                transforms.Add((new Transform3D(basis, position), bikes ? BikeCabin : PlainCabin));
+                var item = (new Transform3D(basis, position), bikes ? BikeCabin : PlainCabin);
+                (type.Kind switch { LiftKind.TBar => hangers, LiftKind.Chairlift => chairs, _ => transforms }).Add(item);
             }
         }
         Fill(_cabins, transforms);
+        Fill(_chairs, chairs);
+        Fill(_hangers, hangers);
     }
 
     private void UpdateCars(Simulation sim)
@@ -316,6 +351,28 @@ public partial class LiftView : Node3D
         var b = new FlatMeshBuilder();
         b.Box(new Vector3(-1.1f, -1.2f, -1.0f), new Vector3(1.1f, 1.2f, 1.0f), Colors.White);
         b.Box(new Vector3(-0.1f, 1.2f, -0.1f), new Vector3(0.1f, LiftShapes.CabinDrop, 0.1f), new Color(0.2f, 0.2f, 0.2f));
+        return b.ToMesh();
+    }
+
+    /// <summary>An open four-seat chair on its hanger, with bike hooks on the back (tinted per instance).</summary>
+    private static ArrayMesh ChairMesh()
+    {
+        var b = new FlatMeshBuilder();
+        var dark = new Color(0.2f, 0.2f, 0.2f);
+        b.Box(new Vector3(-0.08f, 0.2f, -0.08f), new Vector3(0.08f, LiftShapes.CabinDrop, 0.08f), dark); // hanger
+        b.Box(new Vector3(-0.5f, -0.9f, -1.6f), new Vector3(0.5f, -0.75f, 1.6f), Colors.White); // seat
+        b.Box(new Vector3(0.4f, -0.75f, -1.6f), new Vector3(0.5f, 0.2f, 1.6f), Colors.White); // back
+        b.Box(new Vector3(0.5f, -1.6f, -1.5f), new Vector3(0.7f, 0.0f, 1.5f), dark); // bike rack
+        return b.ToMesh();
+    }
+
+    /// <summary>A T-bar hanger: a pole from the rope down to a crossbar about a metre above the ground.</summary>
+    private static ArrayMesh HangerMesh()
+    {
+        var b = new FlatMeshBuilder();
+        float bottom = LiftShapes.CabinDrop - LiftShapes.CableHeight + 1.0f; // relative to the carrier position
+        b.Box(new Vector3(-0.05f, bottom, -0.05f), new Vector3(0.05f, LiftShapes.CabinDrop, 0.05f), new Color(0.25f, 0.25f, 0.25f));
+        b.Box(new Vector3(-0.08f, bottom - 0.08f, -0.6f), new Vector3(0.08f, bottom + 0.08f, 0.6f), Colors.White);
         return b.ToMesh();
     }
 

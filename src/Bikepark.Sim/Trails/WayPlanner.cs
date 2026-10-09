@@ -48,7 +48,9 @@ public sealed class WayPlan
 /// </summary>
 public static class WayPlanner
 {
-    public static WayPlan Plan(TerrainGrid grid, WayNetwork network, TrailRules rules, WayKind kind, IReadOnlyList<PointCm> input)
+    /// <param name="onOwnLand">The park's land (<see cref="Land.LandMath.OwnedPredicate"/>); null = no land limits.</param>
+    public static WayPlan Plan(TerrainGrid grid, WayNetwork network, TrailRules rules, WayKind kind, IReadOnlyList<PointCm> input,
+        Func<long, long, bool>? onOwnLand = null)
     {
         var issues = new List<WayIssue>();
         var points = input.ToList();
@@ -98,6 +100,14 @@ public static class WayPlanner
             return Fail(kind, points, "sameJunction", "Both ends attach to the same plateau.");
 
         var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
+
+        if (onOwnLand is not null)
+            for (int i = 0; i < geometry.SampleCount; i++)
+                if (!onOwnLand(geometry.Xs[i], geometry.Zs[i]))
+                {
+                    issues.Add(Error("notYourLand", "Not your land: buy the parcel first (Land menu).", geometry.Distances[i], geometry.Distances[i]));
+                    break;
+                }
 
         long length = geometry.LengthCm;
         if (length < rules.MinLengthMeters * 100L)

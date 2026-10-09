@@ -25,6 +25,16 @@ internal sealed class LiftSystem : ISimSystem
                 ApplyBookedTier(ctx, lift);
 
         foreach (var lift in state.Lifts)
+            if (lift.ReadyTick > 0 && ctx.Tick >= lift.ReadyTick)
+            {
+                // The contractor is done: the park's own lift takes bikes on every carrier.
+                lift.ReadyTick = 0;
+                lift.Derelict = false;
+                if (lift.OperatorId is null) lift.BikeCarrierPermille = 1000;
+                ctx.Publish(new LiftReady(ctx.Tick, lift.Id));
+            }
+
+        foreach (var lift in state.Lifts)
         {
             if (lift.BikeCarrierPermille <= 0 && lift.Queue.Count > 0)
                 ReleaseQueue(ctx, lift);

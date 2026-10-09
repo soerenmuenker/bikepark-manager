@@ -32,7 +32,17 @@ public partial class SimHost : Node
     public static readonly int[] SpeedMultipliers = [0, 1, 4, 16, 60];
 
     /// <summary>Scenario path relative to the content root (the repo root in the editor, the executable's folder in exports).</summary>
-    [Export] public string ScenarioFile { get; set; } = "data/scenarios/starter_valley.json";
+    [Export] public string ScenarioFile { get; set; } = "data/scenarios/demo_valley.json";
+
+    /// <summary>The scenarios offered on the start screen: the sandbox demo and the career.</summary>
+    public const string DemoScenarioFile = "data/scenarios/demo_valley.json";
+    public const string CareerScenarioFile = "data/scenarios/starter_valley.json";
+
+    /// <summary>
+    /// True until the player picked a scenario on the start screen (the demo world waits paused behind it). Debug runs
+    /// that set up a world (<c>--demo</c>, <c>--scenario=</c>, <c>--script=</c>, <c>--advance=</c>) start right away.
+    /// </summary>
+    public bool ShowStartScreen { get; private set; }
 
     /// <summary>Game minutes per real second at 1x speed (a ~7 min lift ride takes ~1 min real time).</summary>
     [Export] public double TicksPerSecondAtNormalSpeed { get; set; } = 0.125;
@@ -90,10 +100,26 @@ public partial class SimHost : Node
 
     public override void _Ready()
     {
+        var args = OS.GetCmdlineUserArgs();
+        foreach (string arg in args)
+            if (arg.StartsWith("--scenario=", StringComparison.Ordinal))
+                ScenarioFile = arg[11..] switch
+                {
+                    "demo" or "demo_valley" => DemoScenarioFile,
+                    "starter" or "starter_valley" or "career" => CareerScenarioFile,
+                    var file => file,
+                };
         var scenario = ScenarioLoader.LoadFile(ResolveContentPath(ScenarioFile));
         ReplaceSimulation(new Simulation(ScenarioLoader.CreateWorld(scenario)));
+        // Debug runs that set up a world (--demo, --scenario=, --script=, --advance=) skip the start screen.
+        if (!args.Any(a => a.StartsWith("--demo", StringComparison.Ordinal) || a.StartsWith("--scenario=", StringComparison.Ordinal)
+                           || a.StartsWith("--script=", StringComparison.Ordinal) || a.StartsWith("--advance=", StringComparison.Ordinal)))
+        {
+            ShowStartScreen = true;
+            SetSpeedIndex(0);
+        }
 
-        foreach (string arg in OS.GetCmdlineUserArgs())
+        foreach (string arg in args)
         {
             if (arg == "--demo") LoadDemoNetwork();
             else if (arg == "--demo-planned") LoadDemoNetwork(planned: true);
@@ -234,6 +260,28 @@ public partial class SimHost : Node
         _skipTargetTick = -1;
         _nightSkip = false;
         SetSpeedIndex(_speedAfterSkip);
+    }
+
+    /// <summary>
+    /// Starts a new game from the start screen: the scenario fresh, plus (for the sandbox demo) the demo trails and their
+    /// features, built at once. Runs at 1x.
+    /// </summary>
+    public void NewGame(string scenarioFile, bool demoContent)
+    {
+        ScenarioFile = scenarioFile;
+        var scenario = ScenarioLoader.LoadFile(ResolveContentPath(scenarioFile));
+        ReplaceSimulation(new Simulation(ScenarioLoader.CreateWorld(scenario)));
+        if (demoContent)
+        {
+            LoadDemoNetwork();
+            Sim.Step();
+            bool instant = InstantBuild;
+            InstantBuild = true;
+            LoadDemoFeatures();
+            InstantBuild = instant;
+        }
+        ShowStartScreen = false;
+        SetSpeedIndex(1);
     }
 
     public void Save()

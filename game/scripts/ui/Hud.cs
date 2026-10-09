@@ -33,7 +33,7 @@ namespace Bikepark.Game.Ui;
 /// </summary>
 public partial class Hud : CanvasLayer
 {
-    private enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Reputation, Map, System }
+    private enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Reputation, Land, Map, System }
 
     private const int MaxToasts = 4;
 
@@ -72,6 +72,8 @@ public partial class Hud : CanvasLayer
     private VBoxContainer _toasts = null!;
     private RepairDialog _repairDialog = null!;
 
+    private LandView _land = null!;
+    private StartScreen _startScreen = null!;
     private string? _screenshotPath;
     private double _screenshotTimer = 4;
 
@@ -92,6 +94,10 @@ public partial class Hud : CanvasLayer
         BuildUi();
         _ctx.Host.SimulationReplaced += Subscribe;
         Subscribe(_ctx.Sim);
+        _land = new LandView(_ctx.Host, _ctx.Terrain, () => _ctx.Kpi.Level);
+        _ctx.Terrain.CallDeferred(Node.MethodName.AddChild, _land);
+        _startScreen = new StartScreen(_ctx.Host);
+        _root.AddChild(_startScreen);
 
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
@@ -131,7 +137,7 @@ public partial class Hud : CanvasLayer
         bar.AddChild(ClockBlock());
         bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
         var menus = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-        menus.AddThemeConstantOverride("separation", 4);
+        menus.AddThemeConstantOverride("separation", 0);
         foreach (var (menu, icon, caption, tooltip) in new[]
                  {
                      (Menu.Build, UiIcon.Build, "Build", "Plan paths, trails, features; fell trees; lifts, parking  [B]"),
@@ -141,6 +147,7 @@ public partial class Hud : CanvasLayer
                      (Menu.Lifts, UiIcon.Lift, "Lifts", "Queues and bike access  [G]"),
                      (Menu.Finance, UiIcon.Finance, "Finances", "Money, fees, daily results  [M]"),
                      (Menu.Reputation, UiIcon.Star, "Rating", "Reviews, rating, influencers, park level  [U]"),
+                     (Menu.Land, UiIcon.Land, "Land", "Buy land to build on  [N]"),
                      (Menu.Map, UiIcon.Map, "Map", "Terrain overlays  [O]"),
                  })
         {
@@ -170,6 +177,7 @@ public partial class Hud : CanvasLayer
         AddPanel(Menu.Lifts, new LiftsPanel());
         AddPanel(Menu.Finance, new FinancePanel());
         AddPanel(Menu.Reputation, new ReputationPanel());
+        AddPanel(Menu.Land, new LandPanel());
         AddPanel(Menu.Map, new MapPanel());
         AddPanel(Menu.System, new SystemPanel());
 
@@ -377,6 +385,8 @@ public partial class Hud : CanvasLayer
             if (_open != Menu.None) _panels[_open].Refresh();
             _repairDialog.Refresh();
         }
+        _land.ShowLabels = _open == Menu.Land;
+        _startScreen.Visible = _ctx.Host.ShowStartScreen;
         UpdateClock();
         UpdateToolPanel();
         UpdateToolChip();
@@ -445,13 +455,14 @@ public partial class Hud : CanvasLayer
         bool waiting = state.Jobs.Any(j => j.Wood > 0 && !j.WoodTaken && j.Wood > state.WoodStock);
         _woodValue.AddThemeColorOverride("font_color", waiting ? UiTheme.Warn : UiTheme.Text);
 
-        var lift = state.Lifts.FirstOrDefault();
+        var lift = state.Lifts.FirstOrDefault(l => l.InService && l.BikeCarrierPermille > 0) ?? state.Lifts.FirstOrDefault();
         _queueChip.Visible = lift is not null;
         if (lift is not null && LiftNetwork.FindType(state, lift.TypeId) is { } type)
         {
             int wait = LiftMath.ExpectedWaitMinutes(type, lift.BikeCarrierPermille, lift.Queue.Count);
-            _queueValue.Text = wait < 0 ? "no bikes" : wait == 0 ? $"{lift.Queue.Count}" : $"{lift.Queue.Count} · {wait}′";
-            _queueValue.AddThemeColorOverride("font_color", wait < 0 || wait > 20 ? UiTheme.Bad : wait > 8 ? UiTheme.Warn : UiTheme.Text);
+            _queueValue.Text = !lift.InService ? "–" : wait < 0 ? "no bikes" : wait == 0 ? $"{lift.Queue.Count}" : $"{lift.Queue.Count} · {wait}′";
+            _queueValue.TooltipText = $"{lift.Name}: riders in the queue · expected wait";
+            _queueValue.AddThemeColorOverride("font_color", !lift.InService ? UiTheme.TextDim : wait < 0 || wait > 20 ? UiTheme.Bad : wait > 8 ? UiTheme.Warn : UiTheme.Text);
         }
     }
 
@@ -549,9 +560,12 @@ public partial class Hud : CanvasLayer
             lines.Add(structures.Status);
             if (structures.LiftPlan is { } lp)
             {
-                if (lp.LengthCm > 0) lines.Add($"{lp.HorizontalCm / 100} m long · +{lp.RiseCm / 100} m · ride {lp.RideSeconds / 60.0:F1} min");
+                if (lp.LengthCm > 0) lines.Add($"{lp.Type?.Name}: {lp.HorizontalCm / 100} m long · +{lp.RiseCm / 100} m · ride {lp.RideSeconds / 60.0:F1} min");
+                if (structures.Locked() is { } locked) lines.Add($"✗ {locked}");
                 lines.AddRange(lp.Issues.Take(2).Select(i => $"✗ {i.Message}"));
-                if (lp.IsValid) lines.Add("✓ Enter to build");
+                if (lp.IsValid && structures.Locked() is null && lp.Type is { } type)
+                    lines.Add(_ctx.Host.InstantBuild ? "✓ Enter to build (debug: free, at once)"
+                        : $"✓ Enter to order it: {UiTheme.Money(type.BuildCostCents)}, ready in {type.BuildDays} days, then {UiTheme.Money(type.UpkeepPerDayCents)}/day");
             }
             if (structures.ParkingPlan is { } pp)
             {
@@ -603,6 +617,7 @@ public partial class Hud : CanvasLayer
             case Key.G: Toggle(Menu.Lifts); break;
             case Key.M: Toggle(Menu.Finance); break;
             case Key.U: Toggle(Menu.Reputation); break;
+            case Key.N: Toggle(Menu.Land); break;
             case Key.O: Toggle(Menu.Map); break;
             case Key.Escape when !toolActive && _open != Menu.None: Toggle(Menu.None); break;
             case Key.Space: _ctx.Host.SetSpeedIndex(_ctx.Host.SpeedIndex == 0 ? 1 : 0); break;
@@ -647,6 +662,11 @@ public partial class Hud : CanvasLayer
             e.Post.EffectPermille > 0 ? UiTheme.Good : e.Post.EffectPermille < 0 ? UiTheme.Bad : UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<LevelChanged>(e => Toast(e.NewLevel > e.OldLevel
             ? $"Park level {e.NewLevel} reached!" : $"The park dropped to level {e.NewLevel}", e.NewLevel > e.OldLevel ? UiTheme.Good : UiTheme.Warn)));
+        _subscriptions.Add(events.Subscribe<ParcelBought>(e => Toast(
+            $"Bought {_ctx.Sim.State.Parcels.FirstOrDefault(p => p.Id == e.ParcelId)?.Name} for {UiTheme.Money(e.PriceCents)}: you can build there now", UiTheme.Good)));
+        _subscriptions.Add(events.Subscribe<LiftConstructionStarted>(e => Toast(
+            $"{(e.Restoration ? "Restoring" : "Building")} {LiftName(e.LiftId)} for {UiTheme.Money(e.CostCents)}: running from day {GameTime.Day(e.ReadyTick) + 1}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<LiftReady>(e => Toast($"{LiftName(e.LiftId)} is ready and running", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<RiderCrashed>(e =>
         {
             string where = e.FeatureId != 0 ? $" at the {FeatureTypeName(e.WayId, e.FeatureId)}" : e.Cause == Bikepark.Sim.Safety.CrashCause.Collision ? " (collision at a crossing)" : "";
@@ -701,6 +721,8 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<BikeAccessBooked>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: true), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessChanged>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: false), UiTheme.Accent)));
     }
+
+    private string LiftName(int liftId) => _ctx.Sim.State.Lifts.FirstOrDefault(l => l.Id == liftId)?.Name ?? "The lift";
 
     private string FeatureTypeName(int wayId, int featureId)
     {

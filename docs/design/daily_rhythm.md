@@ -37,7 +37,7 @@ Decisions:
 ## Done-when KPI
 
 ```bash
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --hourly
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 3 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --hourly
 ```
 
 `--hourly` reports the last simulated day minute by minute, averaged per hour (day 3, seed 1337; measured before

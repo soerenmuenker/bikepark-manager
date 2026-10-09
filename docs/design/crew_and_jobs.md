@@ -47,7 +47,7 @@ Decisions:
 SimRunner command (Starter Valley, seed 1337, 10 days):
 
 ```bash
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json [--commands data/scripts/demo_crew.json]
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json [--commands data/scripts/demo_crew.json]
 ```
 
 The trails are built at once (`"instant": true`). The 19 demo features are planned and built by the crew.
@@ -163,7 +163,7 @@ difficulty and give riders fun.
 
 ## Content (first values, tune freely)
 
-`crewRules` in `starter_valley.json`:
+`crewRules` in `demo_valley.json`:
 
 | Rule | Value |
 |---|---|

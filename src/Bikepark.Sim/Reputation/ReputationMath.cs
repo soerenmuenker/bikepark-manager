@@ -194,6 +194,9 @@ public static class ParkProgress
             average, average * rules.XpPerVisitor);
     }
 
+    /// <summary>The park's level right now (derived from its XP).</summary>
+    public static int CurrentLevel(WorldState state, WayNetwork network) => Level(state.ReputationRules, Xp(state, network).Total);
+
     /// <summary>The level an amount of XP reaches (0 below the first threshold).</summary>
     public static int Level(ReputationRules rules, int xp)
     {

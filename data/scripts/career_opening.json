@@ -1,0 +1,31 @@
+// Starter Valley career, first weeks: restore the old T-bar, hire two workers and plan two trails on the ski hill (the
+// crew builds them: the red Old Piste and the blue Meadow Flow), then try to buy the foot forest every morning (08:00)
+// until the park has reached level 2 and the purchase goes through (later tries are rejected: already yours).
+// Ids are those of a fresh Starter Valley career world: Old Ski Lift 1.
+[
+  { "tick": 0, "command": { "type": "restoreLift", "liftId": 1 } },
+  { "tick": 0, "command": { "type": "hireCrew" } },
+  { "tick": 0, "command": { "type": "hireCrew", "name": "Alex" } },
+  { "tick": 1, "command": { "type": "buildWay", "kind": "trail", "name": "Old Piste", "points": [{"x": 72800, "z": 70300}, {"x": 69500, "z": 72200}, {"x": 76200, "z": 74800}, {"x": 69500, "z": 77500}, {"x": 76200, "z": 80200}, {"x": 69500, "z": 83000}, {"x": 76200, "z": 85800}, {"x": 73500, "z": 89400}] } },
+  { "tick": 1, "command": { "type": "buildWay", "kind": "trail", "name": "Meadow Flow", "points": [{"x": 74200, "z": 70300}, {"x": 80500, "z": 72000}, {"x": 81500, "z": 76000}, {"x": 77000, "z": 78000}, {"x": 82000, "z": 81500}, {"x": 80000, "z": 86000}, {"x": 75600, "z": 89300}] } },
+  { "tick": 1920, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 3360, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 4800, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 6240, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 7680, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 9120, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 10560, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 12000, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 13440, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 14880, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 16320, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 17760, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 19200, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 20640, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 22080, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 23520, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 24960, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 26400, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 27840, "command": { "type": "buyParcel", "parcelId": "foot_forest" } },
+  { "tick": 29280, "command": { "type": "buyParcel", "parcelId": "foot_forest" } }
+]

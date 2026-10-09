@@ -123,7 +123,8 @@ public sealed record DayReport(
     int Level = 0,
     int Crashes = 0,
     int SeriousCrashes = 0,
-    long InsuranceCents = 0);
+    long InsuranceCents = 0,
+    long LiftUpkeepCents = 0);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
 
@@ -169,6 +170,15 @@ public sealed record InfluencerPosted(long Tick, InfluencerPost Post) : ISimEven
 
 /// <summary>The park reached a new level (or fell back to a lower one).</summary>
 public sealed record LevelChanged(long Tick, int OldLevel, int NewLevel) : ISimEvent;
+
+/// <summary>The park bought a parcel of land.</summary>
+public sealed record ParcelBought(long Tick, string ParcelId, long PriceCents) : ISimEvent;
+
+/// <summary>A lift's construction (or restoration) started; it runs from <paramref name="ReadyTick"/>.</summary>
+public sealed record LiftConstructionStarted(long Tick, int LiftId, long ReadyTick, long CostCents, bool Restoration) : ISimEvent;
+
+/// <summary>A lift built or restored by a contractor is ready and runs from now on.</summary>
+public sealed record LiftReady(long Tick, int LiftId) : ISimEvent;
 
 /// <summary>A rider crashed on a trail (<paramref name="FeatureId"/> 0: not on a feature).</summary>
 public sealed record RiderCrashed(long Tick, int GuestId, int WayId, long Cm, InjurySeverity Severity, CrashCause Cause, int FeatureId) : ISimEvent;

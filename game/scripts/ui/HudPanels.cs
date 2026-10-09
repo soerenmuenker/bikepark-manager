@@ -6,6 +6,7 @@ using Bikepark.Game.Terrain;
 using Bikepark.Game.Ways;
 using Bikepark.Sim;
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Core;
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
@@ -121,7 +122,15 @@ public partial class ToolCard : PanelContainer
     private readonly StyleBoxFlat _normal, _hover, _active;
     private bool _isActive, _isHover;
 
+    private Label? _hint;
+
     public ToolCard() { _normal = _hover = _active = new StyleBoxFlat(); }
+
+    /// <summary>Changes the small line under the name (e.g. a price or why it's locked).</summary>
+    public void SetHint(string hint)
+    {
+        if (_hint is not null && _hint.Text != hint) _hint.Text = hint;
+    }
 
     public ToolCard(UiIcon icon, string name, string hint, string tooltip, Action onPressed)
     {
@@ -143,7 +152,7 @@ public partial class ToolCard : PanelContainer
         title.HorizontalAlignment = HorizontalAlignment.Center;
         title.MouseFilter = MouseFilterEnum.Ignore;
         box2.AddChild(title);
-        var hintLabel = UiTheme.Label(hint, 11, UiTheme.TextDim);
+        var hintLabel = _hint = UiTheme.Label(hint, 11, UiTheme.TextDim);
         hintLabel.HorizontalAlignment = HorizontalAlignment.Center;
         hintLabel.MouseFilter = MouseFilterEnum.Ignore;
         box2.AddChild(hintLabel);
@@ -173,7 +182,8 @@ public partial class ToolCard : PanelContainer
 
 public partial class BuildPanel : HudPanel
 {
-    private ToolCard _path = null!, _trail = null!, _lift = null!, _parking = null!, _fell = null!;
+    private ToolCard _path = null!, _trail = null!, _parking = null!, _fell = null!;
+    private readonly List<(LiftType Type, ToolCard Card)> _lifts = [];
     private readonly List<(string TypeId, ToolCard Card)> _features = [];
     private Label _demoStatus = null!;
 
@@ -187,9 +197,7 @@ public partial class BuildPanel : HudPanel
             () => ToggleWay(WayTool.ToolMode.AccessPath));
         _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "One-way downhill trail; start it on a plateau or path. The crew fells the trees in the way, then digs it",
             () => ToggleWay(WayTool.ToolMode.Trail));
-        _lift = new ToolCard(UiIcon.Lift, "Lift", "L", "Gondola: click the valley station, then the top (debug, free)",
-            () => ToggleStructure(StructureTool.ToolMode.Lift));
-        _parking = new ToolCard(UiIcon.Parking, "Parking lot", "K", "Parking next to a valley station (debug, free)",
+        _parking = new ToolCard(UiIcon.Parking, "Parking lot", "K", "Parking next to a valley station (free); on your land",
             () => ToggleStructure(StructureTool.ToolMode.Parking));
         _fell = new ToolCard(UiIcon.Felling, "Fell trees", "area", "Mark an area of forest: the crew cuts the trees, each gives wood",
             () => Ctx.Clearing.SetActive(!Ctx.Clearing.Active));
@@ -200,11 +208,30 @@ public partial class BuildPanel : HudPanel
                 _demoStatus.Text = Ctx.Host.LoadDemoFeatures() ? "" : "Build the demo trails first.";
                 _demoStatus.Visible = _demoStatus.Text.Length > 0;
             });
-        foreach (var card in new[] { _path, _trail, _fell, _lift, _parking, demo, demoFeatures }) cards.AddChild(card);
+        foreach (var card in new[] { _path, _trail, _fell, _parking }) cards.AddChild(card);
+        if (Ctx.Sim.State.Parcels.Count == 0)
+        {
+            // Sandbox only: the demo content.
+            cards.AddChild(demo);
+            cards.AddChild(demoFeatures);
+        }
         _demoStatus = UiTheme.Label("", 12, UiTheme.Warn);
         _demoStatus.Visible = false;
         Body.AddChild(_demoStatus);
         Body.AddChild(UiTheme.Label("Click or drag to place points · Backspace undo · Enter plans it for the crew · Esc cancel", 12, UiTheme.TextDim));
+
+        Body.AddChild(UiTheme.Separator());
+        Body.AddChild(UiTheme.Label("LIFTS — a contractor builds them: paid at once, running after a few days, then a daily upkeep", 13, UiTheme.Accent, bold: true));
+        var lifts = Row(8);
+        Body.AddChild(lifts);
+        foreach (var type in Ctx.Sim.State.LiftTypes)
+        {
+            string id = type.Id;
+            var card = new ToolCard(UiIcon.Lift, type.Name, "", LiftTooltip(type), () => ToggleLift(id)) { CustomMinimumSize = new Vector2(150, 104) };
+            lifts.AddChild(card);
+            _lifts.Add((type, card));
+        }
+        Body.AddChild(UiTheme.Label("L: click the valley station, then the top · Enter orders it · both stations on your land", 12, UiTheme.TextDim));
 
         Body.AddChild(UiTheme.Separator());
         Body.AddChild(UiTheme.Label("TRAIL FEATURES", 13, UiTheme.Accent, bold: true));
@@ -282,13 +309,37 @@ public partial class BuildPanel : HudPanel
         Ctx.Structures.SetMode(Ctx.Structures.Mode == mode ? StructureTool.ToolMode.None : mode);
     }
 
+    private void ToggleLift(string typeId)
+    {
+        bool same = Ctx.Structures.Mode == StructureTool.ToolMode.Lift && Ctx.Structures.LiftTypeId == typeId;
+        Ctx.Structures.LiftTypeId = typeId;
+        Ctx.Features.SetType(null);
+        Ctx.Clearing.SetActive(false);
+        Ctx.Ways.SetMode(WayTool.ToolMode.None);
+        Ctx.Structures.SetMode(same ? StructureTool.ToolMode.None : StructureTool.ToolMode.Lift);
+    }
+
+    private static string LiftTooltip(LiftType type) =>
+        $"{type.Name}: {type.BikesPerCarrier} bike{(type.BikesPerCarrier == 1 ? "" : "s")} every {type.IntervalSeconds} s " +
+        $"({LiftMath.BikeRidersPerHour(type, 1000)} riders/h), {type.SpeedCmPerS / 100.0:0.#} m/s, {type.MinLengthMeters}–{type.MaxLengthMeters} m" +
+        $"{(type.Sheltered ? ", closed cabins" : ", open (riders get wet in the rain)")}. Build {UiTheme.Money(type.BuildCostCents)} in {type.BuildDays} days, " +
+        $"upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day, from park level {type.RequiredLevel}.";
+
     private void ToggleFeature(string typeId) => Ctx.Features.SetType(Ctx.Features.TypeId == typeId ? null : typeId);
 
     public override void Refresh()
     {
         _path.Active = Ctx.Ways.Mode == WayTool.ToolMode.AccessPath;
         _trail.Active = Ctx.Ways.Mode == WayTool.ToolMode.Trail;
-        _lift.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Lift;
+        int level = Ctx.Kpi.Level;
+        foreach (var (type, card) in _lifts)
+        {
+            card.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Lift && Ctx.Structures.LiftTypeId == type.Id;
+            string? locked = Ctx.Host.InstantBuild ? null : LiftWorks.CannotBuild(Ctx.Sim.State, level, type);
+            card.SetHint(locked is null ? $"{UiTheme.Money(type.BuildCostCents)} · {LiftMath.BikeRidersPerHour(type, 1000)}/h"
+                : level < type.RequiredLevel ? $"locked: level {type.RequiredLevel}" : $"{UiTheme.Money(type.BuildCostCents)} (can't afford)");
+            card.Modulate = locked is null ? Colors.White : new Color(1, 1, 1, 0.55f);
+        }
         _parking.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Parking;
         _fell.Active = Ctx.Clearing.Active;
         foreach (var (id, card) in _features)
@@ -806,7 +857,8 @@ public partial class LiftsPanel : HudPanel
     public override void Refresh()
     {
         var state = Ctx.Sim.State;
-        string signature = string.Join(',', state.Lifts.Select(l => $"{l.Id}:{l.BikeAccess?.TierIndex}:{l.BikeAccess?.PendingTierIndex}"));
+        string signature = string.Join(',', state.Lifts.Select(l =>
+            $"{l.Id}:{l.BikeAccess?.TierIndex}:{l.BikeAccess?.PendingTierIndex}:{l.Derelict}:{l.ReadyTick}:{LiftWorks.StationsOwned(state, l)}"));
         if (signature != _signature)
         {
             _signature = signature;
@@ -838,9 +890,33 @@ public partial class LiftsPanel : HudPanel
             var names = new VBoxContainer();
             names.AddThemeConstantOverride("separation", 0);
             names.AddChild(UiTheme.Label(lift.Name, 17, bold: true));
-            names.AddChild(UiTheme.Label($"{type.Name} · run by {op?.Name ?? "the park"}", 12, UiTheme.TextDim));
+            names.AddChild(UiTheme.Label($"{type.Name} · run by {op?.Name ?? "the park"}" +
+                                         (op is null ? $" · upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day" : ""), 12, UiTheme.TextDim));
             header.AddChild(names);
             _list.AddChild(header);
+
+            // Out of service: rusty (restore it) or with the contractor.
+            if (lift.ReadyTick > 0)
+            {
+                long ready = lift.ReadyTick;
+                _list.AddChild(UiTheme.Label(
+                    $"{(lift.Derelict ? "Being restored" : "Under construction")}: running from day {GameTime.Day(ready) + 1}, " +
+                    $"{GameTime.Format(ready)[^5..]}", 13, UiTheme.Warn, bold: true));
+            }
+            else if (lift.Derelict)
+            {
+                var rusty = Row(10);
+                rusty.AddChild(UiTheme.Label("Rusty and out of service. Riders pedal up instead.", 13, UiTheme.Warn, bold: true));
+                string? why = !LiftWorks.StationsOwned(state, lift) ? "It stands on land you don't own."
+                    : state.Finance.MoneyCents < type.RestoreCostCents ? "Not enough money." : null;
+                var restore = UiTheme.Button($"Restore ({UiTheme.Money(type.RestoreCostCents)}, {type.RestoreDays} days)",
+                    () => Ctx.Host.Enqueue(new RestoreLiftCommand(liftId)),
+                    why ?? $"A contractor fixes it for half the price of a new {type.Name}; it runs from the next opening after the work");
+                restore.Disabled = why is not null;
+                rusty.AddChild(restore);
+                _list.AddChild(rusty);
+                continue;
+            }
 
             var tiles = Row();
             tiles.AddChild(UiTheme.StatTile("Queue", out var queue, 24));
@@ -872,6 +948,9 @@ public partial class LiftsPanel : HudPanel
             if (op is not null && lift.BikeAccess is { } access)
             {
                 _list.AddChild(UiTheme.Label($"BIKE ACCESS — rented from {op.Name}, changes start at the next opening   [ / ]", 11, UiTheme.TextDim, bold: true));
+                bool owned = LiftWorks.StationsOwned(state, lift);
+                if (!owned)
+                    _list.AddChild(UiTheme.Label($"{op.Name} only rents you bike access once you own the land at both stations (Land menu).", 12, UiTheme.Warn));
                 var tiers = Row(8);
                 for (int i = 0; i < op.BikeAccessTiers.Count; i++)
                 {
@@ -889,6 +968,7 @@ public partial class LiftsPanel : HudPanel
                     };
                     button.AddThemeFontSizeOverride("font_size", 12);
                     button.Pressed += () => Ctx.Host.Enqueue(new SetLiftBikeAccessCommand(liftId, index));
+                    button.Disabled = !owned && i > 0;
                     tiers.AddChild(button);
                 }
                 _list.AddChild(tiers);
@@ -903,7 +983,7 @@ public partial class FinancePanel : HudPanel
 {
     private Label _money = null!, _revenue = null!, _expenses = null!, _net = null!;
     private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _food = null!, _fee = null!;
-    private Label _insurance = null!;
+    private Label _insurance = null!, _landAndLifts = null!, _liftUpkeep = null!;
     private DayChart _chart = null!;
 
     public override string Title => "Finances";
@@ -925,6 +1005,10 @@ public partial class FinancePanel : HudPanel
         totals.AddChild(UiTheme.StatTile("Crew wages", out _wages, 16));
         totals.AddChild(UiTheme.StatTile("Tools & wood", out _materials, 16));
         totals.AddChild(UiTheme.StatTile("Insurance", out _insurance, 16));
+        Body.AddChild(totals);
+        totals = Row(24);
+        totals.AddChild(UiTheme.StatTile("Land bought", out _landAndLifts, 16));
+        totals.AddChild(UiTheme.StatTile("Own lifts: upkeep", out _liftUpkeep, 16));
         Body.AddChild(totals);
         Body.AddChild(UiTheme.Separator());
 
@@ -959,6 +1043,10 @@ public partial class FinancePanel : HudPanel
         _food.Text = UiTheme.Money(f.TotalFoodCents);
         _wages.Text = UiTheme.Money(f.TotalWagesCents);
         _materials.Text = UiTheme.Money(f.TotalToolsCents + f.TotalWoodCents);
+        _landAndLifts.Text = UiTheme.Money(f.TotalLandCents);
+        _landAndLifts.TooltipText = $"Land {UiTheme.Money(f.TotalLandCents)} · lifts built or restored {UiTheme.Money(f.TotalLiftBuildCents)}";
+        _liftUpkeep.Text = UiTheme.Money(f.TotalLiftUpkeepCents);
+        _liftUpkeep.TooltipText = $"Built and restored lifts: {UiTheme.Money(f.TotalLiftBuildCents)}";
         var safety = Ctx.Sim.State.Safety;
         _insurance.Text = UiTheme.Money(safety.TotalInsuranceCents);
         _insurance.TooltipText = Ctx.Sim.State.CrashRules.Enabled

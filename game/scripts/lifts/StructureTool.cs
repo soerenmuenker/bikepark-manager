@@ -28,7 +28,8 @@ public partial class StructureTool : Node3D
     [Export] public NodePath TerrainPath { get; set; } = "../TerrainView";
     [Export] public NodePath CameraPath { get; set; } = "../RtsCamera";
     [Export] public NodePath WayToolPath { get; set; } = "../WayTool";
-    [Export] public string LiftTypeId { get; set; } = "gondola_8";
+    /// <summary>The lift type the lift mode places (picked in the Build menu).</summary>
+    [Export] public string LiftTypeId { get; set; } = "tbar";
     [Export] public int ParkingSpaces { get; set; } = 60;
 
     private SimHost _host = null!;
@@ -139,7 +140,7 @@ public partial class StructureTool : Node3D
         if (Mode == ToolMode.Lift)
         {
             LiftPlan = StructurePlanner.PlanLift(grid, sim.Network, sim.State, LiftTypeId, candidate[0], candidate[1]);
-            var color = LiftPlan.IsValid ? new Color(0.2f, 1f, 0.4f) : new Color(1f, 0.25f, 0.2f);
+            var color = LiftPlan.IsValid && Locked() is null ? new Color(0.2f, 1f, 0.4f) : new Color(1f, 0.25f, 0.2f);
             if (LiftPlan.ValleyPad is { } v && LiftPlan.MountainPad is { } m)
             {
                 _mesh.SurfaceBegin(Mesh.PrimitiveType.Lines);
@@ -174,9 +175,12 @@ public partial class StructureTool : Node3D
         if (Mode == ToolMode.Lift)
         {
             var plan = StructurePlanner.PlanLift(grid, sim.Network, sim.State, LiftTypeId, _points[0], _points[1]);
+            if (Locked() is { } locked) { Status = locked; return; }
             if (!plan.IsValid) { Status = plan.FirstError ?? "Not valid."; return; }
-            _host.Enqueue(new BuildLiftCommand(LiftTypeId, "", _points[0], _points[1]));
-            Status = $"Built a lift ({plan.LengthCm / 100} m, {plan.RideSeconds / 60} min ride). Connect trails to its plateau.";
+            _host.Enqueue(new BuildLiftCommand(LiftTypeId, "", _points[0], _points[1], Instant: _host.InstantBuild));
+            Status = _host.InstantBuild
+                ? $"Built a {plan.Type?.Name} ({plan.LengthCm / 100} m, {plan.RideSeconds / 60} min ride). Connect trails to its plateau."
+                : $"Ordered a {plan.Type?.Name} ({plan.LengthCm / 100} m): the contractor needs {plan.Type?.BuildDays} days. Connect trails to its plateau.";
         }
         else
         {
@@ -186,6 +190,14 @@ public partial class StructureTool : Node3D
             Status = "Built a parking lot.";
         }
         _points.Clear();
+    }
+
+    /// <summary>Why the chosen lift type can't be built now (level, money), or null; debug instant builds are never locked.</summary>
+    public string? Locked()
+    {
+        var sim = _host.Sim;
+        if (_host.InstantBuild || LiftNetwork.FindType(sim.State, LiftTypeId) is not { } type) return null;
+        return LiftWorks.CannotBuild(sim.State, Bikepark.Sim.Reputation.ParkProgress.CurrentLevel(sim.State, sim.Network), type);
     }
 
     private void Outline(TerrainPad pad, Color color)

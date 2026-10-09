@@ -77,6 +77,12 @@ public static class Program
         sim.Events.Subscribe<InfluencerPosted>(e => influencers.Add($"{GameTime.Format(e.Tick)} {e.Post.Name} posted"));
         sim.Events.Subscribe<LevelChanged>(e => influencers.Add($"{GameTime.Format(e.Tick)} level {e.OldLevel} -> {e.NewLevel}"));
 
+        var landLog = new List<string>();
+        sim.Events.Subscribe<ParcelBought>(e => landLog.Add($"{GameTime.Format(e.Tick)} bought {e.ParcelId} for {e.PriceCents / 100} €"));
+        sim.Events.Subscribe<LiftConstructionStarted>(e => landLog.Add(
+            $"{GameTime.Format(e.Tick)} {(e.Restoration ? "restoring" : "building")} {sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name} for {e.CostCents / 100} €, ready {GameTime.Format(e.ReadyTick)}"));
+        sim.Events.Subscribe<LiftReady>(e => landLog.Add($"{GameTime.Format(e.Tick)} {sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name} is running"));
+
         var crashes = new List<string>();
         sim.Events.Subscribe<RiderCrashed>(e => crashes.Add(
             $"{GameTime.Format(e.Tick)} {e.Severity} {e.Cause} on {sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId)?.Name} at {e.Cm / 100} m"
@@ -115,6 +121,7 @@ public static class Program
             Kpis: KpiReport.From(state, network: sim.Network),
             Reputation: ReputationReport(sim, influencers),
             Safety: SafetyReport(sim, crashes),
+            Land: LandReport(sim, landLog),
             Ways: WayReports(sim),
             Lifts: LiftReports(sim),
             Crew: CrewReport(sim, completed),
@@ -151,6 +158,17 @@ public static class Program
             Posts: state.Reputation.Posts.Select(p =>
                 $"day {p.Day} {p.Name}: {Stars(p.StarsTenths)} stars, demand {p.EffectPermille / 10:+0;-0;0} % until day {p.EndsDay}").ToList(),
             Log: log);
+    }
+
+    private static LandReport? LandReport(Simulation sim, List<string> log)
+    {
+        var state = sim.State;
+        if (state.Parcels.Count == 0 && state.Finance.TotalLiftBuildCents == 0) return null;
+        return new LandReport(
+            ParkProgress.CurrentLevel(state, sim.Network),
+            state.Parcels.Select(p => new ParcelReport(p.Id, p.Name, state.OwnedParcelIds.Contains(p.Id), p.RequiredLevel, p.PriceCents,
+                Bikepark.Sim.Land.LandMath.AreaSquareMeters(p.Outline))).ToList(),
+            state.Finance.TotalLandCents, state.Finance.TotalLiftBuildCents, state.Finance.TotalLiftUpkeepCents, log);
     }
 
     private static SafetyReport? SafetyReport(Simulation sim, List<string> log)
@@ -279,7 +297,10 @@ public static class Program
                 l.Stats.Riders == 0 ? null : Math.Round((double)l.Stats.SumWaitMinutes / l.Stats.Riders, 1),
                 l.Stats.MaxQueue,
                 l.Queue.Count,
-                tier?.DailyFeeCents);
+                tier?.DailyFeeCents,
+                l.Derelict ? l.ReadyTick > 0 ? "restoring" : "derelict" : l.ReadyTick > 0 ? "under construction" : "running",
+                l.ReadyTick > 0 ? GameTime.Format(l.ReadyTick) : null,
+                l.OperatorId is null ? type.UpkeepPerDayCents : null);
         }).ToList();
     }
 }
@@ -299,7 +320,14 @@ internal sealed record LiftReport(
     double? AverageWaitMinutes,
     int MaxQueue,
     int QueueNow,
-    long? DailyFeeCents);
+    long? DailyFeeCents,
+    string Status,
+    string? ReadyAt,
+    long? UpkeepPerDayCents);
+
+internal sealed record ParcelReport(string Id, string Name, bool Owned, int RequiredLevel, long PriceCents, long AreaSquareMeters);
+
+internal sealed record LandReport(int Level, List<ParcelReport> Parcels, long TotalLandCents, long TotalLiftBuildCents, long TotalLiftUpkeepCents, List<string> Log);
 
 internal sealed record HourReport(
     string Hour,
@@ -392,6 +420,7 @@ internal sealed record RunnerOutput(
     KpiReport Kpis,
     ReputationReport? Reputation,
     SafetyReport? Safety,
+    LandReport? Land,
     List<WayReport> Ways,
     List<LiftReport> Lifts,
     CrewReport? Crew,

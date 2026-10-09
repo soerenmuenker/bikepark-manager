@@ -11,6 +11,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Trails/` – `Way` (player-built access paths and trails), `WayGeometry` (integer spline, segments, rating),
     `WayPlanner` (validation, shared by command and preview), `WayNetwork` (derived graph, routing, corridors),
     `TrailFeature` (feature catalog types + placed features), `FeaturePlanner` (feature placement validation)
+  - `Land/` – `Parcel` (content: named land outlines with price and required level), `LandMath` (who owns which point,
+    the only land check, used by every planner); `Commands/LandCommands.cs` (`BuyParcelCommand`)
   - `Lifts/` – `LiftType`/`LiftOperator`/`LiftRules` (content), `Lift`/`ParkingLot` (state), `LiftMath` (bike carriers,
     throughput), `StructurePlanner` (validation of lifts, parking, pads), `LiftNetwork` (hubs + links for the network)
   - `Systems/RiderSystem.cs` – riders choose a trail and the cheaper way up (walk + lift queue, or pedal the paths), ride down, score fun (segments + features);
@@ -40,8 +42,11 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
-- `data/` – JSON content (`scenarios/`, `lift_types.json`, `trail_features.json`, `tools.json`, `scripts/` command
-  scripts such as `demo_lift_network.json`, `demo_features.json`, `demo_crew.json`)
+- `data/` – JSON content (`scenarios/`: `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
+  rented; tests and demo scripts use it) and `starter_valley.json` = the career (old ski hill with a derelict T-bar, parcels
+  to buy, company gondola locked); `lift_types.json` (T-bar, chairlift, gondola with costs, levels, build days),
+  `trail_features.json`, `tools.json`, `scripts/` command scripts such as `demo_lift_network.json`, `demo_features.json`,
+  `demo_crew.json`, `career_opening.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
 ## Commands
@@ -51,22 +56,25 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 ```bash
 dotnet build Bikepark.sln
 dotnet test Bikepark.sln
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 30 [--seed N] [--commands file.json]... [--daily] [--hourly] [--auto-repair] [--save out.json]
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 30 [--seed N] [--commands file.json]... [--daily] [--hourly] [--auto-repair] [--save out.json]
 # --hourly: the last day per hour (phase, guests, on trails, queuing, eating, runs, crew working, lift minutes, rain, wetness, closed trails)
 # Wear: 14 days with and without a stand-in player that repairs on every warning (--auto-repair): per-trail status, feature conditions, closed minutes, repairs
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --daily [--auto-repair]
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --daily [--auto-repair]
 # Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
-dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
+dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/demo_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
 # Reputation: the output's "reputation" block (stars overall/per group, demand parts, XP parts, level, influencer posts,
 # a log of influencer visits and level changes); --daily adds reviews, rating, demand, XP and level per day
 # Crashes: the output's "safety" block (crashes, serious, collisions, evacuations, average helicopter wait, insurance,
 # crossings found, a crash log) and per trail crashes / serious / collisions / per 1000 runs (crashes per feature in
 # featureConditions); --daily adds crashes, serious crashes and insurance per day
+# Career: the first weeks (restore the T-bar, two trails on the ski hill, buy the foot forest at level 2); the "land"
+# block lists parcels (owned / level / price), money spent on land and lifts, upkeep and a log; lifts show their status
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 20 --commands data/scripts/career_opening.json --daily
 # Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 3 --commands data/scripts/demo_lift_network.json
 # ... with the demo trail features (planned, built by the crew: per-trail feature list, crew block with completed jobs, wood, wages)
-dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json
+dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json
 # Godot (from game/): compile, then run headless with the demo trails at 60x, printing KPIs (incl. queues) every game hour
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --build-solutions --quit
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --fixed-fps 60 --quit-after 2400 -- --demo --speed=4 --report
@@ -142,14 +150,25 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     no staff), then `Evacuated` (even after closing). Crossings are derived geometry, never junctions. Crashes count on
     `WayStats`, `TrailFeature.Crashes` and `SafetyState`; reviews: a serious crash makes safety 0. Insurance =
     base + per accident of the last `InsuranceDays`, charged by `SafetySystem` (before `FinanceSystem`).
+19. **Land and owned lifts:** parcels are content; `OwnedParcelIds` is state (no parcels = all land owned). Ownership is
+    checked only through `LandMath`, inside the planners (`WayPlanner` per geometry sample via its `onOwnLand` predicate,
+    `StructurePlanner.CheckPad` for station and parking pads, `ClearingPlanner` for the centre and the trees), so preview
+    and command agree; scenario builds (`Origin = Scenario`) skip it. Buying needs the park level
+    (`ParkProgress.CurrentLevel`, derived) and the price. Lifts the park builds itself are paid at once and run from the
+    next opening after `BuildDays` (`Lift.ReadyTick`); a scenario lift can start `Derelict` and be restored for half
+    the price (`RestoreLiftCommand`); `Lift.InService` gates dispatch, routing (bike carriers 0) and upkeep
+    (`FinanceSystem`, own lifts only). Company lifts are rented: tiers above 0 need the land at both stations
+    (`LiftWorks.StationsOwned`). Riders on unsheltered lifts (T-bar, chairlift) get wet in the rain.
 
 ## Game controls (debug build)
 
-HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · U rating
-(reputation: stars per skill group and what they value, demand, park level, FakeSocial posts) · O map; Esc closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
+Start screen (when run without world-setting debug args): pick Starter Valley (career) or Demo (sandbox, demo trails
+built). HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · U rating
+(reputation: stars per skill group and what they value, demand, park level, FakeSocial posts) · N land (parcels: buy,
+level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter plans it for the crew, Esc cancel;
-preview colored by gradient, tool panel shows trees to fell and crew-hours; ends snap onto plateaus) · L place lift (valley, then top) · K place parking lot (centre, then direction) ·
+preview colored by gradient, tool panel shows trees to fell and crew-hours; ends snap onto plateaus) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
 Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu per trail: worst feature, click the trail (or Features…) for the feature overview + repairs, Close/Open ·
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →
@@ -158,7 +177,7 @@ Fell trees: click the centre, move to size, click to mark · while a build tool 
 their stats; ✕ or panning stops following; influencers wear pink; injured riders: red and lying (serious: they
 block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
-(`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
+(`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--scenario=<demo|starter|file>` (default the Demo; skips the start screen like `--demo`, `--script=`, `--advance=`), `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
 `--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
 `--features=<wayId>` (open the feature overview), `--follow` (follow the first rider, shows the rider card), `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
 (queue a command script, before `--advance`), `--no-night-skip`

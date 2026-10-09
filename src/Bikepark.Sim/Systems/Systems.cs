@@ -204,6 +204,15 @@ internal sealed class GuestSystem : ISimSystem
         guests.RemoveRange(write, guests.Count - write);
     }
 
+    /// <summary>On a lift whose cabins keep riders dry (T-bars and chairlifts don't).</summary>
+    internal static bool OnShelteredLift(WorldState state, Guest guest)
+    {
+        if (guest.Route.Count == 0) return true;
+        int liftId = guest.Route[Math.Clamp(guest.LegIndex, 0, guest.Route.Count - 1)].WayId;
+        var lift = state.Lifts.FirstOrDefault(l => l.Id == liftId);
+        return lift is null || LiftNetwork.FindType(state, lift.TypeId) is not { Sheltered: false };
+    }
+
     /// <summary>Not on a lap: idle, having lunch or wandering (queuing riders are on a lap).</summary>
     private static bool IsBetweenLaps(Guest guest) =>
         guest.Activity is RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Wandering;
@@ -218,7 +227,7 @@ internal sealed class GuestSystem : ISimSystem
         if (crowded)
             guest.Happiness -= CrowdingPenalty;
 
-        if (raining && guest.Activity != RiderActivity.OnLift)
+        if (raining && !(guest.Activity == RiderActivity.OnLift && OnShelteredLift(ctx.State, guest)))
             guest.Happiness -= ctx.State.WeatherRules.RainMoodPerMinute;
         if (guest.Activity is RiderActivity.Queuing or RiderActivity.OnLift)
             guest.Energy = Math.Min(1000, guest.Energy + liftRules.RestEnergyPerMinute);
@@ -273,6 +282,12 @@ internal sealed class FinanceSystem : ISimSystem
         }
         foreach (var lift in state.Lifts)
         {
+            if (lift.OperatorId is null && lift.InService && LiftNetwork.FindType(state, lift.TypeId) is { UpkeepPerDayCents: > 0 } own)
+            {
+                state.Finance.Spend(own.UpkeepPerDayCents);
+                state.Finance.TotalLiftUpkeepCents += own.UpkeepPerDayCents;
+                state.Finance.LiftUpkeepTodayCents += own.UpkeepPerDayCents;
+            }
             if (lift.BikeAccess is not { } access || LiftNetwork.FindOperator(state, lift.OperatorId) is not { } op) continue;
             if (access.TierIndex < 0 || access.TierIndex >= op.BikeAccessTiers.Count) continue;
             long fee = op.BikeAccessTiers[access.TierIndex].DailyFeeCents;
@@ -303,7 +318,8 @@ internal sealed class FinanceSystem : ISimSystem
             Level: state.Reputation.Level,
             Crashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick)) is { } accidents ? accidents.Minor + accidents.Serious : 0,
             SeriousCrashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick))?.Serious ?? 0,
-            InsuranceCents: state.Safety.InsuranceTodayCents);
+            InsuranceCents: state.Safety.InsuranceTodayCents,
+            LiftUpkeepCents: state.Finance.LiftUpkeepTodayCents);
         ctx.Publish(new DayEnded(ctx.Tick, report));
 
         foreach (var way in state.Ways)
@@ -318,6 +334,7 @@ internal sealed class FinanceSystem : ISimSystem
         state.Stats.VisitorsToday = 0;
         state.Reputation.ReviewsToday = 0;
         state.Safety.InsuranceTodayCents = 0;
+        state.Finance.LiftUpkeepTodayCents = 0;
         state.Stats.TurnedAwayToday = 0;
         state.Finance.RevenueTodayCents = 0;
         state.Finance.ExpensesTodayCents = 0;

@@ -61,6 +61,9 @@ public sealed class ScenarioDefinition
 
     public Safety.CrashRules CrashRules { get; set; } = new();
 
+    /// <summary>Land the park can buy (none: all land is the park's from the start).</summary>
+    public List<Land.Parcel> Parcels { get; set; } = [];
+
     /// <summary>Optional scripted commands (e.g. tutorial events), queued when the scenario starts.</summary>
     public List<TimedCommand> Commands { get; set; } = [];
 }
@@ -130,6 +133,8 @@ public static class ScenarioLoader
             WoodStock = scenario.StartingWood,
             ReputationRules = scenario.ReputationRules,
             CrashRules = scenario.CrashRules,
+            Parcels = scenario.Parcels,
+            OwnedParcelIds = scenario.Parcels.Where(p => p.OwnedAtStart).Select(p => p.Id).ToList(),
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
         };
 
@@ -170,6 +175,9 @@ public static class ScenarioLoader
         if (s.StartingWood < 0) errors.Add("startingWood must be >= 0");
         errors.AddRange(s.ReputationRules.Validate());
         errors.AddRange(s.CrashRules.Validate());
+        foreach (var parcel in s.Parcels) errors.AddRange(parcel.Validate());
+        if (s.Parcels.Select(p => p.Id).Distinct().Count() != s.Parcels.Count) errors.Add("parcels: ids must be unique");
+        if (s.Parcels.Count > 0 && !s.Parcels.Any(p => p.OwnedAtStart)) errors.Add("parcels: at least one must be owned at start");
 
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid scenario '{s.Id}': {string.Join("; ", errors)}");

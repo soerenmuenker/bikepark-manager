@@ -1,40 +1,78 @@
 // Lift catalog (LiftType). Copied into the world when a scenario starts, so saves are self-contained.
 // Only bike-equipped carriers take riders (bikesPerCarrier each); the share of equipped carriers is the lift's
-// bike usage grade, set by the operator's bike access tiers or by the park for its own lifts.
+// bike usage grade, set by the operator's bike access tiers or by the park for its own lifts (all carriers).
 // Speeds in cm/s, gradients in tenths of the -10..+10 gradient score.
+// Owning one: a contractor builds it for buildCostCents (from park level requiredLevel) in buildDays, restoring a
+// derelict one costs half in restoreDays; the park pays upkeepPerDayCents while it runs. Company lifts are rented
+// instead (bike access tiers). Riders on lifts that aren't sheltered (T-bar, chairlift) get wet in the rain.
 [
   {
+    "id": "tbar",
+    "name": "T-bar",
+    "kind": "tBar",
+    "carrierCapacity": 1,
+    "bikesPerCarrier": 1,
+    "intervalSeconds": 6,
+    "speedCmPerS": 250,
+    "minLengthMeters": 80,
+    "maxLengthMeters": 600,
+    "maxGradient": 55,
+    "stationLengthMeters": 12,
+    "stationWidthMeters": 8,
+    "plateauLengthMeters": 20,
+    "plateauWidthMeters": 16,
+    "corridorCm": 600,
+    "buildCostCents": 6000000,
+    "upkeepPerDayCents": 12000,
+    "requiredLevel": 0,
+    "buildDays": 3,
+    "restoreDays": 2,
+    "sheltered": false
+  },
+  {
+    "id": "chairlift_4",
+    "name": "Chairlift",
+    "kind": "chairlift",
+    "carrierCapacity": 4,
+    "bikesPerCarrier": 4,
+    "intervalSeconds": 12,
+    "speedCmPerS": 230,
+    "minLengthMeters": 150,
+    "maxLengthMeters": 1500,
+    "maxGradient": 45,
+    "stationLengthMeters": 24,
+    "stationWidthMeters": 16,
+    "plateauLengthMeters": 40,
+    "plateauWidthMeters": 30,
+    "corridorCm": 1000,
+    "buildCostCents": 45000000,
+    "upkeepPerDayCents": 50000,
+    "requiredLevel": 5,
+    "buildDays": 10,
+    "restoreDays": 5,
+    "sheltered": false
+  },
+  {
     "id": "gondola_8",
-    "name": "8-seat gondola",
+    "name": "Gondola",
     "kind": "gondola",
     "carrierCapacity": 8,
-    "bikesPerCarrier": 2,
+    "bikesPerCarrier": 3,
     "intervalSeconds": 12,
     "speedCmPerS": 500,
-    "minLengthMeters": 150,
+    "minLengthMeters": 300,
     "maxLengthMeters": 2500,
     "maxGradient": 40,
     "stationLengthMeters": 30,
     "stationWidthMeters": 20,
     "plateauLengthMeters": 50,
     "plateauWidthMeters": 40,
-    "corridorCm": 1200
-  },
-  {
-    "id": "chairlift_4",
-    "name": "4-seat chairlift",
-    "kind": "chairlift",
-    "carrierCapacity": 4,
-    "bikesPerCarrier": 2,
-    "intervalSeconds": 9,
-    "speedCmPerS": 400,
-    "minLengthMeters": 100,
-    "maxLengthMeters": 1800,
-    "maxGradient": 45,
-    "stationLengthMeters": 24,
-    "stationWidthMeters": 16,
-    "plateauLengthMeters": 40,
-    "plateauWidthMeters": 30,
-    "corridorCm": 1000
+    "corridorCm": 1200,
+    "buildCostCents": 250000000,
+    "upkeepPerDayCents": 150000,
+    "requiredLevel": 15,
+    "buildDays": 30,
+    "restoreDays": 10,
+    "sheltered": true
   }
 ]

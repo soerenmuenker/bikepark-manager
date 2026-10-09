@@ -30,7 +30,11 @@ public static class ClearingPlanner
         if (radiusCm > rules.MaxClearingRadiusMeters * 100)
             return Fail(center, radiusCm, "tooLarge", $"The radius can be at most {rules.MaxClearingRadiusMeters} m.");
 
-        var trees = Forest.TreesInCircle(grid, network, Forest.Taken(state), center, radiusCm);
+        if (!Land.LandMath.IsOwned(state, center.X, center.Z))
+            return Fail(center, radiusCm, "notYourLand", "Not your land: buy the parcel first (Land menu).");
+        // Only trees on the park's own land are felled.
+        var trees = Forest.TreesInCircle(grid, network, Forest.Taken(state), center, radiusCm)
+            .Where(t => Land.LandMath.IsOwned(state, t.X, t.Z)).ToList();
         var issues = new List<WayIssue>();
         if (trees.Count == 0)
             issues.Add(new WayIssue(IssueSeverity.Error, "noTrees", "There are no standing trees here (or they are already marked)."));

@@ -46,6 +46,27 @@ public sealed class LiftType
     /// <summary>Width cleared of trees under the line.</summary>
     public int CorridorCm { get; set; } = 1_000;
 
+    // ---- Owning one (lifts the park builds itself; company lifts are rented, see LiftOperator) ----
+
+    /// <summary>What a contractor charges to build one (restoring a derelict one costs half).</summary>
+    public long BuildCostCents { get; set; }
+
+    /// <summary>Running costs per day of a lift the park owns (staff, power, maintenance).</summary>
+    public long UpkeepPerDayCents { get; set; }
+
+    /// <summary>Park level needed to build one.</summary>
+    public int RequiredLevel { get; set; }
+
+    /// <summary>Days the contractor needs to build one (it runs from the next opening after) and to restore a derelict one.</summary>
+    public int BuildDays { get; set; } = 1;
+    public int RestoreDays { get; set; } = 1;
+
+    /// <summary>Riders on it stay dry (closed cabins): no mood lost in the rain.</summary>
+    public bool Sheltered { get; set; } = true;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public long RestoreCostCents => BuildCostCents / 2;
+
     public List<string> Validate()
     {
         var errors = new List<string>();
@@ -59,6 +80,9 @@ public sealed class LiftType
         if (StationLengthMeters < 5 || StationWidthMeters < 5 || PlateauLengthMeters < 5 || PlateauWidthMeters < 5)
             errors.Add($"{p}: station and plateau sizes must be at least 5 m");
         if (CorridorCm < 0) errors.Add($"{p}.corridorCm must be >= 0");
+        if (BuildCostCents < 0 || UpkeepPerDayCents < 0) errors.Add($"{p}: costs must be >= 0");
+        if (RequiredLevel is < 0 or > Reputation.ReputationRules.MaxLevel) errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
+        if (BuildDays is < 0 or > 365 || RestoreDays is < 0 or > 365) errors.Add($"{p}: build and restore days must be within 0..365");
         return errors;
     }
 }
