@@ -35,7 +35,10 @@ public enum HubKind : byte
 public sealed record NetworkHub(int Id, HubKind Kind, int OwnerId, TerrainPad Pad);
 
 /// <summary>A connection between two hubs that is not a way: a lift line (one-way up) or a walk (two-way).</summary>
-public sealed record NetworkLink(LegKind Kind, int Id, int FromHubId, int ToHubId, long LengthCm, long Cost, int CorridorCm);
+/// <param name="Towed">A surface lift (T-bar): riders are pulled up a straight track on the ground between its stations,
+/// which ways can cross (see <see cref="WayNetwork.TowCrossingsOn"/>).</param>
+public sealed record NetworkLink(LegKind Kind, int Id, int FromHubId, int ToHubId, long LengthCm, long Cost, int CorridorCm,
+    bool Towed = false, string Name = "");
 
 /// <summary>
 /// Everything derived from <see cref="State.WorldState.Ways"/> and the structures: geometries, the junction graph and
@@ -60,6 +63,7 @@ public sealed class WayNetwork
     private readonly CorridorIndex _centerlines = new();
     private readonly List<WayCrossing> _crossings = [];
     private readonly Dictionary<int, List<(long Cm, int OtherWay, long OtherCm)>> _crossingsByWay = [];
+    private readonly Dictionary<int, List<(long Cm, int LiftId, long LiftCm)>> _towCrossingsByWay = [];
     private readonly Dictionary<int, List<PlacedFeature>> _features;
 
     private readonly record struct Edge(int To, LegKind Kind, int Id, long FromCm, long ToCm, long Cost);
@@ -84,6 +88,7 @@ public sealed class WayNetwork
         }
         BuildGraph();
         FindCrossings();
+        FindTowCrossings();
 
         var baseHub = hubs.FirstOrDefault(h => h.Kind == HubKind.Parking) ?? hubs.FirstOrDefault(h => h.Kind == HubKind.ValleyStation);
         BaseHub = baseHub;
@@ -126,6 +131,13 @@ public sealed class WayNetwork
     /// <summary>The crossings on a way, in distance order along it.</summary>
     public IReadOnlyList<(long Cm, int OtherWay, long OtherCm)> CrossingsOn(int wayId) =>
         _crossingsByWay.TryGetValue(wayId, out var list) ? list : [];
+
+    /// <summary>
+    /// Where a built way crosses the ground track of a towed lift (T-bar), in distance order along the way:
+    /// (distance along the way, the lift, distance along the lift leg).
+    /// </summary>
+    public IReadOnlyList<(long Cm, int LiftId, long LiftCm)> TowCrossingsOn(int wayId) =>
+        _towCrossingsByWay.TryGetValue(wayId, out var list) ? list : [];
 
     /// <summary>Hubs in id order.</summary>
     public IReadOnlyList<NetworkHub> Hubs => _hubs;
@@ -391,6 +403,25 @@ public sealed class WayNetwork
                 list.Add(crossing.From(wayId));
             }
         foreach (var list in _crossingsByWay.Values)
+            list.Sort((p, q) => p.Cm.CompareTo(q.Cm));
+    }
+
+    private void FindTowCrossings()
+    {
+        foreach (var link in _links.Where(l => l.Towed))
+        {
+            var from = FindHub(link.FromHubId)?.Pad;
+            var to = FindHub(link.ToHubId)?.Pad;
+            if (from is null || to is null) continue;
+            foreach (var way in _ways.Where(w => w.Built))
+                foreach (var (cm, fractionPpm) in global::Bikepark.Sim.Trails.Crossings.FindOnTrack(_geometries[way.Id], from, to))
+                {
+                    if (!_towCrossingsByWay.TryGetValue(way.Id, out var list))
+                        _towCrossingsByWay[way.Id] = list = [];
+                    list.Add((cm, link.Id, link.LengthCm * fractionPpm / 1_000_000));
+                }
+        }
+        foreach (var list in _towCrossingsByWay.Values)
             list.Sort((p, q) => p.Cm.CompareTo(q.Cm));
     }
 

@@ -78,7 +78,7 @@ public static class ParkSchedule
     /// <summary>True if the lift carries anyone or runs this minute: open, warm-up, or last rides while riders still wait or ride.</summary>
     public static bool LiftRunning(WorldState state, Lift lift, long tick)
     {
-        if (!lift.InService) return false;
+        if (!lift.InService || lift.IsStopped(tick)) return false;
         if (IsOpen(state, tick) || IsLiftWarmup(state, tick)) return true;
         if (!IsLastRides(state, tick)) return false;
         return lift.Queue.Count > 0 || state.Guests.Any(g => g.Activity == RiderActivity.OnLift && g.Route.Count > g.LegIndex

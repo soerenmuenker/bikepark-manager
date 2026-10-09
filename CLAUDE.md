@@ -159,6 +159,13 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     the price (`RestoreLiftCommand`); `Lift.InService` gates dispatch, routing (bike carriers 0) and upkeep
     (`FinanceSystem`, own lifts only). Company lifts are rented: tiers above 0 need the land at both stations
     (`LiftWorks.StationsOwned`). Riders on unsheltered lifts (T-bar, chairlift) get wet in the rain.
+    A T-bar (`NetworkLink.Towed`) pulls riders up a straight gravel track on the ground between its stations; the track
+    is derived (never a `Way`, nobody walks it): ways crossing it are found in `WayNetwork.TowCrossingsOn` (warned
+    about in `WayPlanner` and in `StructurePlanner.PlanLift`), and a trail rider passing such a crossing while a towed
+    rider is within the crossing window rolls the usual collision. A towed rider hurt there stops the whole lift
+    (`Lift.StoppedUntilTick`: no boarding, nobody on it moves, `LiftRunning` false): minor for `TowStopMinutes` (the
+    rider gets off the track and goes home), serious until the helicopter (`RescueAtTick`); other crashes don't stop it. Boarded riders start with the head start of their
+    carrier's departure within the minute (`LiftSystem.Dispatch`), so riders boarded together are spaced like carriers.
 
 ## Game controls (debug build)
 

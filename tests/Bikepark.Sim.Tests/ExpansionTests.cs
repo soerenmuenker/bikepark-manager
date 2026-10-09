@@ -3,6 +3,7 @@ using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Persistence;
+using Bikepark.Sim.Safety;
 using Bikepark.Sim.Scenarios;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Systems;
@@ -177,5 +178,97 @@ public class ExpansionTests
         Guest On(int liftId) => new() { Activity = RiderActivity.OnLift, Route = [new RouteLeg(liftId, 0, 1000, LegKind.Lift)] };
         Assert.False(GuestSystem.OnShelteredLift(sim.State, On(SkiLift)));
         Assert.True(GuestSystem.OnShelteredLift(sim.State, On(Gondola)));
+    }
+
+    // ---------------------------------------------------------------- the T-bar track
+
+    /// <summary>The career opening with its trails built at once (Old Piste zigzags across the T-bar track).</summary>
+    private static IEnumerable<TimedCommand> OpeningBuiltAtOnce() =>
+        TestWorlds.CareerOpening().Select(c => c.Command is BuildWayCommand build ? c with { Command = build with { Instant = true } } : c);
+
+    private static BuildWayCommand OldPiste() =>
+        (BuildWayCommand)TestWorlds.CareerOpening().Select(c => c.Command).OfType<BuildWayCommand>().First(b => b.Name == "Old Piste");
+
+    [Fact]
+    public void TrailsCrossingATBarTrack_AreWarnedAbout_AndFoundInTheNetwork()
+    {
+        var sim = Career();
+        sim.Step();
+        var plan = WayPlanner.Plan(sim.Terrain, sim.Network, sim.State.TrailRules, WayKind.Trail, OldPiste().Points,
+            Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State));
+        Assert.True(plan.IsValid, plan.FirstError);
+        Assert.Contains(plan.Issues, i => i.Code == "crossing" && i.Message.Contains("Old Ski Lift track"));
+
+        Assert.Null(Reject(sim, OldPiste() with { Instant = true }));
+        var piste = sim.State.Ways.Single(w => w.Name == "Old Piste");
+        var crossings = sim.Network.TowCrossingsOn(piste.Id);
+        Assert.True(crossings.Count >= 2, $"{crossings.Count} crossings");
+        Assert.All(crossings, c => Assert.Equal(SkiLift, c.LiftId));
+        long liftLength = sim.Network.Links.Single(l => l.Id == SkiLift).LengthCm;
+        Assert.All(crossings, c => Assert.InRange(c.LiftCm, 1, liftLength - 1));
+
+        // ... and a new T-bar whose track would cross the trail is warned about too.
+        var tbar = StructurePlanner.PlanLift(sim.Terrain, sim.Network, sim.State, "tbar", M(705, 885), M(715, 715));
+        Assert.Contains(tbar.Issues, i => i.Code == "crossing" && i.Message.Contains("Old Piste"));
+    }
+
+    [Fact]
+    public void RidersBoardedInTheSameMinute_AreSpreadAlongTheLine()
+    {
+        var sim = Career(OpeningBuiltAtOnce());
+        sim.RunTicks(3 * GameTime.MinutesPerDay + 11 * 60);
+        var type = LiftNetwork.FindType(sim.State, "tbar")!;
+        // Where each rider is along the lift leg (progress counts the whole route, e.g. the walk from the parking lot).
+        var onLift = sim.State.Guests.Where(g => g.Activity == RiderActivity.OnLift)
+            .Select(g => g.RouteProgressCm - g.Route.Take(g.LegIndex).Sum(l => l.LengthCm)).Order().ToList();
+        Assert.True(onLift.Count >= 5, $"{onLift.Count} on the T-bar");
+        long spacing = (long)type.IntervalSeconds * type.SpeedCmPerS;
+        Assert.All(onLift.Zip(onLift.Skip(1)), p => Assert.True(p.Second - p.First >= spacing - 100, $"{p.First} → {p.Second}"));
+    }
+
+    [Fact]
+    public void TrailRiders_CanCollideWithRidersOnTheTBar()
+    {
+        var sim = Career(OpeningBuiltAtOnce(), s =>
+        {
+            s.CrashRules.FeatureBasePpm = 0;
+            s.CrashRules.TerrainBasePpm = 0;
+            s.CrashRules.CollisionPpm = 1_000_000;
+            s.CrashRules.CrossingWindowCm = 3_000;
+        });
+        var crashes = new List<RiderCrashed>();
+        sim.Events.Subscribe<RiderCrashed>(crashes.Add);
+        var towedVictims = new List<int>();
+        for (int i = 0; i < 4 * GameTime.MinutesPerDay && towedVictims.Count == 0; i++)
+        {
+            var onLift = sim.State.Guests.Where(g => g.Activity == RiderActivity.OnLift).Select(g => g.Id).ToHashSet();
+            sim.Step();
+            sim.Events.Dispatch();
+            towedVictims.AddRange(crashes.Where(c => c.Tick == sim.State.Tick - 1 && onLift.Contains(c.GuestId)).Select(c => c.GuestId));
+        }
+        var victim = Assert.Single(towedVictims.Take(1));
+        var crash = crashes.First(c => c.GuestId == victim);
+        Assert.Equal(CrashCause.Collision, crash.Cause);
+        Assert.Contains(crashes, c => c.Tick == crash.Tick && c.GuestId != victim && c.WayId == crash.WayId); // the trail rider too
+
+        // The T-bar stops until the crash is resolved: nobody boards, nobody on it moves.
+        var tbar = Lift(sim, SkiLift);
+        var rules = sim.State.CrashRules;
+        long expected = crash.Severity == InjurySeverity.Serious
+            ? sim.State.Guests.Single(g => g.Id == victim).RescueAtTick
+            : crash.Tick + rules.TowStopMinutes;
+        Assert.True(tbar.StoppedUntilTick >= expected, $"stopped until {tbar.StoppedUntilTick}, expected {expected}");
+        if (crash.Severity == InjurySeverity.Minor)
+            Assert.DoesNotContain(sim.State.Guests, g => g.Id == victim && g.Activity == RiderActivity.OnLift); // off the track
+        var held = sim.State.Guests.Where(g => g.Activity == RiderActivity.OnLift).ToDictionary(g => g.Id, g => g.RouteProgressCm);
+        long riders = tbar.Stats.Riders;
+        sim.RunTicks(Math.Min(3, tbar.StoppedUntilTick - sim.State.Tick));
+        Assert.Equal(riders, tbar.Stats.Riders);
+        Assert.All(sim.State.Guests.Where(g => held.ContainsKey(g.Id) && g.Activity == RiderActivity.OnLift),
+            g => Assert.Equal(held[g.Id], g.RouteProgressCm));
+
+        // ... and runs again afterwards (unless the next crash stopped it again).
+        sim.RunTicks(tbar.StoppedUntilTick - sim.State.Tick + 2);
+        Assert.True(!tbar.IsStopped(sim.State.Tick) || tbar.StoppedUntilTick > expected);
     }
 }

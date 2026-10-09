@@ -918,6 +918,9 @@ public partial class LiftsPanel : HudPanel
                 continue;
             }
 
+            var stoppedLabel = UiTheme.Label("", 13, UiTheme.Bad, bold: true);
+            stoppedLabel.Visible = false;
+            _list.AddChild(stoppedLabel);
             var tiles = Row();
             tiles.AddChild(UiTheme.StatTile("Queue", out var queue, 24));
             tiles.AddChild(UiTheme.StatTile("Wait now", out var wait, 24));
@@ -933,10 +936,16 @@ public partial class LiftsPanel : HudPanel
             {
                 var l = Ctx.Sim.State.Lifts.FirstOrDefault(x => x.Id == liftId);
                 if (l is null) return;
+                long now = Ctx.Sim.State.Tick;
+                stoppedLabel.Visible = l.IsStopped(now);
+                if (stoppedLabel.Visible)
+                    stoppedLabel.Text = $"Stopped: a rider crashed on the track. Running again at {GameTime.Format(l.StoppedUntilTick)[^5..]} " +
+                                        $"({l.StoppedUntilTick - now} min).";
                 int minutes = LiftMath.ExpectedWaitMinutes(type, l.BikeCarrierPermille, l.Queue.Count);
                 queue.Text = $"{l.Queue.Count}";
-                wait.Text = minutes < 0 ? "no bikes" : minutes == 0 ? "none" : $"~{minutes} min";
-                wait.AddThemeColorOverride("font_color", minutes < 0 || minutes > 20 ? UiTheme.Bad : minutes > 8 ? UiTheme.Warn : UiTheme.Good);
+                bool stopped = l.IsStopped(now);
+                wait.Text = stopped ? "stopped" : minutes < 0 ? "no bikes" : minutes == 0 ? "none" : $"~{minutes} min";
+                wait.AddThemeColorOverride("font_color", stopped || minutes < 0 || minutes > 20 ? UiTheme.Bad : minutes > 8 ? UiTheme.Warn : UiTheme.Good);
                 capacity.Text = $"{LiftMath.BikeRidersPerHour(type, l.BikeCarrierPermille)}/h";
                 today.Text = $"{l.Stats.RidersToday}";
                 avg.Text = l.Stats.Riders == 0 ? "–" : $"{(double)l.Stats.SumWaitMinutes / l.Stats.Riders:F1} min";

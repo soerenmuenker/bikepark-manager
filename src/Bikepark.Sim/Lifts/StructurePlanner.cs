@@ -87,6 +87,11 @@ public static class StructurePlanner
         CheckPad(grid, network, state, rules, mountainPad, "Plateau", issues, checkLand: !scenario);
         if (PadsOverlap(valleyPad, mountainPad))
             issues.Add(Error("stationsOverlap", "The stations overlap."));
+        // A T-bar pulls its riders up a track on the ground: ways crossing it are collision spots.
+        if (type.Kind == LiftKind.TBar)
+            foreach (var way in network.Ways)
+                if (network.TryGetGeometry(way.Id, out var geometry) && Crossings.FindOnTrack(geometry, valleyPad, mountainPad).Count > 0)
+                    issues.Add(new WayIssue(IssueSeverity.Warning, "crossing", $"The track crosses {way.Name}: riders can collide there."));
 
         return new LiftPlan
         {

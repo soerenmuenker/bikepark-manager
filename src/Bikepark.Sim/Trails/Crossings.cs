@@ -60,6 +60,28 @@ public static class Crossings
         return merged;
     }
 
+    /// <summary>
+    /// Where a way crosses the straight ground track of a towed lift between two station pads: distance along the way and
+    /// how far along the track (parts per million, valley = 0). Hits on the pads or near the way's ends don't count.
+    /// </summary>
+    public static List<(long Cm, long FractionPpm)> FindOnTrack(WayGeometry way, Terrain.TerrainPad valley, Terrain.TerrainPad mountain)
+    {
+        var hits = new List<(long Cm, long FractionPpm)>();
+        var xs = way.Xs; var zs = way.Zs; var d = way.Distances;
+        long ax = valley.CenterX, az = valley.CenterZ, bx = mountain.CenterX, bz = mountain.CenterZ;
+        for (int i = 0; i + 1 < xs.Length; i++)
+        {
+            if (!Intersect(xs[i], zs[i], xs[i + 1], zs[i + 1], ax, az, bx, bz, out long tNum, out long uNum, out long den)) continue;
+            long cm = d[i] + (d[i + 1] - d[i]) * tNum / den;
+            if (cm < EndMarginCm || cm > way.LengthCm - EndMarginCm) continue;
+            long x = ax + (bx - ax) * uNum / den, z = az + (bz - az) * uNum / den;
+            if (valley.DistanceOutside(x, z) <= 0 || mountain.DistanceOutside(x, z) <= 0) continue;
+            if (hits.Count > 0 && cm - hits[^1].Cm < MergeCm) continue;
+            hits.Add((cm, uNum * 1_000_000 / den));
+        }
+        return hits;
+    }
+
     private static (int MinX, int MinZ, int MaxX, int MaxZ) Box(ReadOnlySpan<int> xs, ReadOnlySpan<int> zs, int from, int to)
     {
         int minX = int.MaxValue, minZ = int.MaxValue, maxX = int.MinValue, maxZ = int.MinValue;

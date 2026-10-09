@@ -2,6 +2,7 @@ using Bikepark.Game.Terrain;
 using Bikepark.Sim;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
+using Bikepark.Sim.State;
 using Bikepark.Sim.Systems;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
@@ -13,13 +14,15 @@ namespace Bikepark.Game.Lifts;
 /// Draws lifts and parking lots: platform surfaces, placeholder station buildings, ropes, towers, moving carriers by lift
 /// type (gondola cabins, open chairs with bikes hung on the back, T-bar hangers reaching down to the riders on the
 /// ground; bike-equipped ones in orange, using the Sim's <see cref="LiftMath.IsBikeCarrier"/>) and parked cars by
-/// occupancy. Carriers only move while the lift runs. A derelict lift is drawn rusty without carriers, one under
+/// occupancy. A T-bar has its gravel track on the ground under the line; each rider being pulled up hangs on a hanger
+/// that reaches from the rope down to them (following the terrain), empty hangers ride retracted. Carriers only move while the lift runs. A derelict lift is drawn rusty without carriers, one under
 /// construction as bare towers. Pure view.
 /// </summary>
 public partial class LiftView : Node3D
 {
     [Export] public NodePath SimHostPath { get; set; } = "../SimHost";
     [Export] public NodePath TerrainPath { get; set; } = "../TerrainView";
+    [Export] public NodePath RiderViewPath { get; set; } = "../RiderView";
 
     private static readonly Color BikeCabin = new(0.95f, 0.50f, 0.10f);
     private static readonly Color PlainCabin = new(0.88f, 0.88f, 0.90f);
@@ -29,7 +32,11 @@ public partial class LiftView : Node3D
     private SimHost _host = null!;
     private TerrainView _terrain = null!;
     private Node3D? _static;
-    private MultiMeshInstance3D _cabins = null!, _chairs = null!, _hangers = null!;
+    private MultiMeshInstance3D _cabins = null!, _chairs = null!, _poles = null!, _bars = null!;
+    private Riders.RiderView _riders = null!;
+
+    /// <summary>Length of an empty T-bar hanger (retracted on its spring box).</summary>
+    private const float RetractedHanger = 1.8f;
     private MultiMeshInstance3D _cars = null!;
     private StandardMaterial3D _material = null!;
     private readonly List<IDisposable> _subscriptions = [];
@@ -40,10 +47,13 @@ public partial class LiftView : Node3D
     {
         _host = GetNode<SimHost>(SimHostPath);
         _terrain = GetNode<TerrainView>(TerrainPath);
+        _riders = GetNode<Riders.RiderView>(RiderViewPath);
+        ProcessPriority = 10; // after the riders have been placed this frame, so hangers stay attached to them
         _material = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.85f };
         _cabins = Instances("Cabins", CabinMesh());
         _chairs = Instances("Chairs", ChairMesh());
-        _hangers = Instances("Hangers", HangerMesh());
+        _poles = Instances("HangerPoles", PoleMesh());
+        _bars = Instances("HangerBars", BarMesh());
         _cars = Instances("Cars", CarMesh());
         _terrain.TerrainBuilt += _ => _dirty = true;
         _host.SimulationReplaced += OnSimulationReplaced;
@@ -118,6 +128,8 @@ public partial class LiftView : Node3D
                 AddMesh(Ropes(valley, mountain, Tint(new Color(0.12f, 0.12f, 0.12f))), $"{lift.Name} ropes");
             }
             AddMesh(Towers(grid, valley, mountain, kind, building ? Scaffold : Tint(new Color(0.45f, 0.47f, 0.50f))), $"{lift.Name} towers");
+            if (kind == LiftKind.TBar)
+                AddMesh(Track(grid, valley, mountain, lift.Derelict ? Gravel.Lerp(new Color(0.35f, 0.5f, 0.25f), 0.4f) : Gravel), $"{lift.Name} track");
             string owner = LiftNetwork.FindOperator(state, lift.OperatorId)?.Name ?? "park";
             string status = lift.Derelict ? lift.ReadyTick > 0 ? "\nbeing restored" : "\nrusty, out of service" : building ? "\nunder construction" : "";
             AddLabel($"{lift.Name}\n{owner}{status}", LiftShapes.Center(valley, 14f));
@@ -181,6 +193,28 @@ public partial class LiftView : Node3D
         return b.ToMesh();
     }
 
+    /// <summary>The T-bar's gravel track: a 3 m band on the ground under the up-going rope, from station to station.</summary>
+    private static ArrayMesh Track(TerrainGrid grid, TerrainPad valley, TerrainPad mountain, Color color)
+    {
+        var b = new FlatMeshBuilder();
+        var right = LiftShapes.Right(valley);
+        var a = LiftShapes.Center(valley) + right * LiftShapes.RopeOffset;
+        var c = LiftShapes.Center(mountain) + right * LiftShapes.RopeOffset;
+        float length = new Vector2(c.X - a.X, c.Z - a.Z).Length();
+        int steps = Math.Max(1, (int)(length / 3f));
+        Vector3 Ground(Vector3 p) => new(p.X, grid.HeightAt((long)(p.X * 100), (long)(p.Z * 100)) / 100f + 0.12f, p.Z);
+        var half = right * 1.5f;
+        for (int i = 0; i < steps; i++)
+        {
+            var p0 = a.Lerp(c, i / (float)steps);
+            var p1 = a.Lerp(c, (i + 1) / (float)steps);
+            Vector3 l0 = Ground(p0 - half), r0 = Ground(p0 + half), l1 = Ground(p1 - half), r1 = Ground(p1 + half);
+            b.Triangle(l0, r0, r1, color, l0 + Vector3.Down);
+            b.Triangle(l0, r1, l1, color, l0 + Vector3.Down);
+        }
+        return b.ToMesh();
+    }
+
     /// <summary>A tower about every 100 m (T-bar: every 60 m), reaching from the ground up to the ropes.</summary>
     private static ArrayMesh Towers(TerrainGrid grid, TerrainPad valley, TerrainPad mountain, LiftKind kind, Color color)
     {
@@ -237,7 +271,8 @@ public partial class LiftView : Node3D
         var state = sim.State;
         var transforms = new List<(Transform3D Transform, Color Color)>();
         var chairs = new List<(Transform3D Transform, Color Color)>();
-        var hangers = new List<(Transform3D Transform, Color Color)>();
+        var poles = new List<(Transform3D Transform, Color Color)>();
+        var bars = new List<(Transform3D Transform, Color Color)>();
 
         foreach (var lift in state.Lifts)
         {
@@ -256,6 +291,26 @@ public partial class LiftView : Node3D
             float sinceDispatch = (alpha * 60_000f + lift.DispatchRemainderMs) % intervalMs / 1000f * type.SpeedCmPerS / 100f;
             var basis = Basis.LookingAt(LiftShapes.Forward(valley), Vector3.Up);
 
+            // T-bar: riders being pulled up, each on their own hanger reaching down to them (where the rider is drawn).
+            var towed = new List<float>(); // their distance along the line from the valley station
+            if (type.Kind == LiftKind.TBar)
+            {
+                var from = LiftShapes.Center(valley);
+                var line = LiftShapes.Center(mountain) - from;
+                float lineLength2 = Math.Max(1f, line.X * line.X + line.Z * line.Z);
+                foreach (var guest in state.Guests)
+                {
+                    if (guest.Activity != RiderActivity.OnLift || guest.Route.Count == 0) continue;
+                    var leg = guest.Route[Math.Clamp(guest.LegIndex, 0, guest.Route.Count - 1)];
+                    if (leg.Kind != LegKind.Lift || leg.WayId != lift.Id || !_riders.TryGetPosition(guest.Id, out var rider)) continue;
+                    float t = Math.Clamp(((rider.X - from.X) * line.X + (rider.Z - from.Z) * line.Z) / lineLength2, 0f, 1f);
+                    var rope = LiftShapes.OnRope(valley, mountain, t, up: true);
+                    var grip = rider + Vector3.Up * (_riders.ModelScale * 0.8f); // behind the saddle
+                    Hanger(poles, bars, basis, rope, Math.Max(0.5f, rope.Y - grip.Y), BikeCabin);
+                    towed.Add(t * length);
+                }
+            }
+
             for (int j = 0; j < 2 * perSide; j++)
             {
                 float s = sinceDispatch + j * spacing; // along the loop: up the line, then back down
@@ -264,13 +319,21 @@ public partial class LiftView : Node3D
                 if (t < 0f) continue;
                 var position = LiftShapes.OnRope(valley, mountain, t, up) + Vector3.Down * LiftShapes.CabinDrop;
                 bool bikes = LiftMath.IsBikeCarrier(lift.CarriersDispatched - 1 - j, lift.BikeCarrierPermille);
+                if (type.Kind == LiftKind.TBar)
+                {
+                    // Empty hangers ride retracted; the ones carrying a rider are drawn with the rider above.
+                    if (up && towed.Any(d => Math.Abs(d - s) < spacing * 0.6f)) continue;
+                    Hanger(poles, bars, basis, LiftShapes.OnRope(valley, mountain, t, up), RetractedHanger, PlainCabin);
+                    continue;
+                }
                 var item = (new Transform3D(basis, position), bikes ? BikeCabin : PlainCabin);
-                (type.Kind switch { LiftKind.TBar => hangers, LiftKind.Chairlift => chairs, _ => transforms }).Add(item);
+                (type.Kind == LiftKind.Chairlift ? chairs : transforms).Add(item);
             }
         }
         Fill(_cabins, transforms);
         Fill(_chairs, chairs);
-        Fill(_hangers, hangers);
+        Fill(_poles, poles);
+        Fill(_bars, bars);
     }
 
     private void UpdateCars(Simulation sim)
@@ -366,13 +429,26 @@ public partial class LiftView : Node3D
         return b.ToMesh();
     }
 
-    /// <summary>A T-bar hanger: a pole from the rope down to a crossbar about a metre above the ground.</summary>
-    private static ArrayMesh HangerMesh()
+    /// <summary>A T-bar hanger hanging from <paramref name="rope"/>: a pole of the given length and the crossbar at its end.</summary>
+    private static void Hanger(List<(Transform3D, Color)> poles, List<(Transform3D, Color)> bars, Basis basis, Vector3 rope, float length, Color color)
+    {
+        poles.Add((new Transform3D(basis.Scaled(new Vector3(1, length, 1)), rope), color));
+        bars.Add((new Transform3D(basis, rope + Vector3.Down * length), color));
+    }
+
+    /// <summary>A unit pole hanging down from the origin (scaled to the hanger's length).</summary>
+    private static ArrayMesh PoleMesh()
     {
         var b = new FlatMeshBuilder();
-        float bottom = LiftShapes.CabinDrop - LiftShapes.CableHeight + 1.0f; // relative to the carrier position
-        b.Box(new Vector3(-0.05f, bottom, -0.05f), new Vector3(0.05f, LiftShapes.CabinDrop, 0.05f), new Color(0.25f, 0.25f, 0.25f));
-        b.Box(new Vector3(-0.08f, bottom - 0.08f, -0.6f), new Vector3(0.08f, bottom + 0.08f, 0.6f), Colors.White);
+        b.Box(new Vector3(-0.06f, -1f, -0.06f), new Vector3(0.06f, 0f, 0.06f), new Color(0.25f, 0.25f, 0.25f));
+        return b.ToMesh();
+    }
+
+    /// <summary>The T-bar's crossbar (across the line), tinted per instance.</summary>
+    private static ArrayMesh BarMesh()
+    {
+        var b = new FlatMeshBuilder();
+        b.Box(new Vector3(-0.6f, -0.1f, -0.1f), new Vector3(0.6f, 0.1f, 0.1f), Colors.White);
         return b.ToMesh();
     }
 

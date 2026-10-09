@@ -76,6 +76,12 @@ public sealed class CrashRules
     public int MinorMoodLoss { get; set; } = 250;
     public int SeriousMoodLoss { get; set; } = 600;
 
+    /// <summary>
+    /// A rider on a T-bar hurt in a collision stops the lift: a minor crash for this long (they get off the track and go
+    /// home), a serious one until the helicopter has flown them out.
+    /// </summary>
+    public int TowStopMinutes { get; set; } = 5;
+
     /// <summary>Riding speed of a rider with a minor injury on the way down.</summary>
     public int MinorSpeedCmPerS { get; set; } = 150;
 
@@ -109,6 +115,7 @@ public sealed class CrashRules
             errors.Add($"{p}: serious shares must be within 0..1000");
         if (MinorMoodLoss is < 0 or > 1000 || SeriousMoodLoss is < 0 or > 1000) errors.Add($"{p}: mood losses must be within 0..1000");
         if (MinorSpeedCmPerS is < 10 or > 2000) errors.Add($"{p}.minorSpeedCmPerS must be within 10..2000");
+        if (TowStopMinutes is < 0 or > 600) errors.Add($"{p}.towStopMinutes must be within 0..600");
         if (HelicopterMinMinutes < 1 || HelicopterMaxMinutes < HelicopterMinMinutes || HelicopterMaxMinutes > 600)
             errors.Add($"{p}: 1 <= helicopterMinMinutes <= helicopterMaxMinutes <= 600");
         if (InjuredReviewChancePermille is < 0 or > 1000) errors.Add($"{p}.injuredReviewChancePermille must be within 0..1000");

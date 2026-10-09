@@ -85,7 +85,7 @@ public class DeterminismTests
 
     [Theory]
     [InlineData(12L * 60 + 30)] // lunch
-    [InlineData(18L * 60 + 5)] // last rides, riders still on the trails
+    [InlineData(18L * 60 + 1)] // last rides, riders still on the trails
     public void SaveLoadMidDay_InStarterValley_ContinuesIdentically(long saveAtTick)
     {
         const long totalTicks = 1440 + 600;

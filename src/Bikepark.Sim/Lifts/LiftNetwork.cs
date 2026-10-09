@@ -21,7 +21,8 @@ public static class LiftNetwork
             hubs.Add(new NetworkHub(lift.Mountain.Id, HubKind.MountainStation, lift.Id, mountain));
             long length = LiftMath.Line(valley, mountain).LengthCm;
             long cost = (long)LiftMath.RideSeconds(type, length) * state.LiftRules.LiftRideCostCmPerMinute / 60;
-            links.Add(new NetworkLink(LegKind.Lift, lift.Id, lift.Valley.Id, lift.Mountain.Id, length, cost, type.CorridorCm));
+            links.Add(new NetworkLink(LegKind.Lift, lift.Id, lift.Valley.Id, lift.Mountain.Id, length, cost, type.CorridorCm,
+                Towed: type.Kind == LiftKind.TBar, Name: lift.Name));
         }
         foreach (var lot in state.ParkingLots)
         {

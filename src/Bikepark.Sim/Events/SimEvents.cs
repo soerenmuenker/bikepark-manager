@@ -180,11 +180,18 @@ public sealed record LiftConstructionStarted(long Tick, int LiftId, long ReadyTi
 /// <summary>A lift built or restored by a contractor is ready and runs from now on.</summary>
 public sealed record LiftReady(long Tick, int LiftId) : ISimEvent;
 
-/// <summary>A rider crashed on a trail (<paramref name="FeatureId"/> 0: not on a feature).</summary>
-public sealed record RiderCrashed(long Tick, int GuestId, int WayId, long Cm, InjurySeverity Severity, CrashCause Cause, int FeatureId) : ISimEvent;
+/// <summary>
+/// A rider crashed on a trail (<paramref name="FeatureId"/> 0: not on a feature), or while being pulled up the T-bar
+/// <paramref name="LiftId"/> (hit at a crossing with <paramref name="WayId"/>; 0: not on a lift).
+/// </summary>
+public sealed record RiderCrashed(long Tick, int GuestId, int WayId, long Cm, InjurySeverity Severity, CrashCause Cause, int FeatureId,
+    int LiftId = 0) : ISimEvent;
 
 /// <summary>Public service sent the rescue helicopter; it has flown the rider out at <paramref name="RescueAtTick"/>.</summary>
 public sealed record HelicopterCalled(long Tick, int GuestId, int WayId, long RescueAtTick) : ISimEvent;
+
+/// <summary>A lift stopped after a crash on its track; it runs again from <paramref name="UntilTick"/>.</summary>
+public sealed record LiftStopped(long Tick, int LiftId, long UntilTick, int GuestId) : ISimEvent;
 
 /// <summary>The helicopter flew the injured rider out; the trail is clear again.</summary>
 public sealed record RiderEvacuated(long Tick, int GuestId, int WayId) : ISimEvent;

@@ -126,6 +126,12 @@ public static class WayPlanner
                 foreach (var (cm, _) in Crossings.Find(geometry, otherGeometry))
                     issues.Add(new WayIssue(IssueSeverity.Warning, "crossing", $"Crosses {other.Name} at {cm / 100} m: riders can collide there.", cm, cm));
 
+        foreach (var link in network.Links)
+            if (link.Towed && network.FindHub(link.FromHubId)?.Pad is { } from && network.FindHub(link.ToHubId)?.Pad is { } to)
+                foreach (var (cm, _) in Crossings.FindOnTrack(geometry, from, to))
+                    issues.Add(new WayIssue(IssueSeverity.Warning, "crossing",
+                        $"Crosses the {link.Name} track at {cm / 100} m: riders can collide with riders on the T-bar.", cm, cm));
+
         var (trees, rocks) = CountCleared(grid, network, rules, kind, geometry);
         if (trees + rocks > 0)
             issues.Add(Warning("clearing", $"Clears {trees} trees and {rocks} rocks along the way."));

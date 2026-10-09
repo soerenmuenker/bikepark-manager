@@ -460,9 +460,9 @@ public partial class Hud : CanvasLayer
         if (lift is not null && LiftNetwork.FindType(state, lift.TypeId) is { } type)
         {
             int wait = LiftMath.ExpectedWaitMinutes(type, lift.BikeCarrierPermille, lift.Queue.Count);
-            _queueValue.Text = !lift.InService ? "–" : wait < 0 ? "no bikes" : wait == 0 ? $"{lift.Queue.Count}" : $"{lift.Queue.Count} · {wait}′";
+            _queueValue.Text = !lift.InService ? "–" : lift.IsStopped(state.Tick) ? "stop" : wait < 0 ? "no bikes" : wait == 0 ? $"{lift.Queue.Count}" : $"{lift.Queue.Count} · {wait}′";
             _queueValue.TooltipText = $"{lift.Name}: riders in the queue · expected wait";
-            _queueValue.AddThemeColorOverride("font_color", !lift.InService ? UiTheme.TextDim : wait < 0 || wait > 20 ? UiTheme.Bad : wait > 8 ? UiTheme.Warn : UiTheme.Text);
+            _queueValue.AddThemeColorOverride("font_color", !lift.InService ? UiTheme.TextDim : lift.IsStopped(state.Tick) ? UiTheme.Bad : wait < 0 || wait > 20 ? UiTheme.Bad : wait > 8 ? UiTheme.Warn : UiTheme.Text);
         }
     }
 
@@ -666,11 +666,18 @@ public partial class Hud : CanvasLayer
             $"Bought {_ctx.Sim.State.Parcels.FirstOrDefault(p => p.Id == e.ParcelId)?.Name} for {UiTheme.Money(e.PriceCents)}: you can build there now", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<LiftConstructionStarted>(e => Toast(
             $"{(e.Restoration ? "Restoring" : "Building")} {LiftName(e.LiftId)} for {UiTheme.Money(e.CostCents)}: running from day {GameTime.Day(e.ReadyTick) + 1}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<LiftStopped>(e => Toast(
+            $"{LiftName(e.LiftId)} stopped: a rider crashed on its track. It runs again at {GameTime.Format(e.UntilTick)[^5..]}", UiTheme.Bad)));
         _subscriptions.Add(events.Subscribe<LiftReady>(e => Toast($"{LiftName(e.LiftId)} is ready and running", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<RiderCrashed>(e =>
         {
             string where = e.FeatureId != 0 ? $" at the {FeatureTypeName(e.WayId, e.FeatureId)}" : e.Cause == Bikepark.Sim.Safety.CrashCause.Collision ? " (collision at a crossing)" : "";
-            if (e.Severity == Bikepark.Sim.Safety.InjurySeverity.Serious)
+            if (e.LiftId != 0)
+                Toast(e.Severity == Bikepark.Sim.Safety.InjurySeverity.Serious
+                    ? $"Serious crash on the {LiftName(e.LiftId)} track (hit by a rider on {TrailName(e.WayId)}): rescue helicopter called"
+                    : $"Minor crash on the {LiftName(e.LiftId)} track (hit by a rider on {TrailName(e.WayId)}): the rider gets off and goes home",
+                    e.Severity == Bikepark.Sim.Safety.InjurySeverity.Serious ? UiTheme.Bad : UiTheme.Warn);
+            else if (e.Severity == Bikepark.Sim.Safety.InjurySeverity.Serious)
                 Toast($"Serious crash on {TrailName(e.WayId)}{where}: rescue helicopter called, the trail is blocked", UiTheme.Bad);
             else
                 Toast($"Minor crash on {TrailName(e.WayId)}{where}: the rider rides down slowly and goes home", UiTheme.Warn);

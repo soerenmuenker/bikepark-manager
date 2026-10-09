@@ -81,6 +81,8 @@ public static class Program
         sim.Events.Subscribe<ParcelBought>(e => landLog.Add($"{GameTime.Format(e.Tick)} bought {e.ParcelId} for {e.PriceCents / 100} €"));
         sim.Events.Subscribe<LiftConstructionStarted>(e => landLog.Add(
             $"{GameTime.Format(e.Tick)} {(e.Restoration ? "restoring" : "building")} {sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name} for {e.CostCents / 100} €, ready {GameTime.Format(e.ReadyTick)}"));
+        sim.Events.Subscribe<LiftStopped>(e => landLog.Add(
+            $"{GameTime.Format(e.Tick)} {sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name} stopped until {GameTime.Format(e.UntilTick)} (crash on the track)"));
         sim.Events.Subscribe<LiftReady>(e => landLog.Add($"{GameTime.Format(e.Tick)} {sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name} is running"));
 
         var crashes = new List<string>();
@@ -181,7 +183,9 @@ public static class Program
             s.Evacuations == 0 ? null : (int)(s.SumRescueMinutes / s.Evacuations),
             s.TotalInsuranceCents, CrashMath.Premium(state.CrashRules, s),
             sim.Network.Crossings.Select(c =>
-                $"{state.Ways.First(w => w.Id == c.WayA).Name} {c.CmA / 100} m x {state.Ways.First(w => w.Id == c.WayB).Name} {c.CmB / 100} m").ToList(),
+                $"{state.Ways.First(w => w.Id == c.WayA).Name} {c.CmA / 100} m x {state.Ways.First(w => w.Id == c.WayB).Name} {c.CmB / 100} m")
+                .Concat(state.Ways.SelectMany(w => sim.Network.TowCrossingsOn(w.Id).Select(t =>
+                    $"{w.Name} {t.Cm / 100} m x {state.Lifts.First(l => l.Id == t.LiftId).Name} track {t.LiftCm / 100} m"))).ToList(),
             log);
     }
 

@@ -174,7 +174,9 @@
   // stuff), jumps, worn features (below the rough level, up to 1 + wornFactor at 0 %), wet ground and tired riders.
   // Passing a crossing while someone on the other way is close is a collision chance. A crash is serious with
   // seriousBase + extras (jumps, collisions, over skill): the rider lies on the trail, blocking it, until the rescue
-  // helicopter (public service) has flown them out; otherwise they ride down slowly and go home. The insurance premium
+  // helicopter (public service) has flown them out; otherwise they ride down slowly and go home. A rider hurt while
+  // being pulled up a T-bar stops the whole lift: for towStopMinutes (minor: they get off the track and go home) or
+  // until the helicopter has flown them out (serious). The insurance premium
   // is charged daily: a base plus a charge per accident of the last insuranceDays days.
   "crashRules": {
     "enabled": true,
@@ -196,6 +198,7 @@
     "minorMoodLoss": 250,
     "seriousMoodLoss": 600,
     "minorSpeedCmPerS": 150,
+    "towStopMinutes": 5,
     "helicopterMinMinutes": 25,
     "helicopterMaxMinutes": 50,
     "injuredReviewChancePermille": 900,

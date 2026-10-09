@@ -45,6 +45,13 @@ public sealed class Lift
     /// <summary>A contractor is building or restoring it: it runs from this tick on (0 = not under construction).</summary>
     public long ReadyTick { get; set; }
 
+    /// <summary>
+    /// Stopped after a crash on its track (T-bar) until this tick: nobody boards, nobody on it moves (0 = not stopped).
+    /// </summary>
+    public long StoppedUntilTick { get; set; }
+
+    public bool IsStopped(long tick) => tick < StoppedUntilTick;
+
     /// <summary>Running and taking riders (not derelict, not under construction).</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool InService => !Derelict && ReadyTick == 0;

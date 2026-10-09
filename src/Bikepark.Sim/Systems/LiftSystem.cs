@@ -78,12 +78,17 @@ internal sealed class LiftSystem : ISimSystem
         if (type is null) return;
 
         int intervalMs = type.IntervalSeconds * 1000;
-        int budget = lift.DispatchRemainderMs + 60_000;
+        int carried = lift.DispatchRemainderMs;
+        int budget = carried + 60_000;
         int carriers = budget / intervalMs;
         lift.DispatchRemainderMs = budget % intervalMs;
 
         for (int c = 0; c < carriers; c++)
         {
+            // This carrier leaves (c + 1) intervals after the previous minute's last one: its riders have the rest of the
+            // minute to ride, so riders boarded in the same minute are spread along the line like their carriers.
+            int leftAtMs = (c + 1) * intervalMs - carried;
+            long headStartCm = (long)Math.Max(0, 60_000 - leftAtMs) * type.SpeedCmPerS / 1000;
             long k = lift.CarriersDispatched++;
             if (!LiftMath.IsBikeCarrier(k, lift.BikeCarrierPermille)) continue;
             for (int seat = 0; seat < type.BikesPerCarrier && lift.Queue.Count > 0; seat++)
@@ -94,6 +99,8 @@ internal sealed class LiftSystem : ISimSystem
                 if (guest is null || guest.Activity != RiderActivity.Queuing) continue;
                 int wait = (int)(ctx.Tick - guest.QueueSinceTick);
                 guest.Activity = RiderActivity.OnLift;
+                if (guest.Route.Count > guest.LegIndex)
+                    guest.RouteProgressCm += Math.Min(headStartCm, Math.Max(0, guest.Route[guest.LegIndex].LengthCm - 1));
                 lift.Stats.Riders++;
                 lift.Stats.RidersToday++;
                 lift.Stats.SumWaitMinutes += wait;

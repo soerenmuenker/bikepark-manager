@@ -299,6 +299,9 @@ internal sealed class RiderSystem : ISimSystem
 
             if (leg.Kind != LegKind.Way)
             {
+                // A lift stopped after a crash on its track: everybody on it waits where they are.
+                if (leg.Kind == LegKind.Lift && ctx.State.Lifts.FirstOrDefault(l => l.Id == leg.WayId) is { } stopped && stopped.IsStopped(ctx.Tick))
+                    break;
                 int linkSpeed = LinkSpeed(ctx.State, leg);
                 if (linkSpeed <= 0)
                 {
@@ -402,6 +405,20 @@ internal sealed class RiderSystem : ISimSystem
                             Crash(ctx, network, traffic, other, way, at, CrashCause.Collision, null, segment.Difficulty);
                         return;
                     }
+                // T-bar tracks crossed while a rider is being pulled up close to the crossing: the same collision risk.
+                if (rolls)
+                    foreach (var (cm, liftId, liftCm) in network.TowCrossingsOn(leg.WayId))
+                    {
+                        if (cm <= position) continue;
+                        if (cm > position + move) break;
+                        if (RiderTowedNear(ctx.State, liftId, liftCm, crashRules.CrossingWindowCm) is not { } towed) continue;
+                        if (!CrashMath.Roll(ctx.Rng, CrashMath.CollisionChancePpb(crashRules))) continue;
+                        guest.RouteProgressCm -= position + move - cm;
+                        Crash(ctx, network, traffic, guest, leg.WayId, cm, CrashCause.Collision, null, segment.Difficulty);
+                        if (towed.Injury == InjurySeverity.None)
+                            Crash(ctx, network, traffic, towed, leg.WayId, cm, CrashCause.Collision, null, segment.Difficulty);
+                        return;
+                    }
                 if (move == toBoundary)
                 {
                     guest.RunFun += SegmentFun(guest, rules, segment, gradeAlong, speed);
@@ -464,14 +481,31 @@ internal sealed class RiderSystem : ISimSystem
         }
         else
             safety.MinorToday++;
+        // Hurt while being pulled up a T-bar: the lift stops until the crash is resolved.
+        var towedOn = guest.Activity == RiderActivity.OnLift && guest.Route.Count > guest.LegIndex
+                      && guest.Route[guest.LegIndex] is { Kind: LegKind.Lift } liftLeg
+            ? state.Lifts.FirstOrDefault(l => l.Id == liftLeg.WayId)
+            : null;
         traffic.Witness(guest, wayId, cm);
-        ctx.Publish(new RiderCrashed(ctx.Tick, guest.Id, wayId, cm, guest.Injury, cause, guest.CrashFeatureId));
+        ctx.Publish(new RiderCrashed(ctx.Tick, guest.Id, wayId, cm, guest.Injury, cause, guest.CrashFeatureId, towedOn?.Id ?? 0));
 
-        if (!serious) return;
-        guest.Activity = RiderActivity.Injured;
-        guest.RescueAtTick = ctx.Tick + ctx.Rng.Range(rules.HelicopterMinMinutes, rules.HelicopterMaxMinutes + 1);
-        traffic.Track(guest);
-        ctx.Publish(new HelicopterCalled(ctx.Tick, guest.Id, wayId, guest.RescueAtTick));
+
+        if (serious)
+        {
+            guest.Activity = RiderActivity.Injured;
+            guest.RescueAtTick = ctx.Tick + ctx.Rng.Range(rules.HelicopterMinMinutes, rules.HelicopterMaxMinutes + 1);
+            traffic.Track(guest);
+            ctx.Publish(new HelicopterCalled(ctx.Tick, guest.Id, wayId, guest.RescueAtTick));
+        }
+        if (towedOn is null) return;
+        // Serious: until the helicopter has flown them out. Minor: they let go, get off the track and go home.
+        long until = serious ? guest.RescueAtTick : ctx.Tick + rules.TowStopMinutes;
+        if (!serious) PlaceAtBase(state, guest, network);
+        if (until > towedOn.StoppedUntilTick)
+        {
+            towedOn.StoppedUntilTick = until;
+            ctx.Publish(new LiftStopped(ctx.Tick, towedOn.Id, until, guest.Id));
+        }
     }
 
     /// <summary>The first rider (in list order) riding on <paramref name="wayId"/> within <paramref name="windowCm"/> of <paramref name="cm"/>.</summary>
@@ -480,6 +514,20 @@ internal sealed class RiderSystem : ISimSystem
         foreach (var other in state.Guests)
             if (other != self && PositionOnWay(other, out int way, out long at) && way == wayId && Math.Abs(at - cm) <= windowCm)
                 return other;
+        return null;
+    }
+
+    /// <summary>The first rider (in list order) being pulled up the towed lift within <paramref name="windowCm"/> of <paramref name="liftCm"/>.</summary>
+    private static Guest? RiderTowedNear(WorldState state, int liftId, long liftCm, int windowCm)
+    {
+        foreach (var other in state.Guests)
+        {
+            if (other.Activity != RiderActivity.OnLift || other.Route.Count == 0) continue;
+            var (legIndex, offset) = LocateOnRoute(other);
+            var leg = other.Route[legIndex];
+            if (leg.Kind == LegKind.Lift && leg.WayId == liftId && Math.Abs(leg.FromCm + offset - liftCm) <= windowCm)
+                return other;
+        }
         return null;
     }
 
