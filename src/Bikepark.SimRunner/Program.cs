@@ -8,6 +8,7 @@ using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Reporting;
 using Bikepark.Sim.Reputation;
+using Bikepark.Sim.Safety;
 using Bikepark.Sim.Scenarios;
 using Bikepark.Sim.Trails;
 using Bikepark.SimRunner.Terrain;
@@ -76,6 +77,11 @@ public static class Program
         sim.Events.Subscribe<InfluencerPosted>(e => influencers.Add($"{GameTime.Format(e.Tick)} {e.Post.Name} posted"));
         sim.Events.Subscribe<LevelChanged>(e => influencers.Add($"{GameTime.Format(e.Tick)} level {e.OldLevel} -> {e.NewLevel}"));
 
+        var crashes = new List<string>();
+        sim.Events.Subscribe<RiderCrashed>(e => crashes.Add(
+            $"{GameTime.Format(e.Tick)} {e.Severity} {e.Cause} on {sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId)?.Name} at {e.Cm / 100} m"
+            + (e.FeatureId != 0 ? $" ({sim.State.Ways.SelectMany(w => w.Features).FirstOrDefault(f => f.Id == e.FeatureId)?.TypeId})" : "")));
+
         var hourly = new List<HourReport>();
         int runsThisHour = 0, lunchesThisHour = 0;
         sim.Events.Subscribe<RunFinished>(_ => runsThisHour++);
@@ -108,6 +114,7 @@ public static class Program
             Days: options.Days,
             Kpis: KpiReport.From(state, network: sim.Network),
             Reputation: ReputationReport(sim, influencers),
+            Safety: SafetyReport(sim, crashes),
             Ways: WayReports(sim),
             Lifts: LiftReports(sim),
             Crew: CrewReport(sim, completed),
@@ -144,6 +151,20 @@ public static class Program
             Posts: state.Reputation.Posts.Select(p =>
                 $"day {p.Day} {p.Name}: {Stars(p.StarsTenths)} stars, demand {p.EffectPermille / 10:+0;-0;0} % until day {p.EndsDay}").ToList(),
             Log: log);
+    }
+
+    private static SafetyReport? SafetyReport(Simulation sim, List<string> log)
+    {
+        var state = sim.State;
+        if (!state.CrashRules.Enabled) return null;
+        var s = state.Safety;
+        return new SafetyReport(
+            s.TotalCrashes, s.TotalSerious, s.TotalCollisions, s.Evacuations,
+            s.Evacuations == 0 ? null : (int)(s.SumRescueMinutes / s.Evacuations),
+            s.TotalInsuranceCents, CrashMath.Premium(state.CrashRules, s),
+            sim.Network.Crossings.Select(c =>
+                $"{state.Ways.First(w => w.Id == c.WayA).Name} {c.CmA / 100} m x {state.Ways.First(w => w.Id == c.WayB).Name} {c.CmB / 100} m").ToList(),
+            log);
     }
 
     private static string? Stars(int? tenths) => tenths is { } t ? $"{t / 10}.{t % 10}" : null;
@@ -207,11 +228,16 @@ public static class Program
             w.Stats.Runs == 0 ? null : Math.Round((double)w.Stats.SumRunMinutes / w.Stats.Runs, 1),
             w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs),
             trail && w.Built ? !w.IsRideable ? w.WornOut ? "worn out" : "closed" : "open" : null,
-            trail ? w.Features.Where(f => f.Built).Select(f => $"{f.TypeId}@{f.DistanceCm / 100}m {TrailCondition.Permille(f) / 10.0:0.#} %").ToList() : null,
+            trail ? w.Features.Where(f => f.Built).Select(f => $"{f.TypeId}@{f.DistanceCm / 100}m {TrailCondition.Permille(f) / 10.0:0.#} %"
+                                                                 + (f.Crashes > 0 ? $", {f.Crashes} crashes" : "")).ToList() : null,
             trail ? TrailCondition.WorstPermille(w) : null,
             trail ? w.Stats.ClosedMinutes : null,
             trail ? w.Stats.Repairs : null,
-            trail ? w.Stats.HeldUpSeconds / 60 : null);
+            trail ? w.Stats.HeldUpSeconds / 60 : null,
+            trail ? w.Stats.Crashes : null,
+            trail ? w.Stats.SeriousCrashes : null,
+            trail ? w.Stats.Collisions : null,
+            trail && w.Stats.Runs > 0 ? Math.Round(w.Stats.Crashes * 1000.0 / w.Stats.Runs, 1) : null);
     }).ToList();
 
     private static CrewReport? CrewReport(Simulation sim, List<string> completed)
@@ -326,7 +352,22 @@ internal sealed record WayReport(
     int? WorstFeaturePermille,
     long? ClosedMinutes,
     int? Repairs,
-    long? HeldUpMinutes);
+    long? HeldUpMinutes,
+    int? Crashes,
+    int? SeriousCrashes,
+    int? Collisions,
+    double? CrashesPer1000Runs);
+
+internal sealed record SafetyReport(
+    long Crashes,
+    long Serious,
+    long Collisions,
+    long Evacuations,
+    int? AverageRescueMinutes,
+    long InsuranceCents,
+    long PremiumTomorrowCents,
+    List<string> Crossings,
+    List<string> Log);
 
 internal sealed record GroupReport(string Name, string? Stars, long Reviews, int InWindow);
 
@@ -350,6 +391,7 @@ internal sealed record RunnerOutput(
     int Days,
     KpiReport Kpis,
     ReputationReport? Reputation,
+    SafetyReport? Safety,
     List<WayReport> Ways,
     List<LiftReport> Lifts,
     CrewReport? Crew,

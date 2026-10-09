@@ -1,6 +1,7 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.Reputation;
+using Bikepark.Sim.Safety;
 using Bikepark.Sim.Trails;
 using Bikepark.Sim.Weather;
 
@@ -36,6 +37,12 @@ public enum GuestLeaveReason
     Unhappy,
     ParkClosed,
     Tired,
+
+    /// <summary>A minor crash: rode down slowly and went home.</summary>
+    Injured,
+
+    /// <summary>A serious crash: flown out by the rescue helicopter.</summary>
+    Evacuated,
 }
 
 public sealed record GuestLeft(long Tick, int GuestId, GuestLeaveReason Reason) : ISimEvent;
@@ -113,7 +120,10 @@ public sealed record DayReport(
     int? RatingTenths = null,
     int DemandPermille = 1000,
     int Xp = 0,
-    int Level = 0);
+    int Level = 0,
+    int Crashes = 0,
+    int SeriousCrashes = 0,
+    long InsuranceCents = 0);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
 
@@ -159,3 +169,12 @@ public sealed record InfluencerPosted(long Tick, InfluencerPost Post) : ISimEven
 
 /// <summary>The park reached a new level (or fell back to a lower one).</summary>
 public sealed record LevelChanged(long Tick, int OldLevel, int NewLevel) : ISimEvent;
+
+/// <summary>A rider crashed on a trail (<paramref name="FeatureId"/> 0: not on a feature).</summary>
+public sealed record RiderCrashed(long Tick, int GuestId, int WayId, long Cm, InjurySeverity Severity, CrashCause Cause, int FeatureId) : ISimEvent;
+
+/// <summary>Public service sent the rescue helicopter; it has flown the rider out at <paramref name="RescueAtTick"/>.</summary>
+public sealed record HelicopterCalled(long Tick, int GuestId, int WayId, long RescueAtTick) : ISimEvent;
+
+/// <summary>The helicopter flew the injured rider out; the trail is clear again.</summary>
+public sealed record RiderEvacuated(long Tick, int GuestId, int WayId) : ISimEvent;

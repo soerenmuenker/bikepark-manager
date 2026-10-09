@@ -354,6 +354,7 @@ public partial class TrailsPanel : HudPanel
             main.AddThemeColorOverride("font_color", way.IsRideable ? UiTheme.Text : UiTheme.Bad);
             detail.Text = $"{WayMeshes.RatingText(g)} · {g.LengthCm / 100} m · -{(g.StartHeightCm - g.EndHeightCm) / 100} m · steepest {Gradient.Format(-g.MaxDropGradient)}\n" +
                           $"{s.Runs} runs ({s.RunsToday} today) · {avg}\n" +
+                          (state.CrashRules.Enabled ? CrashSummary(state, way, network) + "\n" : "") +
                           ConditionSummary(state, way, g) + "\n" +
                           FeatureSummary(network.FeaturesOn(id));
         }
@@ -371,6 +372,19 @@ public partial class TrailsPanel : HudPanel
             : TrailCondition.Permille(worst) < state.WearRules.WarnBelowPermille ? "needs a repair!"
             : TrailCondition.Permille(worst) < 1000 ? "worn" : "like new";
         return $"Worst feature: {type?.Name} at {worst.DistanceCm / 100} m, {TrailCondition.Permille(worst) / 10} % · {next}";
+    }
+
+    /// <summary>"3 crashes (1 serious) · 2.4 per 1000 runs · most at the Double" and riders lying on it now.</summary>
+    private static string CrashSummary(WorldState state, Way way, WayNetwork network)
+    {
+        var s = way.Stats;
+        int down = state.Guests.Count(g => g.Activity == RiderActivity.Injured && g.CrashWayId == way.Id);
+        string now = down > 0 ? $" · {down} injured on it now, helicopter coming" : "";
+        if (s.Crashes == 0) return "No crashes yet" + now;
+        string rate = s.Runs == 0 ? "" : $" · {s.Crashes * 1000.0 / s.Runs:0.0} per 1000 runs";
+        var worst = network.FeaturesOn(way.Id).Where(f => f.Feature.Crashes > 0).OrderByDescending(f => f.Feature.Crashes).FirstOrDefault();
+        string where = worst.Type is null ? "" : $" · most at the {worst.Type.Name} ({worst.Feature.Crashes})";
+        return $"{s.Crashes} crash{(s.Crashes == 1 ? "" : "es")} ({s.SeriousCrashes} serious, {s.Collisions} collisions){rate}{where}{now}";
     }
 
     /// <summary>"2 berms · Tabletop · Drop" (in the order types first appear along the trail).</summary>
@@ -889,6 +903,7 @@ public partial class FinancePanel : HudPanel
 {
     private Label _money = null!, _revenue = null!, _expenses = null!, _net = null!;
     private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _food = null!, _fee = null!;
+    private Label _insurance = null!;
     private DayChart _chart = null!;
 
     public override string Title => "Finances";
@@ -909,6 +924,7 @@ public partial class FinancePanel : HudPanel
         totals.AddChild(UiTheme.StatTile("Lift fees paid", out _liftFees, 16));
         totals.AddChild(UiTheme.StatTile("Crew wages", out _wages, 16));
         totals.AddChild(UiTheme.StatTile("Tools & wood", out _materials, 16));
+        totals.AddChild(UiTheme.StatTile("Insurance", out _insurance, 16));
         Body.AddChild(totals);
         Body.AddChild(UiTheme.Separator());
 
@@ -943,6 +959,12 @@ public partial class FinancePanel : HudPanel
         _food.Text = UiTheme.Money(f.TotalFoodCents);
         _wages.Text = UiTheme.Money(f.TotalWagesCents);
         _materials.Text = UiTheme.Money(f.TotalToolsCents + f.TotalWoodCents);
+        var safety = Ctx.Sim.State.Safety;
+        _insurance.Text = UiTheme.Money(safety.TotalInsuranceCents);
+        _insurance.TooltipText = Ctx.Sim.State.CrashRules.Enabled
+            ? $"Accident insurance, charged daily: {UiTheme.Money(Bikepark.Sim.Safety.CrashMath.Premium(Ctx.Sim.State.CrashRules, safety))} at the moment " +
+              $"(a base plus every accident of the last {Ctx.Sim.State.CrashRules.InsuranceDays} days)"
+            : "No accident insurance in this scenario";
         _fee.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.EntryFeeCents);
         _chart.Days = Ctx.Days;
         _chart.QueueRedraw();

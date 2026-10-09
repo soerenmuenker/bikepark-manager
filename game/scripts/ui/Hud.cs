@@ -647,6 +647,15 @@ public partial class Hud : CanvasLayer
             e.Post.EffectPermille > 0 ? UiTheme.Good : e.Post.EffectPermille < 0 ? UiTheme.Bad : UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<LevelChanged>(e => Toast(e.NewLevel > e.OldLevel
             ? $"Park level {e.NewLevel} reached!" : $"The park dropped to level {e.NewLevel}", e.NewLevel > e.OldLevel ? UiTheme.Good : UiTheme.Warn)));
+        _subscriptions.Add(events.Subscribe<RiderCrashed>(e =>
+        {
+            string where = e.FeatureId != 0 ? $" at the {FeatureTypeName(e.WayId, e.FeatureId)}" : e.Cause == Bikepark.Sim.Safety.CrashCause.Collision ? " (collision at a crossing)" : "";
+            if (e.Severity == Bikepark.Sim.Safety.InjurySeverity.Serious)
+                Toast($"Serious crash on {TrailName(e.WayId)}{where}: rescue helicopter called, the trail is blocked", UiTheme.Bad);
+            else
+                Toast($"Minor crash on {TrailName(e.WayId)}{where}: the rider rides down slowly and goes home", UiTheme.Warn);
+        }));
+        _subscriptions.Add(events.Subscribe<RiderEvacuated>(e => Toast($"The helicopter has flown the injured rider out: {TrailName(e.WayId)} is clear", UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<ParkOpened>(_ => Toast("The park is open", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<WeatherForecast>(e =>
             Toast($"Today: {WeatherText(e.Today)} · tomorrow: {WeatherText(e.Tomorrow)}", e.Today.HasRain ? UiTheme.Warn : UiTheme.TextDim)));
@@ -691,6 +700,13 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<ParkingLotBuilt>(_ => Toast("Built a parking lot", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessBooked>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: true), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessChanged>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: false), UiTheme.Accent)));
+    }
+
+    private string FeatureTypeName(int wayId, int featureId)
+    {
+        var state = _ctx.Sim.State;
+        var feature = state.Ways.FirstOrDefault(w => w.Id == wayId)?.Features.FirstOrDefault(f => f.Id == featureId);
+        return (feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId)?.Name.ToLowerInvariant()) ?? "feature";
     }
 
     private string FeatureName(int wayId, int featureId)

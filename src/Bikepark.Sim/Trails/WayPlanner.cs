@@ -110,6 +110,12 @@ public static class WayPlanner
         if (kind == WayKind.Trail && geometry.EndHeightCm >= geometry.StartHeightCm)
             issues.Add(Error("noDrop", "A trail must end lower than it starts."));
 
+        // Crossing another way without a junction: riders can collide there.
+        foreach (var other in network.Ways)
+            if (network.TryGetGeometry(other.Id, out var otherGeometry))
+                foreach (var (cm, _) in Crossings.Find(geometry, otherGeometry))
+                    issues.Add(new WayIssue(IssueSeverity.Warning, "crossing", $"Crosses {other.Name} at {cm / 100} m: riders can collide there.", cm, cm));
+
         var (trees, rocks) = CountCleared(grid, network, rules, kind, geometry);
         if (trees + rocks > 0)
             issues.Add(Warning("clearing", $"Clears {trees} trees and {rocks} rocks along the way."));

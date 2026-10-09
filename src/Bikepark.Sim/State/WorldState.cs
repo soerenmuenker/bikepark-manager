@@ -3,6 +3,7 @@ using Bikepark.Sim.Core;
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reputation;
+using Bikepark.Sim.Safety;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
 using Bikepark.Sim.Weather;
@@ -106,6 +107,11 @@ public sealed class WorldState
     public ReputationRules ReputationRules { get; set; } = new();
 
     public ReputationState Reputation { get; set; } = new();
+
+    /// <summary>Crashes, helicopter rescues and insurance (off by default).</summary>
+    public CrashRules CrashRules { get; set; } = new();
+
+    public SafetyState Safety { get; set; } = new();
 
     /// <summary>Guests currently in the park, in arrival order.</summary>
     public List<Guest> Guests { get; set; } = [];
@@ -287,6 +293,9 @@ public enum RiderActivity : byte
 
     /// <summary>Having lunch where the last run ended, until <see cref="Guest.BusyUntilTick"/>.</summary>
     Eating = 7,
+
+    /// <summary>Seriously injured: lies where they fell on the trail (blocking it) until the helicopter at <see cref="Guest.RescueAtTick"/>.</summary>
+    Injured = 8,
 }
 
 public sealed class Guest
@@ -382,4 +391,22 @@ public sealed class Guest
 
     /// <summary>An influencer: their review becomes a FakeSocial post.</summary>
     public bool IsInfluencer { get; set; }
+
+    // ---- Crashes (see Safety.CrashRules) ----
+
+    /// <summary>Hurt in a crash: minor riders ride down slowly and go home, serious ones wait for the helicopter.</summary>
+    public InjurySeverity Injury { get; set; }
+
+    public long CrashTick { get; set; }
+    public int CrashWayId { get; set; }
+    public CrashCause CrashCause { get; set; }
+
+    /// <summary>The feature they crashed on (0 = none).</summary>
+    public int CrashFeatureId { get; set; }
+
+    /// <summary>When the helicopter has flown a seriously injured rider out.</summary>
+    public long RescueAtTick { get; set; }
+
+    /// <summary>Riders this guest saw crashed on the trail ahead of them (it makes the park feel less safe).</summary>
+    public int CrashesSeen { get; set; }
 }

@@ -1,6 +1,8 @@
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
+using Bikepark.Sim.Reputation;
+using Bikepark.Sim.Safety;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Trails;
 
@@ -34,8 +36,14 @@ internal sealed class RiderSystem : ISimSystem
         }
 
         var movers = new List<Guest>();
+        var injured = new List<Guest>();
         foreach (var guest in state.Guests)
         {
+            if (guest.Activity == RiderActivity.Injured)
+            {
+                injured.Add(guest); // lies on the trail (and blocks it) until the helicopter comes
+                continue;
+            }
             if (guest.Activity == RiderActivity.Wandering)
                 PlaceAtBase(state, guest, network);
 
@@ -47,6 +55,7 @@ internal sealed class RiderSystem : ISimSystem
 
             if (guest.Activity == RiderActivity.Idle)
             {
+                if (guest.Injury != InjurySeverity.None) continue; // going home
                 if (!ParkSchedule.IsOpen(state, ctx.Tick)) continue;
                 if (TryStartLunch(ctx, guest)) continue;
                 if (guest.Energy < state.TrailRules.TiredEnergy) continue;
@@ -58,7 +67,7 @@ internal sealed class RiderSystem : ISimSystem
 
         // Riders already on a trail move first, front to back, so each one sees where the rider ahead is now; then the
         // others in list order (riders dropping into a trail this minute line up behind them).
-        var traffic = new TrailTraffic(network, movers);
+        var traffic = new TrailTraffic(network, movers, injured);
         foreach (var guest in traffic.MovingOrder(movers))
             Advance(ctx, network, traffic, guest, TickMilliseconds);
     }
@@ -325,6 +334,8 @@ internal sealed class RiderSystem : ISimSystem
                         condition = TrailCondition.Permille(placed.Feature);
             if (condition < 1000)
                 speed = Math.Max(MinSpeedCmPerS, speed * (1000 - TrailCondition.SpeedLossPermille(ctx.State.WearRules, condition)) / 1000);
+            if (guest.Injury == InjurySeverity.Minor)
+                speed = Math.Min(speed, ctx.State.CrashRules.MinorSpeedCmPerS); // hurt: rolling down carefully
 
             long reach = (long)speed * budgetMs / 1000;
             if (reach <= 0) break;
@@ -348,7 +359,10 @@ internal sealed class RiderSystem : ISimSystem
                 guest.Energy -= (int)(move * rules.DescentEnergyPer100Meters / 10_000);
             guest.Energy = Math.Max(0, guest.Energy);
 
-            if (isRun)
+            var crashRules = ctx.State.CrashRules;
+            bool rolls = isRun && crashRules.Enabled && guest.Injury == InjurySeverity.None && geometry.Kind == WayKind.Trail;
+            int wetness = ctx.State.Weather.WetnessPermille;
+            if (isRun && guest.Injury == InjurySeverity.None)
             {
                 // Features whose start the rider passed in this move.
                 foreach (var feature in network.FeaturesOn(leg.WayId))
@@ -366,11 +380,37 @@ internal sealed class RiderSystem : ISimSystem
                     guest.RunFun += (long)featureFun * feature.Type.FunWeight;
                     guest.RunSegments += feature.Type.FunWeight;
                     TrailCondition.Wear(feature.Feature, TrailCondition.PassWear(ctx.State, feature.Type));
+                    if (rolls && CrashMath.Roll(ctx.Rng, CrashMath.FeatureChancePpb(crashRules, ctx.State.WearRules, guest, feature.Type,
+                            TrailCondition.Permille(feature.Feature), wetness)))
+                    {
+                        guest.RouteProgressCm -= position + move - feature.StartCm; // down where the feature starts
+                        Crash(ctx, network, traffic, guest, leg.WayId, feature.StartCm, CrashCause.Feature, feature, feature.Type.Difficulty);
+                        return;
+                    }
                 }
+                // Crossings passed while someone on the other way is close to them: they may collide.
+                if (rolls)
+                    foreach (var (cm, otherWay, otherCm) in network.CrossingsOn(leg.WayId))
+                    {
+                        if (cm <= position) continue;
+                        if (cm > position + move) break;
+                        if (RiderNear(ctx.State, guest, otherWay, otherCm, crashRules.CrossingWindowCm) is not { } other) continue;
+                        if (!CrashMath.Roll(ctx.Rng, CrashMath.CollisionChancePpb(crashRules))) continue;
+                        guest.RouteProgressCm -= position + move - cm;
+                        Crash(ctx, network, traffic, guest, leg.WayId, cm, CrashCause.Collision, null, segment.Difficulty);
+                        if (other.Injury == InjurySeverity.None && PositionOnWay(other, out int way, out long at))
+                            Crash(ctx, network, traffic, other, way, at, CrashCause.Collision, null, segment.Difficulty);
+                        return;
+                    }
                 if (move == toBoundary)
                 {
                     guest.RunFun += SegmentFun(guest, rules, segment, gradeAlong, speed);
                     guest.RunSegments++;
+                    if (rolls && CrashMath.Roll(ctx.Rng, CrashMath.TerrainChancePpb(crashRules, guest, segment, wetness)))
+                    {
+                        Crash(ctx, network, traffic, guest, leg.WayId, position + move, CrashCause.Terrain, null, segment.TerrainDifficulty);
+                        return;
+                    }
                 }
             }
 
@@ -386,6 +426,77 @@ internal sealed class RiderSystem : ISimSystem
 
         if (heldUpMs > 0)
             guest.Happiness = Math.Max(0, guest.Happiness - (int)((long)rules.HeldUpMoodPerMinute * heldUpMs / TickMilliseconds));
+    }
+
+    /// <summary>
+    /// A crash: mood drops, the crash is counted (trail, feature, park) and announced. A minor crash leaves the rider
+    /// riding down slowly (then they go home); a serious one leaves them lying on the trail, blocking it, until the rescue
+    /// helicopter has flown them out. Riders close behind see it happen.
+    /// </summary>
+    internal static void Crash(SimContext ctx, WayNetwork network, TrailTraffic traffic, Guest guest, int wayId, long cm, CrashCause cause,
+        PlacedFeature? feature, int difficulty)
+    {
+        var state = ctx.State;
+        var rules = state.CrashRules;
+        bool jump = feature is { } f && ReviewMath.IsJump(f.Type.Kind);
+        bool serious = ctx.Rng.ChancePermille(CrashMath.SeriousPermille(rules, cause, jump, difficulty, guest.Skill));
+        guest.Injury = serious ? InjurySeverity.Serious : InjurySeverity.Minor;
+        guest.CrashTick = ctx.Tick;
+        guest.CrashWayId = wayId;
+        guest.CrashCause = cause;
+        guest.CrashFeatureId = feature?.Feature.Id ?? 0;
+        guest.Happiness = Math.Max(0, guest.Happiness - (serious ? rules.SeriousMoodLoss : rules.MinorMoodLoss));
+
+        if (network.FindWay(wayId) is { } way)
+        {
+            way.Stats.Crashes++;
+            if (serious) way.Stats.SeriousCrashes++;
+            if (cause == CrashCause.Collision) way.Stats.Collisions++;
+        }
+        if (feature is { } placed) placed.Feature.Crashes++;
+        var safety = state.Safety;
+        safety.TotalCrashes++;
+        if (cause == CrashCause.Collision) safety.TotalCollisions++;
+        if (serious)
+        {
+            safety.TotalSerious++;
+            safety.SeriousToday++;
+        }
+        else
+            safety.MinorToday++;
+        traffic.Witness(guest, wayId, cm);
+        ctx.Publish(new RiderCrashed(ctx.Tick, guest.Id, wayId, cm, guest.Injury, cause, guest.CrashFeatureId));
+
+        if (!serious) return;
+        guest.Activity = RiderActivity.Injured;
+        guest.RescueAtTick = ctx.Tick + ctx.Rng.Range(rules.HelicopterMinMinutes, rules.HelicopterMaxMinutes + 1);
+        traffic.Track(guest);
+        ctx.Publish(new HelicopterCalled(ctx.Tick, guest.Id, wayId, guest.RescueAtTick));
+    }
+
+    /// <summary>The first rider (in list order) riding on <paramref name="wayId"/> within <paramref name="windowCm"/> of <paramref name="cm"/>.</summary>
+    private static Guest? RiderNear(WorldState state, Guest self, int wayId, long cm, int windowCm)
+    {
+        foreach (var other in state.Guests)
+            if (other != self && PositionOnWay(other, out int way, out long at) && way == wayId && Math.Abs(at - cm) <= windowCm)
+                return other;
+        return null;
+    }
+
+    /// <summary>Where a rider riding a way (dropped in, on a trail or path) is on it.</summary>
+    internal static bool PositionOnWay(Guest guest, out int wayId, out long position)
+    {
+        wayId = 0;
+        position = 0;
+        if (guest.Route.Count == 0 || guest.EntryWaitMs >= 0
+            || guest.Activity is not (RiderActivity.Descending or RiderActivity.Climbing or RiderActivity.Injured))
+            return false;
+        var (legIndex, offset) = LocateOnRoute(guest);
+        var leg = guest.Route[legIndex];
+        if (leg.Kind != LegKind.Way) return false;
+        wayId = leg.WayId;
+        position = leg.ToCm >= leg.FromCm ? leg.FromCm + offset : leg.FromCm - offset;
+        return true;
     }
 
     /// <summary>Speed along a lift or walk leg in cm/s (0 if the lift no longer exists).</summary>
@@ -581,12 +692,25 @@ internal sealed class TrailTraffic
     private readonly WayNetwork _network;
     private readonly Dictionary<int, List<Guest>> _byTrail = [];
 
-    public TrailTraffic(WayNetwork network, List<Guest> movers)
+    public TrailTraffic(WayNetwork network, List<Guest> movers, List<Guest>? injured = null)
     {
         _network = network;
         foreach (var guest in movers)
             Track(guest);
+        foreach (var guest in injured ?? [])
+            Track(guest); // lying on the trail: nobody gets past
     }
+
+    /// <summary>Riders on the trail close behind a crash (within a few gaps) saw it happen.</summary>
+    public void Witness(Guest crashed, int trailId, long position)
+    {
+        if (!_byTrail.TryGetValue(trailId, out var list)) return;
+        foreach (var other in list)
+            if (other != crashed && OnTrail(other, out long at) && Leg(other).WayId == trailId && at <= position && position - at <= WitnessRangeCm)
+                other.CrashesSeen++;
+    }
+
+    private const long WitnessRangeCm = 5_000;
 
     /// <summary>
     /// Riders on a trail (dropped in) first, by trail and front to back; then riders waiting at a trail entrance, fastest
@@ -655,7 +779,7 @@ internal sealed class TrailTraffic
     private bool OnTrail(Guest guest, out long position)
     {
         position = 0;
-        if (guest.EntryWaitMs >= 0 || guest.Activity != RiderActivity.Descending || guest.Route.Count == 0) return false;
+        if (guest.EntryWaitMs >= 0 || guest.Activity is not (RiderActivity.Descending or RiderActivity.Injured) || guest.Route.Count == 0) return false;
         var leg = Leg(guest);
         if (leg.Kind != LegKind.Way || _network.FindWay(leg.WayId)?.Kind != WayKind.Trail) return false;
         long before = 0;

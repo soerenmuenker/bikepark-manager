@@ -227,7 +227,9 @@ internal sealed partial class RepairDialog : PanelContainer
             long minutesWithCrew = (perWorker + _workers - 1) / _workers;
             detail = $"{HudContext.CrewTime(minutes)} · about {Duration(minutesWithCrew)} with {_workers} workers";
         }
-        texts.AddChild(UiTheme.Label(detail, 11, UiTheme.TextDim));
+        if (feature.Crashes > 0)
+            detail += $" · {feature.Crashes} crash{(feature.Crashes == 1 ? "" : "es")} here";
+        texts.AddChild(UiTheme.Label(detail, 11, feature.Crashes > 0 ? UiTheme.Warn : UiTheme.TextDim));
         row.AddChild(texts);
 
         row.AddChild(UiTheme.Label($"{permille / 10} %", 15, color, bold: true));

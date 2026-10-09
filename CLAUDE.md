@@ -28,6 +28,10 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     level thresholds), `ReputationState` (reviews window, posts, visitor history), `ReviewMath` (a visit → aspects →
     stars), `ReputationMath` (rating, demand), `ParkProgress` (derived XP and level); `Systems/ReputationSystem.cs`
     books influencers and announces level changes
+  - `Safety/` – `CrashRules` (content: crash chances, severity, helicopter, insurance), `CrashMath` (pure chances in
+    parts per billion, premium), `SafetyState` (counts, accident history); crash rolls live in `RiderSystem` (`Crash`),
+    `Systems/SafetySystem.cs` books the daily insurance; `Trails/Crossings.cs` finds where ways cross (derived in
+    `WayNetwork.Crossings`, warned about in `WayPlanner`)
   - `Systems/ParkSchedule.cs` – the daily timetable (open, last rides, lift warm-up, crew shift/overtime, day phase,
     quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
@@ -56,6 +60,9 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
 # Reputation: the output's "reputation" block (stars overall/per group, demand parts, XP parts, level, influencer posts,
 # a log of influencer visits and level changes); --daily adds reviews, rating, demand, XP and level per day
+# Crashes: the output's "safety" block (crashes, serious, collisions, evacuations, average helicopter wait, insurance,
+# crossings found, a crash log) and per trail crashes / serious / collisions / per 1000 runs (crashes per feature in
+# featureConditions); --daily adds crashes, serious crashes and insurance per day
 # Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json
 # ... with the demo trail features (planned, built by the crew: per-trail feature list, crew block with completed jobs, wood, wages)
@@ -126,6 +133,15 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     real guest (`IsInfluencer`, booked at opening), their review becomes the post. XP and level are derived
     (`ParkProgress`, never saved; `Reputation.Level` only remembers the last announced level). `ReputationSystem` runs
     before `FinanceSystem` (it reads today's visitors before the books close).
+18. **Crashes** (`CrashRules.Enabled`, off by default; Starter Valley turns it on): rolled only in `RiderSystem`, only
+    on a rider's run leg and only while uninjured: per built feature passed, per finished 10 m segment (terrain) and per
+    crossing passed while someone on the other way is within the window (a collision downs both). Chances are pure
+    (`CrashMath`: difficulty vs skill, feature condition, wetness, fatigue). A minor crash: the rider rides down at
+    `MinorSpeedCmPerS` and leaves (`GuestLeaveReason.Injured`). A serious one: `RiderActivity.Injured`, the rider stays
+    where they fell and `TrailTraffic` tracks them, so nobody passes, until `RescueAtTick` (public-service helicopter,
+    no staff), then `Evacuated` (even after closing). Crossings are derived geometry, never junctions. Crashes count on
+    `WayStats`, `TrailFeature.Crashes` and `SafetyState`; reviews: a serious crash makes safety 0. Insurance =
+    base + per accident of the last `InsuranceDays`, charged by `SafetySystem` (before `FinanceSystem`).
 
 ## Game controls (debug build)
 
@@ -139,7 +155,8 @@ Build, point at a trail, click to plan it, Delete removes the one under the curs
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →
 Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire/dismiss, tools, buy wood, job queue (↑ first,
 ✕ cancel) · System menu: Instant build (debug) · F follow next rider, or click a rider to follow it (a card at the top left shows
-their stats; ✕ or panning stops following; influencers wear pink) ·
+their stats; ✕ or panning stops following; influencers wear pink; injured riders: red and lying (serious: they
+block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
 `--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),

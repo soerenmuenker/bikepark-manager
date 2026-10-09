@@ -3,6 +3,7 @@ using Bikepark.Game.Lifts;
 using Bikepark.Game.Ways;
 using Bikepark.Sim;
 using Bikepark.Sim.Lifts;
+using Bikepark.Sim.Safety;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Trails;
 using Godot;
@@ -61,6 +62,7 @@ public partial class RiderView : Node3D
             MaterialOverride = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.8f },
         };
         AddChild(_instances);
+        AddChild(new HelicopterView(_host, this));
         _host.BeforeStep += Snapshot;
     }
 
@@ -175,9 +177,17 @@ public partial class RiderView : Node3D
             if (count >= mm.InstanceCount)
                 mm.InstanceCount = Math.Max(64, mm.InstanceCount * 2);
             var basis = Basis.LookingAt(forward, Vector3.Up).Scaled(Vector3.One * ModelScale);
+            if (guest.Activity == RiderActivity.Injured)
+                basis = new Basis(forward.Normalized(), Mathf.Pi / 2) * basis; // lying where they fell
             mm.SetInstanceTransform(count, new Transform3D(basis, position));
             var jersey = guest.IsInfluencer ? InfluencerColor : SkillColor(guest.Skill);
-            mm.SetInstanceColor(count, guest.Activity == RiderActivity.Eating ? jersey.Lerp(LunchTint, 0.6f) : jersey);
+            mm.SetInstanceColor(count, guest.Activity switch
+            {
+                RiderActivity.Eating => jersey.Lerp(LunchTint, 0.6f),
+                RiderActivity.Injured => InjuredColor,
+                _ when guest.Injury == InjurySeverity.Minor => jersey.Lerp(HurtTint, 0.6f),
+                _ => jersey,
+            });
             _positions[guest.Id] = position;
             count++;
         }
@@ -200,7 +210,11 @@ public partial class RiderView : Node3D
 
     private static bool IsOnNetwork(Guest g) =>
         g.Activity is RiderActivity.Climbing or RiderActivity.Descending or RiderActivity.Walking or RiderActivity.Queuing or RiderActivity.OnLift
+            or RiderActivity.Injured
         && g.Route.Count > 0;
+
+    /// <summary>Where a rider is drawn this frame (seriously injured riders: where they lie), if they are drawn.</summary>
+    public bool TryGetPosition(int guestId, out Vector3 position) => _positions.TryGetValue(guestId, out position);
 
     /// <summary>World position and travel direction at a progress along a route.</summary>
     private static bool TryLocate(Simulation sim, WayNetwork network, List<RouteLeg> route, long progress, out Vector3 position, out Vector3 forward)
@@ -232,6 +246,10 @@ public partial class RiderView : Node3D
     }
 
     private static readonly Color LunchTint = new(1.0f, 0.78f, 0.35f);
+
+    /// <summary>Seriously injured riders are red, riders with a minor injury get an orange tint on their way down.</summary>
+    private static readonly Color InjuredColor = new(0.95f, 0.15f, 0.12f);
+    private static readonly Color HurtTint = new(1.0f, 0.55f, 0.15f);
 
     /// <summary>Influencers wear a hot pink jersey, so the player can spot (and follow) them.</summary>
     private static readonly Color InfluencerColor = new(1.0f, 0.25f, 0.70f);

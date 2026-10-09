@@ -2,6 +2,7 @@ using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reputation;
+using Bikepark.Sim.Safety;
 using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Systems;
@@ -172,9 +173,18 @@ internal sealed class GuestSystem : ISimSystem
         for (int read = 0; read < guests.Count; read++)
         {
             var guest = guests[read];
-            GuestLeaveReason? leave = closed || lastRides && IsBetweenLaps(guest)
-                ? GuestLeaveReason.ParkClosed
-                : UpdateGuest(ctx, guest, crowded, raining);
+            // A seriously injured rider stays where they fell (even after closing) until the helicopter has flown them out.
+            GuestLeaveReason? leave = guest.Activity == RiderActivity.Injured
+                ? ctx.Tick >= guest.RescueAtTick ? GuestLeaveReason.Evacuated : null
+                : closed || lastRides && IsBetweenLaps(guest)
+                    ? GuestLeaveReason.ParkClosed
+                    : UpdateGuest(ctx, guest, crowded, raining);
+            if (leave == GuestLeaveReason.Evacuated)
+            {
+                state.Safety.Evacuations++;
+                state.Safety.SumRescueMinutes += ctx.Tick - guest.CrashTick;
+                ctx.Publish(new RiderEvacuated(ctx.Tick, guest.Id, guest.CrashWayId));
+            }
 
             if (leave is { } reason)
             {
@@ -229,6 +239,8 @@ internal sealed class GuestSystem : ISimSystem
 
         if (onTheWay || guest.Activity == RiderActivity.Eating)
             return null;
+        if (guest.Injury != InjurySeverity.None)
+            return GuestLeaveReason.Injured; // down at last: home to recover
         if (guest.Activity == RiderActivity.Idle && guest.Energy < ctx.State.TrailRules.TiredEnergy)
             return GuestLeaveReason.Tired;
         if (guest.Happiness < UnhappyThreshold)
@@ -288,7 +300,10 @@ internal sealed class FinanceSystem : ISimSystem
             RatingTenths: ReputationMath.RatingTenths(state),
             DemandPermille: ReputationMath.DemandPermille(state),
             Xp: ParkProgress.Xp(state, ctx.Network).Total,
-            Level: state.Reputation.Level);
+            Level: state.Reputation.Level,
+            Crashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick)) is { } accidents ? accidents.Minor + accidents.Serious : 0,
+            SeriousCrashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick))?.Serious ?? 0,
+            InsuranceCents: state.Safety.InsuranceTodayCents);
         ctx.Publish(new DayEnded(ctx.Tick, report));
 
         foreach (var way in state.Ways)
@@ -302,6 +317,7 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.WagesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
         state.Reputation.ReviewsToday = 0;
+        state.Safety.InsuranceTodayCents = 0;
         state.Stats.TurnedAwayToday = 0;
         state.Finance.RevenueTodayCents = 0;
         state.Finance.ExpensesTodayCents = 0;

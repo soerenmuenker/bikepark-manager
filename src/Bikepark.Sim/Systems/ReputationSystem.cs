@@ -55,7 +55,9 @@ internal sealed class ReputationSystem : ISimSystem
         var state = ctx.State;
         var rules = state.ReputationRules;
         if (!rules.Enabled) return;
-        if (!guest.IsInfluencer && (guest.RunsCompleted == 0 || !ctx.Rng.ChancePermille(rules.ReviewChancePermille)))
+        bool injured = guest.Injury != Safety.InjurySeverity.None;
+        int chance = injured ? state.CrashRules.InjuredReviewChancePermille : rules.ReviewChancePermille;
+        if (!guest.IsInfluencer && ((guest.RunsCompleted == 0 && !injured) || !ctx.Rng.ChancePermille(chance)))
             return;
 
         var review = ReviewMath.Write(rules, guest, ctx.Tick);

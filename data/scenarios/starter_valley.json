@@ -169,6 +169,41 @@
     "visitorDays": 7,
     "levelXp": [100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500]
   },
+  // Crashes: every feature ridden and every 10 m of trail is a small chance to crash (parts per million), scaled by
+  // factors in permille: difficulty above the rider's skill (+overSkillPer100Permille per 100 points, lower for easy
+  // stuff), jumps, worn features (below the rough level, up to 1 + wornFactor at 0 %), wet ground and tired riders.
+  // Passing a crossing while someone on the other way is close is a collision chance. A crash is serious with
+  // seriousBase + extras (jumps, collisions, over skill): the rider lies on the trail, blocking it, until the rescue
+  // helicopter (public service) has flown them out; otherwise they ride down slowly and go home. The insurance premium
+  // is charged daily: a base plus a charge per accident of the last insuranceDays days.
+  "crashRules": {
+    "enabled": true,
+    "featureBasePpm": 40,
+    "jumpFactorPermille": 2000,
+    "terrainBasePpm": 2,
+    "overSkillPer100Permille": 1000,
+    "minSkillFactorPermille": 150,
+    "wornFactorPermille": 2000,
+    "wetFactorPermille": 1000,
+    "fatigueBelowEnergy": 350,
+    "fatigueFactorPermille": 1000,
+    "collisionPpm": 500,
+    "crossingWindowCm": 1000,
+    "seriousBasePermille": 50,
+    "seriousJumpPermille": 50,
+    "seriousCollisionPermille": 150,
+    "seriousPer100OverSkillPermille": 40,
+    "minorMoodLoss": 250,
+    "seriousMoodLoss": 600,
+    "minorSpeedCmPerS": 150,
+    "helicopterMinMinutes": 25,
+    "helicopterMaxMinutes": 50,
+    "injuredReviewChancePermille": 900,
+    "insuranceBaseCents": 5000,
+    "insurancePerMinorCents": 1500,
+    "insurancePerSeriousCents": 15000,
+    "insuranceDays": 7
+  },
   // Lift models come from the shared catalog.
   "liftTypesFile": "../lift_types.json",
   "trailFeaturesFile": "../trail_features.json",

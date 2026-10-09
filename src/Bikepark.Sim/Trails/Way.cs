@@ -86,6 +86,11 @@ public sealed class WayStats
 
     /// <summary>Seconds riders lost stuck behind slower riders on this trail.</summary>
     public long HeldUpSeconds { get; set; }
+
+    /// <summary>Crashes on this trail (all causes), of them serious ones and collisions at crossings.</summary>
+    public int Crashes { get; set; }
+    public int SeriousCrashes { get; set; }
+    public int Collisions { get; set; }
 }
 
 /// <summary>Building rules and rider tuning, loaded from the scenario and saved with the game.</summary>

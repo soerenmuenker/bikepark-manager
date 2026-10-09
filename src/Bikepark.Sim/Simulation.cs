@@ -49,6 +49,7 @@ public sealed class Simulation
             new TrailCareSystem(),
             new JobSystem(),
             new ReputationSystem(), // before Finance: it reads today's visitors before the books close
+            new SafetySystem(), // before Finance: it books today's insurance
             new FinanceSystem(),
         ];
     }

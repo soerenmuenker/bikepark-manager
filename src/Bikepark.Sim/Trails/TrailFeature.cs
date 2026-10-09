@@ -96,6 +96,9 @@ public sealed class TrailFeature
 
     /// <summary>The "needs repair" warning was raised for this wear; cleared by a repair.</summary>
     public bool Warned { get; set; }
+
+    /// <summary>Riders who crashed on it.</summary>
+    public int Crashes { get; set; }
 }
 
 /// <summary>A placed feature resolved against the catalog: the stretch of trail it covers.</summary>

@@ -100,8 +100,19 @@ internal sealed partial class RiderCard : PanelContainer
         string target = guest.TrailId == 0 ? "" : WayName(guest.TrailId);
         var leg = guest.Route.Count == 0 ? (RouteLeg?)null : guest.Route[Math.Clamp(guest.LegIndex, 0, guest.Route.Count - 1)];
         string LiftName() => leg is { Kind: LegKind.Lift } l ? state.Lifts.FirstOrDefault(x => x.Id == l.WayId)?.Name ?? "the lift" : "the lift";
+        string crashPlace = guest.CrashFeatureId != 0
+            && state.Ways.SelectMany(w => w.Features).FirstOrDefault(f => f.Id == guest.CrashFeatureId) is { } crashed
+            && TrailFeatures.FindType(state.TrailFeatureTypes, crashed.TypeId) is { } crashType
+                ? $"at the {crashType.Name.ToLowerInvariant()} on {WayName(guest.CrashWayId)}"
+                : guest.CrashCause == Bikepark.Sim.Safety.CrashCause.Collision ? $"in a collision on {WayName(guest.CrashWayId)}"
+                : $"on {WayName(guest.CrashWayId)}";
         switch (guest.Activity)
         {
+            case RiderActivity.Injured:
+                long left = Math.Max(0, guest.RescueAtTick - state.Tick);
+                return $"Crashed {crashPlace}, waiting for the rescue helicopter ({left} min)";
+            case RiderActivity.Descending or RiderActivity.Climbing when guest.Injury != Bikepark.Sim.Safety.InjurySeverity.None:
+                return $"Hurt in a crash {crashPlace}: riding down slowly, then home";
             case RiderActivity.Descending when guest.EntryWaitMs >= 0:
                 return $"Waiting to drop into {WayName(leg!.Value.WayId)}";
             case RiderActivity.Descending when leg is { } l && l.WayId != guest.TrailId:

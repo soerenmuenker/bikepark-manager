@@ -58,6 +58,8 @@ public sealed class WayNetwork
     private readonly List<List<Edge>> _edges = [];
     private readonly CorridorIndex _corridors = new();
     private readonly CorridorIndex _centerlines = new();
+    private readonly List<WayCrossing> _crossings = [];
+    private readonly Dictionary<int, List<(long Cm, int OtherWay, long OtherCm)>> _crossingsByWay = [];
     private readonly Dictionary<int, List<PlacedFeature>> _features;
 
     private readonly record struct Edge(int To, LegKind Kind, int Id, long FromCm, long ToCm, long Cost);
@@ -81,6 +83,7 @@ public sealed class WayNetwork
             _centerlines.Add(way.Id, geometry, 0);
         }
         BuildGraph();
+        FindCrossings();
 
         var baseHub = hubs.FirstOrDefault(h => h.Kind == HubKind.Parking) ?? hubs.FirstOrDefault(h => h.Kind == HubKind.ValleyStation);
         BaseHub = baseHub;
@@ -116,6 +119,13 @@ public sealed class WayNetwork
 
     /// <summary>Built trails in id order (what riders can choose).</summary>
     public IEnumerable<Way> Trails => _ways.Where(w => w.Kind == WayKind.Trail && w.Built);
+
+    /// <summary>Where built ways cross without a junction (by way id pair, then along the first way).</summary>
+    public IReadOnlyList<WayCrossing> Crossings => _crossings;
+
+    /// <summary>The crossings on a way, in distance order along it.</summary>
+    public IReadOnlyList<(long Cm, int OtherWay, long OtherCm)> CrossingsOn(int wayId) =>
+        _crossingsByWay.TryGetValue(wayId, out var list) ? list : [];
 
     /// <summary>Hubs in id order.</summary>
     public IReadOnlyList<NetworkHub> Hubs => _hubs;
@@ -364,6 +374,24 @@ public sealed class WayNetwork
     {
         long gain = Math.Max(0, geometry.HeightAt(to) - geometry.HeightAt(from));
         return Math.Abs(to - from) + 10 * gain;
+    }
+
+    private void FindCrossings()
+    {
+        var built = _ways.Where(w => w.Built).ToList();
+        for (int i = 0; i < built.Count; i++)
+        for (int j = i + 1; j < built.Count; j++)
+            foreach (var (cmA, cmB) in global::Bikepark.Sim.Trails.Crossings.Find(_geometries[built[i].Id], _geometries[built[j].Id]))
+                _crossings.Add(new WayCrossing(built[i].Id, cmA, built[j].Id, cmB));
+        foreach (var crossing in _crossings)
+            foreach (int wayId in new[] { crossing.WayA, crossing.WayB })
+            {
+                if (!_crossingsByWay.TryGetValue(wayId, out var list))
+                    _crossingsByWay[wayId] = list = [];
+                list.Add(crossing.From(wayId));
+            }
+        foreach (var list in _crossingsByWay.Values)
+            list.Sort((p, q) => p.Cm.CompareTo(q.Cm));
     }
 
     private static long DistanceToSegment(long px, long pz, long ax, long az, long bx, long bz)

@@ -22,11 +22,11 @@ public static class ReviewMath
     public static ReviewScores Score(ReputationRules rules, Guest guest, long tick)
     {
         if (guest.RunsCompleted == 0)
-            return new ReviewScores(0, 1000, 0, 0, 0, 0, guest.PaidEntryCents == 0 ? 1000 : 0);
+            return new ReviewScores(0, Safe(guest, 1000), 0, 0, 0, 0, guest.PaidEntryCents == 0 ? 1000 : 0);
         var values = rules.Values(GroupOf(rules, guest.Skill));
         int runFun = (int)(guest.VisitFunSum / guest.RunsCompleted);
         int fun = (Stretch(rules, runFun) * 2 + guest.Happiness) / 3;
-        int safety = 1000 - guest.ScaredRuns * 1000 / guest.RunsCompleted;
+        int safety = Safe(guest, 1000 - guest.ScaredRuns * 1000 / guest.RunsCompleted);
         long visitSeconds = Math.Max(30, tick - guest.ArrivedTick) * 60L;
         long waitedSeconds = guest.QueueMinutes * 60L + (long)guest.HeldUpSeconds * rules.HeldUpWeight;
         int smoothness = (int)Math.Clamp(1000 - waitedSeconds * rules.WaitPenaltyPermille / visitSeconds, 0, 1000);
@@ -56,6 +56,17 @@ public static class ReviewMath
         return new Review(GameTime.Day(tick), guest.Id, group, stars, s.Fun, s.Safety, s.Smoothness, s.Challenge, s.Jumps, s.Variety,
             guest.IsInfluencer, s.Value);
     }
+
+    /// <summary>
+    /// Crashes override how safe the day felt: nothing is safe about a helicopter ride, a minor crash caps it low, and
+    /// each crash seen on the trail ahead costs a bit.
+    /// </summary>
+    private static int Safe(Guest guest, int safety) => guest.Injury switch
+    {
+        Safety.InjurySeverity.Serious => 0,
+        Safety.InjurySeverity.Minor => Math.Min(safety, 200),
+        _ => Math.Max(0, safety - guest.CrashesSeen * 150),
+    };
 
     private static int Stretch(ReputationRules rules, int fun) =>
         Math.Clamp((fun - rules.FunFloor) * 1000 / (rules.FunCeiling - rules.FunFloor), 0, 1000);
