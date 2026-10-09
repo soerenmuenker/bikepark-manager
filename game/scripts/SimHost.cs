@@ -202,7 +202,9 @@ public partial class SimHost : Node
     {
         SpeedIndex = Math.Clamp(index, 0, SpeedMultipliers.Length - 1);
         _skipTargetTick = -1;
-        _accumulator = 0;
+        // Keep the progress towards the next tick: views interpolate with it, so pausing freezes the current frame
+        // (resetting it would snap everything back to the previous minute). Drop any backlog of whole ticks.
+        _accumulator = Math.Clamp(_accumulator, 0, 0.999);
     }
 
     /// <summary>Fast-forwards (as fast as the per-frame tick cap allows) to the next opening time, then continues at 1x.</summary>
