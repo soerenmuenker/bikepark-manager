@@ -27,7 +27,8 @@ namespace Bikepark.Game.Ui;
 /// Keys: Space pause · 1–4 speed · B V C R G M O open menus · Esc closes the menu · [ ] bike access tier · +/− zoom
 /// (also the zoom buttons next to the stats).
 /// Debug: <c>--screenshot=&lt;file.png&gt;</c> saves a screenshot after a few seconds and quits; <c>--panel=build</c>
-/// opens a menu at start; <c>--tool=trail</c> (path, fell, lift, parking or a feature id) starts a build tool.
+/// opens a menu at start; <c>--tool=trail</c> (path, fell, lift, parking or a feature id) starts a build tool;
+/// <c>--follow</c> follows the first rider (and shows the rider card).
 /// </para>
 /// </summary>
 public partial class Hud : CanvasLayer
@@ -65,8 +66,8 @@ public partial class Hud : CanvasLayer
     private IconView _toolChipIcon = null!;
     private Label _toolChipText = null!;
     private Label _toolText = null!;
-    private PanelContainer _followChip = null!;
-    private Label _followText = null!;
+    private RiderCard _riderCard = null!;
+    private bool _followOnStart;
     private VBoxContainer _toasts = null!;
     private RepairDialog _repairDialog = null!;
 
@@ -97,6 +98,7 @@ public partial class Hud : CanvasLayer
             else if (arg.StartsWith("--panel=", StringComparison.Ordinal) && Enum.TryParse<Menu>(arg[8..], true, out var menu)) Toggle(menu);
             else if (arg.StartsWith("--tool=", StringComparison.Ordinal)) StartTool(arg[7..]);
             else if (arg.StartsWith("--features=", StringComparison.Ordinal) && int.TryParse(arg[11..], out int wayId)) _repairDialog.Open(wayId);
+            else if (arg == "--follow") _followOnStart = true;
         }
     }
 
@@ -193,14 +195,9 @@ public partial class Hud : CanvasLayer
         _toolPanel.AddChild(_toolText);
         _root.AddChild(_toolPanel);
 
-        _followChip = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
-        _followChip.AddThemeStyleboxOverride("panel", UiTheme.Box(UiTheme.Panel, 16, 14, 6));
-        var follow = new HBoxContainer();
-        follow.AddChild(new IconView(UiIcon.Follow, 18, UiTheme.Accent));
-        _followText = UiTheme.Label("", 13);
-        follow.AddChild(_followText);
-        _followChip.AddChild(follow);
-        _root.AddChild(_followChip);
+        _riderCard = new RiderCard(_ctx);
+        _root.AddChild(_riderCard);
+        _ctx.Riders.CanPick = () => !ToolActive;
 
         _repairDialog = new RepairDialog(_ctx);
         _ctx.OpenRepair = _repairDialog.Open;
@@ -350,11 +347,11 @@ public partial class Hud : CanvasLayer
             _toolPanel.Position = new Vector2(MathF.Round((view.X - size.X) / 2), top);
             top += size.Y + 8;
         }
-        if (_followChip.Visible)
+        if (_riderCard.Visible)
         {
-            var size = _followChip.GetCombinedMinimumSize();
-            _followChip.Size = size;
-            _followChip.Position = new Vector2(MathF.Round((view.X - size.X) / 2), top);
+            var size = _riderCard.GetCombinedMinimumSize();
+            _riderCard.Size = size;
+            _riderCard.Position = new Vector2(14, 14);
         }
 
         var toastSize = _toasts.GetCombinedMinimumSize();
@@ -379,8 +376,12 @@ public partial class Hud : CanvasLayer
         UpdateClock();
         UpdateToolPanel();
         UpdateToolChip();
-        _followText.Text = _ctx.Riders.FollowedRider ?? "";
-        _followChip.Visible = _ctx.Riders.FollowedRider is not null;
+        if (_followOnStart && _ctx.Riders.VisibleRiders > 0)
+        {
+            _followOnStart = false;
+            _ctx.Riders.FollowNext();
+        }
+        _riderCard.Refresh();
         Layout();
 
         if (_screenshotPath is not null && (_screenshotTimer -= delta) <= 0)

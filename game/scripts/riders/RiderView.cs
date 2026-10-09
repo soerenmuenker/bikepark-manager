@@ -13,7 +13,8 @@ namespace Bikepark.Game.Riders;
 /// Draws riders that are on the way network, walking from the parking lot, standing in a lift queue or riding a lift,
 /// as instanced low-poly bike + rider models, smoothly interpolated between simulation ticks (previous route progress
 /// is captured in <see cref="SimHost.BeforeStep"/>). Jersey color shows skill (green/blue/red/black like trail
-/// ratings). F makes the camera follow the next riding rider.
+/// ratings). F makes the camera follow the next riding rider; clicking a rider follows that one (the HUD shows a card
+/// with their stats).
 /// </summary>
 public partial class RiderView : Node3D
 {
@@ -29,10 +30,20 @@ public partial class RiderView : Node3D
     private readonly Dictionary<int, (List<RouteLeg> Route, long Progress)> _previous = [];
     private readonly Dictionary<int, Vector3> _positions = [];
     private int _followId;
+    private Vector3 _followPosition;
 
     public int VisibleRiders { get; private set; }
 
     public string? FollowedRider { get; private set; }
+
+    /// <summary>The rider the camera follows, if any.</summary>
+    public Guest? Followed { get; private set; }
+
+    /// <summary>Clicks only pick riders while this allows it (the HUD turns it off while a build tool is active).</summary>
+    public Func<bool> CanPick { get; set; } = () => true;
+
+    /// <summary>How close (in pixels) a click must be to a rider to pick it.</summary>
+    private const float PickRadiusPx = 28f;
 
     public override void _Ready()
     {
@@ -62,6 +73,41 @@ public partial class RiderView : Node3D
             FollowNext();
             GetViewport().SetInputAsHandled();
         }
+        else if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } click && CanPick()
+                 && Pick(click.Position) is { } id)
+        {
+            Follow(id);
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
+    /// <summary>The rider drawn nearest to a screen position (within <see cref="PickRadiusPx"/>), if any.</summary>
+    public int? Pick(Vector2 screen)
+    {
+        var camera = _camera.Camera;
+        int? best = null;
+        float bestDistance = PickRadiusPx;
+        foreach (var (id, position) in _positions)
+        {
+            var body = position + Vector3.Up * ModelScale * 0.5f; // aim at the rider, not the wheels
+            if (camera.IsPositionBehind(body)) continue;
+            float d = camera.UnprojectPosition(body).DistanceTo(screen);
+            if (d < bestDistance || d == bestDistance && best is { } b && id < b)
+            {
+                best = id;
+                bestDistance = d;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>Makes the camera follow this rider.</summary>
+    public void Follow(int guestId)
+    {
+        _followId = guestId;
+        if (_positions.TryGetValue(guestId, out var at)) _followPosition = at;
+        // Between two laps a rider isn't drawn for a moment: the camera stays where they were.
+        _camera.Follow = () => _followPosition;
     }
 
     /// <summary>Starts following the next rider on the network (by id), or stops if there is none.</summary>
@@ -73,8 +119,7 @@ public partial class RiderView : Node3D
             StopFollowing();
             return;
         }
-        _followId = riding.FirstOrDefault(id => id > _followId, riding[0]);
-        _camera.Follow = () => _positions.TryGetValue(_followId, out var p) ? p : null;
+        Follow(riding.FirstOrDefault(id => id > _followId, riding[0]));
     }
 
     public void StopFollowing()
@@ -138,9 +183,14 @@ public partial class RiderView : Node3D
         mm.VisibleInstanceCount = count;
         VisibleRiders = count;
 
-        if (_followId != 0 && !_positions.ContainsKey(_followId))
-            StopFollowing();
+        if (_followId != 0 && _camera.Follow is null)
+            _followId = 0; // the player panned away
         var followed = _followId == 0 ? null : sim.State.Guests.FirstOrDefault(g => g.Id == _followId);
+        if (_followId != 0 && followed is null)
+            StopFollowing(); // the guest went home
+        else if (_positions.TryGetValue(_followId, out var at))
+            _followPosition = at;
+        Followed = followed;
         FollowedRider = followed is null ? null
             : $"Rider #{followed.Id} · skill {followed.Skill / 10} · {followed.Style} · {(followed.EntryWaitMs >= 0 ? "waiting to drop in" : followed.Activity)}" +
               (followed.TrailId != 0 ? $" → {network.FindWay(followed.TrailId)?.Name}" : "") +
