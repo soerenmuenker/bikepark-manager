@@ -1,5 +1,6 @@
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Crew;
+using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Trails;
 using Bikepark.Sim.Weather;
 
@@ -107,7 +108,12 @@ public sealed record DayReport(
     int Jobs = 0,
     WeatherKind Weather = WeatherKind.Sunny,
     int RainMinutes = 0,
-    int TrailsClosed = 0);
+    int TrailsClosed = 0,
+    int Reviews = 0,
+    int? RatingTenths = null,
+    int DemandPermille = 1000,
+    int Xp = 0,
+    int Level = 0);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
 
@@ -141,3 +147,15 @@ public sealed record FeatureWarning(long Tick, int WayId, int FeatureId, int Con
 
 /// <summary>A trail is open again (repaired, or opened by the player).</summary>
 public sealed record TrailReopened(long Tick, int WayId) : ISimEvent;
+
+/// <summary>A leaving guest wrote a review (stars in tenths, 10..50).</summary>
+public sealed record ReviewWritten(long Tick, int GuestId, SkillGroup Group, int StarsTenths, bool Influencer) : ISimEvent;
+
+/// <summary>An influencer arrived: their visit decides their FakeSocial post.</summary>
+public sealed record InfluencerArrived(long Tick, int GuestId, string Name) : ISimEvent;
+
+/// <summary>An influencer left and posted about the park.</summary>
+public sealed record InfluencerPosted(long Tick, InfluencerPost Post) : ISimEvent;
+
+/// <summary>The park reached a new level (or fell back to a lower one).</summary>
+public sealed record LevelChanged(long Tick, int OldLevel, int NewLevel) : ISimEvent;

@@ -13,7 +13,7 @@ namespace Bikepark.Game.Riders;
 /// Draws riders that are on the way network, walking from the parking lot, standing in a lift queue or riding a lift,
 /// as instanced low-poly bike + rider models, smoothly interpolated between simulation ticks (previous route progress
 /// is captured in <see cref="SimHost.BeforeStep"/>). Jersey color shows skill (green/blue/red/black like trail
-/// ratings). F makes the camera follow the next riding rider; clicking a rider follows that one (the HUD shows a card
+/// ratings; influencers wear pink). F makes the camera follow the next riding rider; clicking a rider follows that one (the HUD shows a card
 /// with their stats).
 /// </summary>
 public partial class RiderView : Node3D
@@ -176,7 +176,8 @@ public partial class RiderView : Node3D
                 mm.InstanceCount = Math.Max(64, mm.InstanceCount * 2);
             var basis = Basis.LookingAt(forward, Vector3.Up).Scaled(Vector3.One * ModelScale);
             mm.SetInstanceTransform(count, new Transform3D(basis, position));
-            mm.SetInstanceColor(count, guest.Activity == RiderActivity.Eating ? SkillColor(guest.Skill).Lerp(LunchTint, 0.6f) : SkillColor(guest.Skill));
+            var jersey = guest.IsInfluencer ? InfluencerColor : SkillColor(guest.Skill);
+            mm.SetInstanceColor(count, guest.Activity == RiderActivity.Eating ? jersey.Lerp(LunchTint, 0.6f) : jersey);
             _positions[guest.Id] = position;
             count++;
         }
@@ -231,6 +232,9 @@ public partial class RiderView : Node3D
     }
 
     private static readonly Color LunchTint = new(1.0f, 0.78f, 0.35f);
+
+    /// <summary>Influencers wear a hot pink jersey, so the player can spot (and follow) them.</summary>
+    private static readonly Color InfluencerColor = new(1.0f, 0.25f, 0.70f);
 
     /// <summary>
     /// A guest on their lunch break: standing next to the bike in a loose ring (by id) around where their last run

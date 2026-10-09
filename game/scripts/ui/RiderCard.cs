@@ -77,7 +77,7 @@ internal sealed partial class RiderCard : PanelContainer
         if (guest is null) return;
 
         var state = _ctx.Sim.State;
-        _title.Text = $"Rider #{guest.Id}";
+        _title.Text = guest.IsInfluencer ? $"{Bikepark.Sim.Reputation.ReputationMath.InfluencerName(guest.Id)} (influencer)" : $"Rider #{guest.Id}";
         _subtitle.Text = $"{SkillName(guest.Skill)}, skill {guest.Skill / 10} · {guest.Style} rider";
         _doing.Text = Doing(guest);
 

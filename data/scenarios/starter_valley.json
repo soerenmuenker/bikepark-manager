@@ -108,6 +108,67 @@
     "treeLineCm": 108000,
     "forestCoveragePermille": 650
   },
+  // Reputation: leaving guests who rode may write a review (1-5 stars, in tenths). Riders are grouped by skill and each
+  // group weights the aspects of a visit (permille, summing to 1000): fun (run fun + mood), safety (no runs on trails
+  // far above their skill), smoothness (little queuing or being held up), challenge (hardest trail vs. the group's
+  // target difficulty), jumps (fun on tables, doubles, kickers, drops), variety (distinct trails ridden) and value (runs
+  // x fairCentsPerRun against the entry fee paid: at 1.50 € a run, a 15 € ticket needs ten runs). The
+  // rating is the average of the last windowSize reviews per group, shown from minReviewsForRating reviews on.
+  // Demand (permille of the arrival rate) = visibility (by all-time reviews) x rating factor (by stars) x influencer.
+  // Influencers come now and then, ride the park, and post: a good post boosts demand, a bad one hurts, fading over
+  // influencerEffectDays. Park XP is derived from built trail km, distinct trail ratings, distinct feature kinds and
+  // the average visitors of the last visitorDays days; levelXp lists the XP for levels 1..20 (25 n^2 + 75 n: a demo park
+  // with two trails is level 4, a dense network of ~50 km across the map with busy days reaches 20).
+  "reputationRules": {
+    "enabled": true,
+    "intermediateFromSkill": 350,
+    "expertFromSkill": 650,
+    "groups": [
+      { "group": "beginner", "name": "Beginners", "values": "Feeling safe and a smooth day: easy trails, no scary sections, little waiting, a fair price.",
+        "fun": 250, "safety": 300, "smoothness": 200, "challenge": 0, "jumps": 0, "variety": 100, "value": 150, "challengeTarget": 250 },
+      { "group": "intermediate", "name": "Intermediates", "values": "Flow and fun: well-shaped trails, some variety, a bit of challenge and air, good value for the ticket.",
+        "fun": 300, "safety": 100, "smoothness": 150, "challenge": 100, "jumps": 100, "variety": 100, "value": 150, "challengeTarget": 480 },
+      { "group": "expert", "name": "Experts", "values": "Technical difficulty and jump quality: red and black lines with good features.",
+        "fun": 250, "safety": 0, "smoothness": 150, "challenge": 250, "jumps": 200, "variety": 100, "value": 50, "challengeTarget": 700 }
+    ],
+    "reviewChancePermille": 600,
+    "windowSize": 200,
+    "minReviewsForRating": 10,
+    "scaredMargin": 150,
+    "funFloor": 250,
+    "funCeiling": 800,
+    "heldUpWeight": 1,
+    "waitPenaltyPermille": 2000,
+    "varietyFullAt": 3,
+    "fairCentsPerRun": 150,
+    "visibilityCurve": [
+      { "x": 0, "permille": 500 },
+      { "x": 300, "permille": 750 },
+      { "x": 1500, "permille": 1000 },
+      { "x": 6000, "permille": 1200 }
+    ],
+    "ratingCurve": [
+      { "x": 10, "permille": 700 },
+      { "x": 30, "permille": 1000 },
+      { "x": 50, "permille": 1300 }
+    ],
+    "demandMinPermille": 300,
+    "demandMaxPermille": 1500,
+    "influencerChancePermille": 250,
+    "influencerFirstDay": 3,
+    "influencerMinGapDays": 7,
+    "influencerSkill": 750,
+    "influencerStayMinutes": 300,
+    "influencerPeakPermille": 400,
+    "influencerNeutralTenths": 30,
+    "influencerEffectDays": 5,
+    "xpPerTrailKm": 150,
+    "xpPerRating": 50,
+    "xpPerFeatureKind": 25,
+    "xpPerVisitor": 1,
+    "visitorDays": 7,
+    "levelXp": [100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500]
+  },
   // Lift models come from the shared catalog.
   "liftTypesFile": "../lift_types.json",
   "trailFeaturesFile": "../trail_features.json",

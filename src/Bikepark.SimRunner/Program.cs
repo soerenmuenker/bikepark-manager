@@ -7,6 +7,7 @@ using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Reporting;
+using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Scenarios;
 using Bikepark.Sim.Trails;
 using Bikepark.SimRunner.Terrain;
@@ -70,6 +71,11 @@ public static class Program
         var completed = new List<string>();
         sim.Events.Subscribe<JobCompleted>(e => completed.Add($"{GameTime.Format(e.Tick)} {e.Title}"));
 
+        var influencers = new List<string>();
+        sim.Events.Subscribe<InfluencerArrived>(e => influencers.Add($"{GameTime.Format(e.Tick)} {e.Name} arrived"));
+        sim.Events.Subscribe<InfluencerPosted>(e => influencers.Add($"{GameTime.Format(e.Tick)} {e.Post.Name} posted"));
+        sim.Events.Subscribe<LevelChanged>(e => influencers.Add($"{GameTime.Format(e.Tick)} level {e.OldLevel} -> {e.NewLevel}"));
+
         var hourly = new List<HourReport>();
         int runsThisHour = 0, lunchesThisHour = 0;
         sim.Events.Subscribe<RunFinished>(_ => runsThisHour++);
@@ -100,7 +106,8 @@ public static class Program
             .ToDictionary(g => g.Key.ToString(), g => g.Count());
         var output = new RunnerOutput(
             Days: options.Days,
-            Kpis: KpiReport.From(state),
+            Kpis: KpiReport.From(state, network: sim.Network),
+            Reputation: ReputationReport(sim, influencers),
             Ways: WayReports(sim),
             Lifts: LiftReports(sim),
             Crew: CrewReport(sim, completed),
@@ -112,6 +119,34 @@ public static class Program
 
         Console.WriteLine(JsonSerializer.Serialize(output, RunnerJson.Options));
     }
+
+    private static ReputationReport? ReputationReport(Simulation sim, List<string> log)
+    {
+        var state = sim.State;
+        var rules = state.ReputationRules;
+        var xp = ParkProgress.Xp(state, sim.Network);
+        int level = ParkProgress.Level(rules, xp.Total);
+        var demand = ReputationMath.Demand(state);
+        return new ReputationReport(
+            Enabled: rules.Enabled,
+            Stars: Stars(ReputationMath.RatingTenths(state)),
+            Reviews: state.Reputation.TotalReviews,
+            Groups: rules.Groups.Select(g => new GroupReport(g.Name, Stars(ReputationMath.RatingTenths(state, g.Group)),
+                state.Reputation.ReviewsOf(g.Group), state.Reputation.Reviews.Count(r => r.Group == g.Group))).ToList(),
+            DemandPermille: demand.Total,
+            VisibilityPermille: demand.Visibility,
+            RatingFactorPermille: demand.Rating,
+            InfluencerPermille: demand.Influencer,
+            Xp: xp.Total,
+            Level: level,
+            NextLevelXp: ParkProgress.NextLevelXp(rules, level),
+            XpParts: xp,
+            Posts: state.Reputation.Posts.Select(p =>
+                $"day {p.Day} {p.Name}: {Stars(p.StarsTenths)} stars, demand {p.EffectPermille / 10:+0;-0;0} % until day {p.EndsDay}").ToList(),
+            Log: log);
+    }
+
+    private static string? Stars(int? tenths) => tenths is { } t ? $"{t / 10}.{t % 10}" : null;
 
     /// <summary>Runs one day minute by minute and averages what is going on per hour (people counts are per-minute averages).</summary>
     private static void RunDayHourly(Simulation sim, List<HourReport> hourly, Func<(int Runs, int Lunches)> counts, Action resetCounts)
@@ -293,9 +328,28 @@ internal sealed record WayReport(
     int? Repairs,
     long? HeldUpMinutes);
 
+internal sealed record GroupReport(string Name, string? Stars, long Reviews, int InWindow);
+
+internal sealed record ReputationReport(
+    bool Enabled,
+    string? Stars,
+    long Reviews,
+    List<GroupReport> Groups,
+    int DemandPermille,
+    int VisibilityPermille,
+    int RatingFactorPermille,
+    int InfluencerPermille,
+    int Xp,
+    int Level,
+    int? NextLevelXp,
+    ParkProgress.XpBreakdown XpParts,
+    List<string> Posts,
+    List<string> Log);
+
 internal sealed record RunnerOutput(
     int Days,
     KpiReport Kpis,
+    ReputationReport? Reputation,
     List<WayReport> Ways,
     List<LiftReport> Lifts,
     CrewReport? Crew,

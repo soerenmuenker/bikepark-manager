@@ -358,6 +358,11 @@ internal sealed class RiderSystem : ISimSystem
                     if (!feature.Feature.Built) continue; // planned: nothing there to ride yet
                     int featureFun = FeatureFun(guest, feature.Type);
                     featureFun = Math.Max(0, featureFun - TrailCondition.FunLoss(ctx.State.WearRules, TrailCondition.Permille(feature.Feature)));
+                    if (Reputation.ReviewMath.IsJump(feature.Type.Kind))
+                    {
+                        guest.JumpFunSum += featureFun;
+                        guest.JumpCount++;
+                    }
                     guest.RunFun += (long)featureFun * feature.Type.FunWeight;
                     guest.RunSegments += feature.Type.FunWeight;
                     TrailCondition.Wear(feature.Feature, TrailCondition.PassWear(ctx.State, feature.Type));
@@ -373,6 +378,7 @@ internal sealed class RiderSystem : ISimSystem
             {
                 // Stuck behind a slower rider for the rest of the minute.
                 heldUpMs += budgetMs;
+                guest.HeldUpSeconds += budgetMs / 1000;
                 if (network.FindWay(leg.WayId) is { } held) held.Stats.HeldUpSeconds += budgetMs / 1000;
                 budgetMs = 0;
             }
@@ -468,9 +474,16 @@ internal sealed class RiderSystem : ISimSystem
 
         guest.Happiness = Math.Clamp(guest.Happiness + Math.Clamp((fun - 450) / 4, -80, 100), 0, 1000);
         guest.RunsCompleted++;
+        guest.VisitFunSum += fun;
         guest.LastTrailId = trailId;
         if (trail is not null)
         {
+            int difficulty = network.Geometry(trailId).DifficultyScore;
+            guest.HardestDifficulty = Math.Max(guest.HardestDifficulty, difficulty);
+            if (difficulty > guest.Skill + ctx.State.ReputationRules.ScaredMargin)
+                guest.ScaredRuns++;
+            if (!guest.TrailsRidden.Contains(trailId))
+                guest.TrailsRidden.Add(trailId);
             trail.Stats.Runs++;
             trail.Stats.RunsToday++;
             trail.Stats.SumRunMinutes += minutes;

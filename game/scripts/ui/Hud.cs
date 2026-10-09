@@ -21,10 +21,10 @@ namespace Bikepark.Game.Ui;
 /// <summary>
 /// The game HUD, laid out like SimCity's: a bar along the bottom with the clock and speed (left), round category
 /// buttons that open menus above the bar (centre: Build, Trails, Crew, Riders, Lifts, Finances, Map) and the headline
-/// stats (right: money, guests, mood, lift queue, crew, wood; clicking one opens its menu). While a build tool is active a compact tool
+/// stats (right: money, guests, mood, rating and level, lift queue, crew, wood; clicking one opens its menu). While a build tool is active a compact tool
 /// panel shows at the top; events appear as short toasts. Pure view: reads the simulation, issues commands.
 /// <para>
-/// Keys: Space pause · 1–4 speed · B V C R G M O open menus · Esc closes the menu · [ ] bike access tier · +/− zoom
+/// Keys: Space pause · 1–4 speed · B V C R G M U O open menus · Esc closes the menu · [ ] bike access tier · +/− zoom
 /// (also the zoom buttons next to the stats).
 /// Debug: <c>--screenshot=&lt;file.png&gt;</c> saves a screenshot after a few seconds and quits; <c>--panel=build</c>
 /// opens a menu at start; <c>--tool=trail</c> (path, fell, lift, parking or a feature id) starts a build tool;
@@ -33,7 +33,7 @@ namespace Bikepark.Game.Ui;
 /// </summary>
 public partial class Hud : CanvasLayer
 {
-    private enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Map, System }
+    private enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Reputation, Map, System }
 
     private const int MaxToasts = 4;
 
@@ -58,7 +58,8 @@ public partial class Hud : CanvasLayer
 
     private Label _parkName = null!, _clock = null!, _openState = null!, _weather = null!;
     private Label _moneyValue = null!, _guestsValue = null!, _moodValue = null!, _queueValue = null!, _crewValue = null!, _woodValue = null!;
-    private IconView _moodIcon = null!;
+    private IconView _moodIcon = null!, _ratingIcon = null!;
+    private Label _ratingValue = null!;
     private Control _queueChip = null!;
 
     private PanelContainer _toolPanel = null!;
@@ -87,7 +88,7 @@ public partial class Hud : CanvasLayer
             Features = GetNode<FeatureTool>(FeatureToolPath),
             Clearing = GetNode<ClearingTool>(ClearingToolPath),
         };
-        _ctx.Kpi = KpiReport.From(_ctx.Sim.State, includeHash: false);
+        _ctx.Kpi = KpiReport.From(_ctx.Sim.State, includeHash: false, network: _ctx.Sim.Network);
         BuildUi();
         _ctx.Host.SimulationReplaced += Subscribe;
         Subscribe(_ctx.Sim);
@@ -130,7 +131,7 @@ public partial class Hud : CanvasLayer
         bar.AddChild(ClockBlock());
         bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
         var menus = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-        menus.AddThemeConstantOverride("separation", 10);
+        menus.AddThemeConstantOverride("separation", 4);
         foreach (var (menu, icon, caption, tooltip) in new[]
                  {
                      (Menu.Build, UiIcon.Build, "Build", "Plan paths, trails, features; fell trees; lifts, parking  [B]"),
@@ -139,6 +140,7 @@ public partial class Hud : CanvasLayer
                      (Menu.Riders, UiIcon.Riders, "Riders", "Guests, mood and fun  [R]"),
                      (Menu.Lifts, UiIcon.Lift, "Lifts", "Queues and bike access  [G]"),
                      (Menu.Finance, UiIcon.Finance, "Finances", "Money, fees, daily results  [M]"),
+                     (Menu.Reputation, UiIcon.Star, "Rating", "Reviews, rating, influencers, park level  [U]"),
                      (Menu.Map, UiIcon.Map, "Map", "Terrain overlays  [O]"),
                  })
         {
@@ -167,6 +169,7 @@ public partial class Hud : CanvasLayer
         AddPanel(Menu.Riders, new RidersPanel());
         AddPanel(Menu.Lifts, new LiftsPanel());
         AddPanel(Menu.Finance, new FinancePanel());
+        AddPanel(Menu.Reputation, new ReputationPanel());
         AddPanel(Menu.Map, new MapPanel());
         AddPanel(Menu.System, new SystemPanel());
 
@@ -245,10 +248,11 @@ public partial class Hud : CanvasLayer
     private Control StatsBlock()
     {
         var box = new HBoxContainer();
-        box.AddThemeConstantOverride("separation", 6);
+        box.AddThemeConstantOverride("separation", 4);
         box.AddChild(Chip(UiIcon.Finance, "Money", Menu.Finance, out _moneyValue, out _));
         box.AddChild(Chip(UiIcon.Person, "Guests", Menu.Riders, out _guestsValue, out _));
         box.AddChild(Chip(UiIcon.Mood, "Mood", Menu.Riders, out _moodValue, out _moodIcon));
+        box.AddChild(Chip(UiIcon.Star, "Rating", Menu.Reputation, out _ratingValue, out _ratingIcon));
         _queueChip = Chip(UiIcon.Queue, "Queue", Menu.Lifts, out _queueValue, out _);
         box.AddChild(_queueChip);
         box.AddChild(Chip(UiIcon.Crew, "Crew", Menu.Crew, out _crewValue, out _));
@@ -259,8 +263,8 @@ public partial class Hud : CanvasLayer
     private Control Chip(UiIcon icon, string caption, Menu menu, out Label value, out IconView iconView)
     {
         var chip = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Stop, MouseDefaultCursorShape = Control.CursorShape.PointingHand, TooltipText = $"{caption} — click for details" };
-        var normal = UiTheme.Box(new Color(1, 1, 1, 0.04f), 10, 10, 6);
-        var hover = UiTheme.Box(new Color(1, 1, 1, 0.10f), 10, 10, 6);
+        var normal = UiTheme.Box(new Color(1, 1, 1, 0.04f), 10, 7, 6);
+        var hover = UiTheme.Box(new Color(1, 1, 1, 0.10f), 10, 7, 6);
         chip.AddThemeStyleboxOverride("panel", normal);
         chip.MouseEntered += () => chip.AddThemeStyleboxOverride("panel", hover);
         chip.MouseExited += () => chip.AddThemeStyleboxOverride("panel", normal);
@@ -270,15 +274,15 @@ public partial class Hud : CanvasLayer
         };
         chip.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 8);
+        row.AddThemeConstantOverride("separation", 6);
         chip.AddChild(row);
-        iconView = new IconView(icon, 26, UiTheme.Accent) { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        iconView = new IconView(icon, 24, UiTheme.Accent) { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         row.AddChild(iconView);
         var texts = new VBoxContainer();
         texts.AddThemeConstantOverride("separation", -2);
         texts.AddChild(UiTheme.Label(caption.ToUpperInvariant(), 10, UiTheme.TextDim, bold: true));
         value = UiTheme.Label("", 18, bold: true);
-        value.CustomMinimumSize = new Vector2(caption switch { "Money" => 84, "Crew" => 60, _ => 44 }, 0);
+        value.CustomMinimumSize = new Vector2(caption switch { "Money" => 84, "Crew" => 60, "Rating" => 62, _ => 44 }, 0);
         texts.AddChild(value);
         row.AddChild(texts);
         return chip;
@@ -368,7 +372,7 @@ public partial class Hud : CanvasLayer
         if (_refreshTimer <= 0)
         {
             _refreshTimer = 0.25;
-            _ctx.Kpi = KpiReport.From(state, includeHash: false);
+            _ctx.Kpi = KpiReport.From(state, includeHash: false, network: _ctx.Sim.Network);
             UpdateBar();
             if (_open != Menu.None) _panels[_open].Refresh();
             _repairDialog.Refresh();
@@ -430,6 +434,10 @@ public partial class Hud : CanvasLayer
         int mood = anyone ? k.AverageHappiness : k.AverageExitHappiness;
         _moodValue.Text = mood == 0 ? "–" : $"{mood / 10}%";
         _moodIcon.Set(UiIcon.Mood, mood == 0 ? UiTheme.TextDim : UiTheme.MoodColor(mood), mood == 0 ? 500 : mood);
+
+        _ratingValue.Text = $"{ReputationPanel.StarsText(k.RatingTenths)} · L{k.Level}";
+        _ratingValue.TooltipText = k.RatingTenths is null ? $"No rating yet ({k.TotalReviews} reviews) · park level {k.Level}" : $"{k.TotalReviews} reviews · park level {k.Level}";
+        _ratingIcon.Set(UiIcon.Star, k.RatingTenths is { } stars ? UiTheme.MoodColor((stars - 10) * 25) : UiTheme.TextDim);
 
         _crewValue.Text = $"{state.Crew.Count} · {state.Jobs.Count}";
         _crewValue.TooltipText = $"{state.Crew.Count} workers, {state.Jobs.Count} jobs";
@@ -594,6 +602,7 @@ public partial class Hud : CanvasLayer
             case Key.R: Toggle(Menu.Riders); break;
             case Key.G: Toggle(Menu.Lifts); break;
             case Key.M: Toggle(Menu.Finance); break;
+            case Key.U: Toggle(Menu.Reputation); break;
             case Key.O: Toggle(Menu.Map); break;
             case Key.Escape when !toolActive && _open != Menu.None: Toggle(Menu.None); break;
             case Key.Space: _ctx.Host.SetSpeedIndex(_ctx.Host.SpeedIndex == 0 ? 1 : 0); break;
@@ -631,6 +640,13 @@ public partial class Hud : CanvasLayer
             Toast($"Day {e.Report.Day + 1} closed: {e.Report.Visitors} visitors, {e.Report.LiftRides} lift rides, net {UiTheme.Money(net)}",
                 net >= 0 ? UiTheme.Good : UiTheme.Bad);
         }));
+        _subscriptions.Add(events.Subscribe<InfluencerArrived>(e =>
+            Toast($"Influencer {e.Name} is visiting today: their FakeSocial post depends on how the day goes", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<InfluencerPosted>(e => Toast(
+            $"{e.Post.Name} posted: {ReputationPanel.StarsText(e.Post.StarsTenths)} stars, visitors {e.Post.EffectPermille / 10:+0;-0;0} % for a few days",
+            e.Post.EffectPermille > 0 ? UiTheme.Good : e.Post.EffectPermille < 0 ? UiTheme.Bad : UiTheme.TextDim)));
+        _subscriptions.Add(events.Subscribe<LevelChanged>(e => Toast(e.NewLevel > e.OldLevel
+            ? $"Park level {e.NewLevel} reached!" : $"The park dropped to level {e.NewLevel}", e.NewLevel > e.OldLevel ? UiTheme.Good : UiTheme.Warn)));
         _subscriptions.Add(events.Subscribe<ParkOpened>(_ => Toast("The park is open", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<WeatherForecast>(e =>
             Toast($"Today: {WeatherText(e.Today)} · tomorrow: {WeatherText(e.Tomorrow)}", e.Today.HasRain ? UiTheme.Warn : UiTheme.TextDim)));

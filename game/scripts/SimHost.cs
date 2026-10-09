@@ -145,7 +145,7 @@ public partial class SimHost : Node
 
     private void Report()
     {
-        var k = Bikepark.Sim.Reporting.KpiReport.From(Sim.State, includeHash: false);
+        var k = Bikepark.Sim.Reporting.KpiReport.From(Sim.State, includeHash: false, network: Sim.Network);
         GD.Print($"[report] {Bikepark.Sim.Core.GameTime.Format(Sim.State.Tick)} guests={k.GuestsInPark} " +
                  $"onTrails={k.RidersOnTrails} runs={k.RunsCompleted} fun={k.AverageRunFun} ways={k.AccessPaths}+{k.Trails} " +
                  $"queuing={k.GuestsQueuing} onLift={k.RidersOnLifts} liftRides={k.LiftRides} wait={k.AverageWaitMinutes}min " +

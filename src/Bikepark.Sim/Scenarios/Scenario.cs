@@ -57,6 +57,8 @@ public sealed class ScenarioDefinition
 
     public int StartingWood { get; set; }
 
+    public Reputation.ReputationRules ReputationRules { get; set; } = new();
+
     /// <summary>Optional scripted commands (e.g. tutorial events), queued when the scenario starts.</summary>
     public List<TimedCommand> Commands { get; set; } = [];
 }
@@ -124,6 +126,7 @@ public static class ScenarioLoader
             CrewRules = scenario.CrewRules,
             ToolTypes = scenario.ToolTypes,
             WoodStock = scenario.StartingWood,
+            ReputationRules = scenario.ReputationRules,
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
         };
 
@@ -162,6 +165,7 @@ public static class ScenarioLoader
         foreach (var tool in s.ToolTypes) errors.AddRange(tool.Validate());
         if (s.ToolTypes.Select(t => t.Id).Distinct().Count() != s.ToolTypes.Count) errors.Add("toolTypes: ids must be unique");
         if (s.StartingWood < 0) errors.Add("startingWood must be >= 0");
+        errors.AddRange(s.ReputationRules.Validate());
 
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid scenario '{s.Id}': {string.Join("; ", errors)}");

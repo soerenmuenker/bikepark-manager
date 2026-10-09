@@ -2,6 +2,7 @@ using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.Lifts;
+using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
 using Bikepark.Sim.Weather;
@@ -100,6 +101,11 @@ public sealed class WorldState
     public FinanceState Finance { get; set; } = new();
 
     public ParkStats Stats { get; set; } = new();
+
+    /// <summary>Reviews, rating, influencers and park XP (off by default).</summary>
+    public ReputationRules ReputationRules { get; set; } = new();
+
+    public ReputationState Reputation { get; set; } = new();
 
     /// <summary>Guests currently in the park, in arrival order.</summary>
     public List<Guest> Guests { get; set; } = [];
@@ -347,4 +353,33 @@ public sealed class Guest
 
     /// <summary>When the current break (<see cref="RiderActivity.Eating"/>) ends.</summary>
     public long BusyUntilTick { get; set; }
+
+    // ---- Visit, for the review written on leaving (see Reputation.ReviewMath) ----
+
+    /// <summary>Sum of the fun of all finished runs (divide by <see cref="RunsCompleted"/>).</summary>
+    public long VisitFunSum { get; set; }
+
+    /// <summary>Runs on trails clearly harder than the rider's skill.</summary>
+    public int ScaredRuns { get; set; }
+
+    /// <summary>Difficulty score of the hardest trail ridden.</summary>
+    public int HardestDifficulty { get; set; }
+
+    /// <summary>Distinct trails ridden, in the order first ridden.</summary>
+    public List<int> TrailsRidden { get; set; } = [];
+
+    public long JumpFunSum { get; set; }
+    public int JumpCount { get; set; }
+
+    /// <summary>Time stuck behind slower riders on trails.</summary>
+    public int HeldUpSeconds { get; set; }
+
+    /// <summary>Minutes queued beyond the lift's grace time.</summary>
+    public int QueueMinutes { get; set; }
+
+    /// <summary>The entry fee paid on arrival (for the value-for-money part of the review).</summary>
+    public long PaidEntryCents { get; set; }
+
+    /// <summary>An influencer: their review becomes a FakeSocial post.</summary>
+    public bool IsInfluencer { get; set; }
 }

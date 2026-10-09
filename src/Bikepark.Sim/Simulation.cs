@@ -48,6 +48,7 @@ public sealed class Simulation
             new GuestSystem(),
             new TrailCareSystem(),
             new JobSystem(),
+            new ReputationSystem(), // before Finance: it reads today's visitors before the books close
             new FinanceSystem(),
         ];
     }

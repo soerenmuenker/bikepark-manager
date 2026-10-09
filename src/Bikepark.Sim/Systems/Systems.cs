@@ -1,6 +1,7 @@
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
+using Bikepark.Sim.Reputation;
 using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Systems;
@@ -49,7 +50,9 @@ internal sealed class GuestArrivalSystem : ISimSystem
         long feeFactor = 1000 + (reference - state.Park.EntryFeeCents) * 500 / reference;
         feeFactor = Math.Clamp(feeFactor, 100, 1500);
         long weather = state.WeatherRules.ArrivalPermille(state.Weather.Today.Kind);
-        return (int)(rules.BaseArrivalPermille * feeFactor / 1000 * ProfilePermille(rules.ArrivalProfile, minuteOfDay) / 1000 * weather / 1000);
+        long reputation = ReputationMath.DemandPermille(state);
+        return (int)(rules.BaseArrivalPermille * feeFactor / 1000 * ProfilePermille(rules.ArrivalProfile, minuteOfDay) / 1000 * weather / 1000
+                     * reputation / 1000);
     }
 
     /// <summary>The arrival profile at a minute of the day (1000 without a profile).</summary>
@@ -109,6 +112,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
             LunchMinute = lunchMinute,
             Id = state.AllocateEntityId(),
             CashCents = cash - fee,
+            PaidEntryCents = fee,
             Happiness = Math.Clamp(ctx.Rng.Range(550, 801) - feePenalty, 0, 1000),
             ArrivedTick = ctx.Tick,
             PlannedStayMinutes = ctx.Rng.Range(60, 361),
@@ -119,11 +123,22 @@ internal sealed class GuestArrivalSystem : ISimSystem
             Activity = RiderActivity.Wandering,
         };
 
+        if (state.Reputation.InfluencerDue)
+        {
+            // The influencer rides like a good rider and stays the day.
+            state.Reputation.InfluencerDue = false;
+            guest.IsInfluencer = true;
+            guest.Skill = state.ReputationRules.InfluencerSkill;
+            guest.PlannedStayMinutes = state.ReputationRules.InfluencerStayMinutes;
+        }
+
         state.Finance.Earn(fee);
         state.Guests.Add(guest);
         state.Stats.TotalVisitors++;
         state.Stats.VisitorsToday++;
         ctx.Publish(new GuestArrived(ctx.Tick, guest.Id));
+        if (guest.IsInfluencer)
+            ctx.Publish(new InfluencerArrived(ctx.Tick, guest.Id, ReputationMath.InfluencerName(guest.Id)));
     }
 }
 
@@ -169,6 +184,7 @@ internal sealed class GuestSystem : ISimSystem
                 if (reason == GuestLeaveReason.Unhappy)
                     stats.TotalLeftUnhappy++;
                 ctx.Publish(new GuestLeft(ctx.Tick, guest.Id, reason));
+                ReputationSystem.Review(ctx, guest);
             }
             else
                 guests[write++] = guest;
@@ -197,7 +213,10 @@ internal sealed class GuestSystem : ISimSystem
         if (guest.Activity is RiderActivity.Queuing or RiderActivity.OnLift)
             guest.Energy = Math.Min(1000, guest.Energy + liftRules.RestEnergyPerMinute);
         if (guest.Activity == RiderActivity.Queuing && ctx.Tick - guest.QueueSinceTick >= liftRules.QueueGraceMinutes)
+        {
             guest.Happiness -= liftRules.QueueMoodPenaltyPerMinute;
+            guest.QueueMinutes++;
+        }
 
         if (!onTheWay && guest.CashCents >= rules.SnackPriceCents && ctx.Rng.ChancePermille(SnackChancePermille))
         {
@@ -264,7 +283,12 @@ internal sealed class FinanceSystem : ISimSystem
             Jobs: state.Jobs.Count,
             Weather: state.Weather.Today.Kind,
             RainMinutes: state.Weather.Today.RainEndMinute - state.Weather.Today.RainStartMinute,
-            TrailsClosed: state.Ways.Count(w => w.Kind == Trails.WayKind.Trail && w.Built && !w.IsRideable));
+            TrailsClosed: state.Ways.Count(w => w.Kind == Trails.WayKind.Trail && w.Built && !w.IsRideable),
+            Reviews: state.Reputation.ReviewsToday,
+            RatingTenths: ReputationMath.RatingTenths(state),
+            DemandPermille: ReputationMath.DemandPermille(state),
+            Xp: ParkProgress.Xp(state, ctx.Network).Total,
+            Level: state.Reputation.Level);
         ctx.Publish(new DayEnded(ctx.Tick, report));
 
         foreach (var way in state.Ways)
@@ -277,6 +301,7 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.LiftFeesTodayCents = 0;
         state.Finance.WagesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
+        state.Reputation.ReviewsToday = 0;
         state.Stats.TurnedAwayToday = 0;
         state.Finance.RevenueTodayCents = 0;
         state.Finance.ExpensesTodayCents = 0;

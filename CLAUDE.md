@@ -24,11 +24,15 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Weather/` – `WeatherRules`/`WeatherState`/`DayWeather` (daily seeded forecast, ground wetness), `Systems/WeatherSystem.cs`
   - `Trails/TrailCondition.cs` – `WearRules` and feature condition (wear per rider pass, more when wet; worn
     features slower/less fun); `Systems/TrailCareSystem.cs` raises the repair warning and closes worn-out trails
+  - `Reputation/` – `ReputationRules` (content: skill groups and what they value, demand curves, influencers, XP and
+    level thresholds), `ReputationState` (reviews window, posts, visitor history), `ReviewMath` (a visit → aspects →
+    stars), `ReputationMath` (rating, demand), `ParkProgress` (derived XP and level); `Systems/ReputationSystem.cs`
+    books influencers and announces level changes
   - `Systems/ParkSchedule.cs` – the daily timetable (open, last rides, lift warm-up, crew shift/overtime, day phase,
     quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
-- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus, drawn icons, theme in code),
+- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel`, drawn icons, theme in code),
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
@@ -50,6 +54,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 # Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/starter_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json]
+# Reputation: the output's "reputation" block (stars overall/per group, demand parts, XP parts, level, influencer posts,
+# a log of influencer visits and level changes); --daily adds reviews, rating, demand, XP and level per day
 # Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 3 --commands data/scripts/demo_lift_network.json
 # ... with the demo trail features (planned, built by the crew: per-trail feature list, crew block with completed jobs, wood, wages)
@@ -113,11 +119,18 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     changes. `TrailCareSystem` warns (< 20 %) and closes, it never queues work: repairs are manual
     (`RepairFeatureCommand`, from the warning pop-up); only a finished repair reopens a worn-out trail. Feature work closes
     its trail when workers are assigned and only progresses once no rider is on it; riders re-check every trail entrance.
+17. **Reputation** (`ReputationRules.Enabled`, off by default; Starter Valley turns it on): reviews are written only when a
+    guest leaves (`GuestSystem` → `ReputationSystem.Review`) from per-visit accumulators on `Guest`; the rating is the
+    average of the last `WindowSize` reviews per group (shown from `MinReviewsForRating` all-time reviews). Demand =
+    visibility (all-time reviews) × rating factor × influencer post, applied in `GuestArrivalSystem`. An influencer is a
+    real guest (`IsInfluencer`, booked at opening), their review becomes the post. XP and level are derived
+    (`ParkProgress`, never saved; `Reputation.Level` only remembers the last announced level). `ReputationSystem` runs
+    before `FinanceSystem` (it reads today's visitors before the books close).
 
 ## Game controls (debug build)
 
-HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · O map; Esc
-closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
+HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · U rating
+(reputation: stars per skill group and what they value, demand, park level, FakeSocial posts) · O map; Esc closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter plans it for the crew, Esc cancel;
 preview colored by gradient, tool panel shows trees to fell and crew-hours; ends snap onto plateaus) · L place lift (valley, then top) · K place parking lot (centre, then direction) ·
@@ -126,7 +139,7 @@ Build, point at a trail, click to plan it, Delete removes the one under the curs
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →
 Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire/dismiss, tools, buy wood, job queue (↑ first,
 ✕ cancel) · System menu: Instant build (debug) · F follow next rider, or click a rider to follow it (a card at the top left shows
-their stats; ✕ or panning stops following) ·
+their stats; ✕ or panning stops following; influencers wear pink) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
 `--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),

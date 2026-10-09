@@ -1061,7 +1061,7 @@ public partial class SystemPanel : HudPanel
         };
         nights.Toggled += on => Ctx.Host.AutoSkipNights = on;
         Body.AddChild(nights);
-        Body.AddChild(UiTheme.Label("Space pause · 1–4 speed · +/− zoom · B build · V trails · C crew · R riders · G lifts · M finances · O map", 11, UiTheme.TextDim));
+        Body.AddChild(UiTheme.Label("Space pause · 1–4 speed · +/− zoom · B build · V trails · C crew · R riders · G lifts · M finances · U reputation · O map", 11, UiTheme.TextDim));
     }
 
     public override void Refresh() { }

@@ -45,10 +45,17 @@ public sealed record KpiReport(
     int TrailsClosed,
     int RainDays,
     int WetnessPermille,
+    int? RatingTenths,
+    long TotalReviews,
+    int DemandPermille,
+    int Xp,
+    int Level,
     string? StateHash)
 {
-    public static KpiReport From(WorldState state, bool includeHash = true)
+    /// <param name="network">The way network, for the park XP (without it: XP from visitors only).</param>
+    public static KpiReport From(WorldState state, bool includeHash = true, WayNetwork? network = null)
     {
+        int xp = Reputation.ParkProgress.Xp(state, network ?? WayNetwork.Empty).Total;
         int average = state.Guests.Count == 0 ? 0 : (int)(state.Guests.Sum(g => (long)g.Happiness) / state.Guests.Count);
         long runs = state.Ways.Sum(w => w.Stats.Runs);
         long liftRides = state.Lifts.Sum(l => l.Stats.Riders);
@@ -87,6 +94,11 @@ public sealed record KpiReport(
             TrailsClosed: state.Ways.Count(w => w.Kind == WayKind.Trail && w.Built && !w.IsRideable),
             RainDays: state.Weather.RainDays,
             WetnessPermille: state.Weather.WetnessPermille,
+            RatingTenths: Reputation.ReputationMath.RatingTenths(state),
+            TotalReviews: state.Reputation.TotalReviews,
+            DemandPermille: Reputation.ReputationMath.DemandPermille(state),
+            Xp: xp,
+            Level: Reputation.ParkProgress.Level(state.ReputationRules, xp),
             StateHash: includeHash ? Persistence.StateHash.Compute(state) : null);
     }
 }

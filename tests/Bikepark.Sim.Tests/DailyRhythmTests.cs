@@ -89,6 +89,7 @@ public class DailyRhythmTests
         Assert.Equal(0, GuestArrivalSystem.ProfilePermille(profile, 1000));
 
         var sim = TestWorlds.RunLift(1337, 0, TestWorlds.DemoLiftNetwork());
+        sim.State.ReputationRules.Enabled = false; // full demand, as in an established park
         sim.Events.Clear();
         var arrivals = new List<GuestArrived>();
         sim.Events.Subscribe<GuestArrived>(arrivals.Add);
@@ -105,6 +106,7 @@ public class DailyRhythmTests
     public void Lunch_IsTakenOnceInTheWindow_PaidFor_AndDipsTheRiding()
     {
         var sim = TestWorlds.RunLift(1337, 0, TestWorlds.DemoLiftNetwork());
+        sim.State.ReputationRules.Enabled = false; // full demand, as in an established park
         sim.Events.Clear();
         var lunches = new List<GuestAteLunch>();
         sim.Events.Subscribe<GuestAteLunch>(lunches.Add);
