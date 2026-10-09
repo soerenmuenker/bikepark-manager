@@ -156,19 +156,67 @@ public class FeatureTests
         var sim = DemoWorld();
         var before = sim.Network.Geometry(RedRocket);
         Assert.Equal(TrailRating.Red, before.Rating);
+        Assert.Equal(RatingCause.OverallSteepness, before.RatingCause);
 
+        // A small drop is a red feature: still red, now because of it.
         sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000, Instant: true));
         sim.Step();
-        var after = sim.Network.Geometry(RedRocket);
-
-        Assert.Equal(TrailRating.Black, after.Rating);
-        Assert.Equal(700, after.DifficultyScore);
-        var covered = after.Segments.Where(s => s.StartCm < 10_500 && s.EndCm > 10_000).ToList();
+        var withDrop = sim.Network.Geometry(RedRocket);
+        Assert.Equal(TrailRating.Red, withDrop.Rating);
+        Assert.Equal(600, withDrop.DifficultyScore);
+        Assert.Equal(RatingCause.Feature, withDrop.RatingCause);
+        var covered = withDrop.Segments.Where(s => s.StartCm < 10_500 && s.EndCm > 10_000).ToList();
         Assert.NotEmpty(covered);
-        Assert.All(covered, s => Assert.Equal(700, s.FeatureDifficulty));
-        Assert.All(after.Segments.Except(covered), s => Assert.Equal(0, s.FeatureDifficulty));
+        Assert.All(covered, s => Assert.Equal(600, s.FeatureDifficulty));
+        Assert.All(withDrop.Segments.Except(covered), s => Assert.Equal(0, s.FeatureDifficulty));
+
+        // A double makes it black.
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 20_000, Instant: true));
+        sim.Step();
+        var after = sim.Network.Geometry(RedRocket);
+        Assert.Equal(TrailRating.Black, after.Rating);
+        Assert.Equal(720, after.DifficultyScore);
         // The shape does not change.
         Assert.Equal(before.LengthCm, after.LengthCm);
+    }
+
+    [Fact]
+    public void FeatureTiers_BlueFlowFeatures_RedWoodAndDrops_BlackDoubles()
+    {
+        TrailRating Tier(string id) => WayGeometry.RatingFor(TestWorlds.FeatureCatalog().Single(t => t.Id == id).Difficulty);
+        Assert.All(new[] { "berm", "rollers", "table" }, id => Assert.True(Tier(id) <= TrailRating.Blue, id));
+        Assert.All(new[] { "kicker", "wall_ride", "drop" }, id => Assert.Equal(TrailRating.Red, Tier(id)));
+        Assert.Equal(TrailRating.Black, Tier("double"));
+    }
+
+    [Fact]
+    public void Steepness_IsRatedOverallAndBySections()
+    {
+        // Gradients in tenths of the game's score (-1.5 ≈ 24 %, -3.5 ≈ 61 %, -4.8 ≈ 94 %).
+        Assert.Equal(TrailRating.Green, WayGeometry.RatingFor(WayGeometry.SectionSteepness(14)));
+        Assert.Equal(TrailRating.Blue, WayGeometry.RatingFor(WayGeometry.SectionSteepness(30)));
+        Assert.Equal(TrailRating.Red, WayGeometry.RatingFor(WayGeometry.SectionSteepness(40)));
+        Assert.Equal(TrailRating.Black, WayGeometry.RatingFor(WayGeometry.SectionSteepness(50)));
+        // A whole trail is judged by its median gradient, more strictly.
+        Assert.Equal(TrailRating.Blue, WayGeometry.RatingFor(WayGeometry.OverallSteepness(10)));
+        Assert.Equal(TrailRating.Red, WayGeometry.RatingFor(WayGeometry.OverallSteepness(20)));
+        Assert.Equal(TrailRating.Black, WayGeometry.RatingFor(WayGeometry.OverallSteepness(25)));
+        Assert.Equal(1000, WayGeometry.SectionSteepness(80));
+
+        // The demo trails without features: Flow Country is blue, Red Rocket red because it is steep overall.
+        var sim = DemoWorld();
+        var flow = sim.Network.Geometry(FlowCountry);
+        var red = sim.Network.Geometry(RedRocket);
+        Assert.Equal(TrailRating.Blue, flow.Rating);
+        Assert.Equal(TrailRating.Red, red.Rating);
+        Assert.Equal(RatingCause.OverallSteepness, red.RatingCause);
+
+        // Berms, rollers and a table keep Flow Country blue.
+        foreach (var (type, at) in new[] { ("berm", 4_000L), ("rollers", 18_000L), ("table", 22_000L) })
+            sim.Commands.Enqueue(new PlaceTrailFeatureCommand(FlowCountry, type, at, Instant: true));
+        sim.Step();
+        Assert.DoesNotContain(sim.Events.Pending, e => e is CommandRejected);
+        Assert.Equal(TrailRating.Blue, sim.Network.Geometry(FlowCountry).Rating);
     }
 
     [Fact]
@@ -206,7 +254,7 @@ public class FeatureTests
     public void Features_SurviveSaveAndLoad()
     {
         var sim = DemoWorld();
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 10_000, Instant: true));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 20_000, Instant: true));
         sim.Step();
         var loaded = new Simulation(SaveGame.Deserialize(SaveGame.Serialize(sim.State)));
         Assert.Equal(StateHash.Compute(sim.State), StateHash.Compute(loaded.State));

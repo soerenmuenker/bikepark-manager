@@ -115,7 +115,7 @@ public class CrewTests
         sim.RunTicks(420 + 320 - sim.State.Tick); // three workers: 320 minutes
         Assert.Empty(sim.State.Jobs);
         Assert.True(feature.Feature.Built);
-        Assert.Equal(650, sim.Network.Geometry(RedRocket).DifficultyScore);
+        Assert.Equal(720, sim.Network.Geometry(RedRocket).DifficultyScore);
     }
 
     [Fact]
@@ -490,7 +490,7 @@ public class CrewTests
     public void Version2SaveWithoutCrew_LoadsWithEverythingBuilt()
     {
         var sim = ValleyWorld(instantTrails: true);
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(ValleyRedRocket(sim), "drop", 10_000, Instant: true));
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(ValleyRedRocket(sim), "double", 20_000, Instant: true));
         sim.Step();
         var root = JsonNode.Parse(SaveGame.Serialize(sim.State))!.AsObject();
         var world = root["world"]!.AsObject();

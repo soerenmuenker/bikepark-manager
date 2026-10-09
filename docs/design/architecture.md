@@ -149,7 +149,7 @@ Rules:
   network is reachable from the base and can get back to it.
 - `WorldState.Ways` stores only player input (oriented, snapped control points and joins `(wayId, distanceCm)`).
   `WayGeometry` (integer Catmull-Rom, ~1 m samples, 10 m segments with grade, turn, surface, difficulty; rating
-  from the 90th-percentile difficulty) and `WayNetwork` (junction graph, deterministic Dijkstra, spatial index for
+  from overall steepness, steep sections and features) and `WayNetwork` (junction graph, deterministic Dijkstra, spatial index for
   snapping and tree clearing) are derived and rebuilt when `WaysRevision` changes.
 - `WayPlanner` is the single validator; the build command and the live preview both call it.
 - **Riders** (guests): skill, style, energy, mood. Each lap: pick a trail (skill vs difficulty, style, variety,
@@ -205,8 +205,12 @@ Design note: [trail_features.md](trail_features.md).
 - **State**: `Way.Features` stores only `{id, typeId, distanceCm}` per feature, sorted by distance; trails are never
   reshaped, so distances stay valid. Deleting a trail deletes its features.
 - **Derived**: `WayNetwork.Build` resolves features (`FeaturesOn(wayId)`) and passes them to `WayGeometry.Build`;
-  a covered segment's `Difficulty` = max(terrain, feature) and `FeatureDifficulty` keeps the feature's part. The
-  trail's `DifficultyScore` = max(90th percentile, hardest feature), so one black drop makes the trail black.
+  a covered segment's `Difficulty` = max(terrain, feature) and `FeatureDifficulty` keeps the feature's part.
+  The trail's `DifficultyScore` = max(overall steepness: median gradient, steep sections: 90th-percentile terrain
+  difficulty, hardest feature); `RatingCause` says which decided it. Steepness ramps (gradient score, tenths): sections
+  green ≤ -1.5, blue ≤ -3.5, red ≤ -4.8, else black; overall (median) green ≤ -0.7, blue ≤ -1.5, red ≤ -2.4, else
+  black. Roughness adds up to 100 and tight turns up to 100 to a segment. Feature tiers: berms, rollers, tables fit
+  blue; kickers, wall-rides, small drops make a trail red; doubles (later rock gardens, long jumps) black.
 - **Validation**: `FeaturePlanner` only (command and in-game ghost). **Commands**: `placeTrailFeature`,
   `removeTrailFeature` (bump `WaysRevision`; routes stay valid, riders are not reset). **Events**:
   `TrailFeaturePlaced`, `TrailFeatureRemoved`.

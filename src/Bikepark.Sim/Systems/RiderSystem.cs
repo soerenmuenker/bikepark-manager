@@ -575,12 +575,17 @@ internal sealed class TrailTraffic
             Track(guest);
     }
 
-    /// <summary>Riders on a trail (dropped in) first, by trail and front to back; then everybody else in list order.</summary>
+    /// <summary>
+    /// Riders on a trail (dropped in) first, by trail and front to back; then riders waiting at a trail entrance, fastest
+    /// first (so a faster rider drops in first and the slower ones can follow in the same minute); then everybody else in
+    /// list order.
+    /// </summary>
     public IEnumerable<Guest> MovingOrder(List<Guest> movers) =>
         movers.Select((g, i) => (Guest: g, Index: i, Trail: OnTrail(g, out long position) ? Leg(g).WayId : 0, Position: position))
-            .OrderBy(x => x.Trail == 0 ? 1 : 0)
+            .OrderBy(x => x.Trail != 0 ? 0 : x.Guest.EntryWaitMs >= 0 ? 1 : 2)
             .ThenBy(x => x.Trail)
             .ThenByDescending(x => x.Position)
+            .ThenByDescending(x => x.Trail == 0 && x.Guest.EntryWaitMs >= 0 ? x.Guest.Skill : 0)
             .ThenBy(x => x.Index)
             .Select(x => x.Guest)
             .ToList();

@@ -16,6 +16,14 @@ internal static class WayMeshes
         _ => new Color(0.08f, 0.08f, 0.08f),
     };
 
+    /// <summary>"Red (steep overall)", "Blue (steep sections)", "Black (features)": the rating and what decided it.</summary>
+    public static string RatingText(WayGeometry g) => g.Rating == TrailRating.Green ? "Green" : $"{g.Rating} ({g.RatingCause switch
+    {
+        RatingCause.OverallSteepness => "steep overall",
+        RatingCause.SteepSections => "steep sections",
+        _ => "features",
+    }})";
+
     /// <summary>
     /// Preview color for a segment's gradient score (tenths): green = easy, yellow, orange = steep, red = beyond the
     /// limit; purple = climbing on a trail. Paths are judged in both directions, trails by their drop.

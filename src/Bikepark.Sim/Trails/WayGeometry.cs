@@ -3,7 +3,7 @@ using static Bikepark.Sim.Terrain.FixedMath;
 
 namespace Bikepark.Sim.Trails;
 
-/// <summary>Bike park difficulty rating, from the 90th-percentile segment difficulty.</summary>
+/// <summary>Bike park difficulty rating (see <see cref="WayGeometry.DifficultyScore"/>).</summary>
 public enum TrailRating : byte
 {
     Green = 0,
@@ -12,11 +12,25 @@ public enum TrailRating : byte
     Black = 3,
 }
 
+/// <summary>What decided a trail's rating.</summary>
+public enum RatingCause : byte
+{
+    /// <summary>The trail as a whole: its typical (median) gradient.</summary>
+    OverallSteepness = 0,
+
+    /// <summary>Its hardest stretches: the 90th-percentile segment (steepness, plus some for rocks, roots and tight turns).</summary>
+    SteepSections = 1,
+
+    /// <summary>Its hardest feature (a feature on the line is mandatory).</summary>
+    Feature = 2,
+}
+
 /// <summary>
 /// One ~10 m piece of a way. Grade is signed along the way's direction (+ = uphill), in permille of horizontal
 /// distance. Turn is the heading change from the previous segment (0 = straight, 500 = 90°, 1000 = reversal).
-/// Layer values are averages of the terrain samples along the segment (0..255). Difficulty is 0..1000: the terrain's,
-/// or the hardest feature's on the segment (<see cref="FeatureDifficulty"/>, 0 = no feature) if that is higher.
+/// Layer values are averages of the terrain samples along the segment (0..255). Difficulty is 0..1000: the terrain's
+/// (<see cref="TerrainDifficulty"/>), or the hardest feature's on the segment (<see cref="FeatureDifficulty"/>, 0 = no
+/// feature) if that is higher.
 /// </summary>
 public readonly record struct WaySegment(
     int Index,
@@ -29,7 +43,8 @@ public readonly record struct WaySegment(
     int Trees,
     TerrainSurface Surface,
     int Difficulty,
-    int FeatureDifficulty = 0)
+    int FeatureDifficulty = 0,
+    int TerrainDifficulty = 0)
 {
     /// <summary>Gradient score in tenths (-100..100) along the way's direction; see <see cref="Trails.Gradient"/>.</summary>
     public int GradientTenths => Trails.Gradient.FromPermille(GradePermille);
@@ -66,18 +81,31 @@ public sealed class WayGeometry
         _distance = distance;
         _segments = segments;
 
-        // A feature on the line is mandatory: the hardest one is a floor for the rating.
-        var sorted = segments.Select(s => s.Difficulty).Order().ToArray();
-        int percentile = sorted.Length == 0 ? 0 : sorted[Math.Min(sorted.Length - 1, sorted.Length * 9 / 10)];
-        DifficultyScore = Math.Max(percentile, segments.Length == 0 ? 0 : segments.Max(s => s.FeatureDifficulty));
-        Rating = DifficultyScore switch
+        // The hardest of: the trail overall (median gradient), its hardest stretches (90th-percentile segment, terrain
+        // only) and its hardest feature (a feature on the line is mandatory, so it is a floor for the rating).
+        int overall = 0, sections = 0, feature = 0;
+        if (segments.Length > 0)
         {
-            < GreenMaxDifficulty => TrailRating.Green,
-            < BlueMaxDifficulty => TrailRating.Blue,
-            < RedMaxDifficulty => TrailRating.Red,
-            _ => TrailRating.Black,
-        };
+            var down = segments.Select(s => Math.Max(0, -s.GradientTenths)).Order().ToArray();
+            overall = OverallSteepness(down[down.Length / 2]);
+            var terrain = segments.Select(s => s.TerrainDifficulty).Order().ToArray();
+            sections = terrain[Math.Min(terrain.Length - 1, terrain.Length * 9 / 10)];
+            feature = segments.Max(s => s.FeatureDifficulty);
+        }
+        DifficultyScore = Math.Max(overall, Math.Max(sections, feature));
+        RatingCause = feature >= DifficultyScore ? RatingCause.Feature
+            : overall >= sections ? RatingCause.OverallSteepness
+            : RatingCause.SteepSections;
+        Rating = RatingFor(DifficultyScore);
     }
+
+    public static TrailRating RatingFor(int difficulty) => difficulty switch
+    {
+        < GreenMaxDifficulty => TrailRating.Green,
+        < BlueMaxDifficulty => TrailRating.Blue,
+        < RedMaxDifficulty => TrailRating.Red,
+        _ => TrailRating.Black,
+    };
 
     public WayKind Kind { get; }
     public int SampleCount => _x.Length;
@@ -91,10 +119,16 @@ public sealed class WayGeometry
     public int StartHeightCm => _y[0];
     public int EndHeightCm => _y[^1];
 
-    /// <summary>90th-percentile segment difficulty, at least the hardest feature's (0..1000).</summary>
+    /// <summary>
+    /// 0..1000, the hardest of: the median gradient (<see cref="OverallSteepness"/>), the 90th-percentile segment's terrain
+    /// difficulty and the hardest feature. Rated green &lt; 250 &lt;= blue &lt; 480 &lt;= red &lt; 700 &lt;= black.
+    /// </summary>
     public int DifficultyScore { get; }
 
     public TrailRating Rating { get; }
+
+    /// <summary>Which of the three decided <see cref="DifficultyScore"/>.</summary>
+    public RatingCause RatingCause { get; }
 
     /// <summary>Steepest drop along the way, as a positive gradient score in tenths.</summary>
     public int MaxDropGradient => _segments.Length == 0 ? 0 : Math.Max(0, -_segments.Min(s => s.GradientTenths));
@@ -318,9 +352,10 @@ public sealed class WayGeometry
 
             var surface = (TerrainSurface)Array.IndexOf(surfaceCounts, surfaceCounts.Max());
             int r = (int)(rock / count), ro = (int)(roots / count);
+            int difficulty = Difficulty(kind, grade, turn, r, ro);
             segments.Add(new WaySegment(
                 segments.Count, distance[start], distance[end], grade, turn, r, ro, (int)(trees / count), surface,
-                Difficulty(kind, grade, turn, r, ro)));
+                difficulty, TerrainDifficulty: difficulty));
             start = end;
         }
         return segments.ToArray();
@@ -350,18 +385,39 @@ public sealed class WayGeometry
     }
 
     /// <summary>
-    /// Segment difficulty 0..1000: steepness downhill dominates, then roughness (rock, roots), then tight turns.
-    /// Climbing sections of a trail add a little.
+    /// Segment difficulty 0..1000: the steepness of the stretch (<see cref="SectionSteepness"/>) plus up to 100 for
+    /// roughness (rock, roots) and up to 100 for tight turns. Climbing sections of a trail add a little.
     /// </summary>
     internal static int Difficulty(WayKind kind, int gradePermille, int turnPermille, int rock, int roots)
     {
-        int down = Math.Max(0, -gradePermille);
+        int down = Math.Max(0, -Gradient.FromPermille(gradePermille));
         int up = Math.Max(0, gradePermille);
-        int steep = down <= 150 ? down * 250 / 150 : Math.Min(1000, 250 + (down - 150) * 750 / 450);
         int rough = Math.Min(1000, Math.Max(rock * 1000 / 255, roots * 800 / 255));
         int tight = Math.Min(1000, turnPermille * 2);
         int climb = kind == WayKind.Trail ? Math.Min(300, up * 3) : 0;
-        return Math.Clamp((steep * 55 + rough * 25 + tight * 20) / 100 + climb, 0, 1000);
+        return Math.Clamp(SectionSteepness(down) + rough * 10 / 100 + tight * 10 / 100 + climb, 0, 1000);
+    }
+
+    /// <summary>
+    /// Difficulty of a short stretch this steep (downhill gradient in tenths of the game's score): up to -1.5 (≈ 24 %)
+    /// is green, up to -3.5 (≈ 61 %) blue, up to -4.8 (≈ 94 %) red, steeper black.
+    /// </summary>
+    internal static int SectionSteepness(int downTenths) => Ramp(downTenths, 15, 35, 48, 60);
+
+    /// <summary>
+    /// Difficulty of a trail whose typical (median) gradient is this steep: up to -0.7 (≈ 11 %) is green, up to -1.5
+    /// (≈ 24 %) blue, up to -2.4 (≈ 40 %) red, steeper overall black.
+    /// </summary>
+    internal static int OverallSteepness(int downTenths) => Ramp(downTenths, 7, 15, 24, 35);
+
+    /// <summary>Piecewise linear: 0 → 0, green → 250, blue → 480, red → 700, max → 1000 (and capped there).</summary>
+    private static int Ramp(int x, int green, int blue, int red, int max)
+    {
+        if (x <= 0) return 0;
+        if (x <= green) return x * GreenMaxDifficulty / green;
+        if (x <= blue) return GreenMaxDifficulty + (x - green) * (BlueMaxDifficulty - GreenMaxDifficulty) / (blue - green);
+        if (x <= red) return BlueMaxDifficulty + (x - blue) * (RedMaxDifficulty - BlueMaxDifficulty) / (red - blue);
+        return Math.Min(1000, RedMaxDifficulty + (x - red) * (1000 - RedMaxDifficulty) / (max - red));
     }
 
     private static int Lerp(int a, int b, long f) => (int)(a + (b - a) * f / 1000);

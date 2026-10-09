@@ -352,7 +352,7 @@ public partial class TrailsPanel : HudPanel
             string avg = s.Runs == 0 ? "no runs yet" : $"{(double)s.SumRunMinutes / s.Runs:F1} min · fun {s.SumFun / s.Runs / 10}%";
             main.Text = way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Repairing ? $"{way.Name}  · CLOSED (crew at work)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
             main.AddThemeColorOverride("font_color", way.IsRideable ? UiTheme.Text : UiTheme.Bad);
-            detail.Text = $"{g.Rating} · {g.LengthCm / 100} m · -{(g.StartHeightCm - g.EndHeightCm) / 100} m · steepest {Gradient.Format(-g.MaxDropGradient)}\n" +
+            detail.Text = $"{WayMeshes.RatingText(g)} · {g.LengthCm / 100} m · -{(g.StartHeightCm - g.EndHeightCm) / 100} m · steepest {Gradient.Format(-g.MaxDropGradient)}\n" +
                           $"{s.Runs} runs ({s.RunsToday} today) · {avg}\n" +
                           ConditionSummary(state, way, g) + "\n" +
                           FeatureSummary(network.FeaturesOn(id));

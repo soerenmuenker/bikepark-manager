@@ -556,7 +556,7 @@ public partial class Hud : CanvasLayer
             lines.Add($"{ways.Status}   ·   {ways.PointCount} points");
             if (ways.Plan is { Geometry: { } g } plan)
             {
-                string kind = plan.Kind == WayKind.Trail ? $" · {g.Rating} (difficulty {g.DifficultyScore})" : "";
+                string kind = plan.Kind == WayKind.Trail ? $" · {WayMeshes.RatingText(g)}, difficulty {g.DifficultyScore}" : "";
                 lines.Add($"{plan.LengthCm / 100} m · {(plan.DropCm >= 0 ? "drop" : "climb")} {Math.Abs(plan.DropCm) / 100} m · " +
                           $"steepest {Gradient.Format(-g.MaxDropGradient)} / {Gradient.Format(g.MaxClimbGradient)}{kind}");
                 foreach (var issue in plan.Issues.Where(i => i.Severity == IssueSeverity.Error).Take(2))

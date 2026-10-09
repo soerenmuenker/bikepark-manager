@@ -40,7 +40,8 @@ The drops make Red Rocket black, so fewer riders pick it and more ride the flow 
   preview, exactly like `WayPlanner` / `StructurePlanner`.
 - **Geometry includes features**: `WayGeometry.Build` takes the trail's features (resolved against the catalog).
   A covered segment's difficulty becomes `max(terrain difficulty, feature difficulty)`, and the trail's
-  `DifficultyScore` becomes `max(90th percentile, hardest feature)`, because a feature on the line is mandatory.
+  `DifficultyScore` becomes `max(overall steepness, steep sections, hardest feature)`, because a feature on the line
+  is mandatory (see `architecture.md` for the steepness ramps).
   `WayPlanner` keeps calling it without features (a new trail has none). Placing or removing a feature bumps
   `WaysRevision`, so the network rebuilds. Shapes don't change, so riders' routes stay valid and nobody is reset.
 - **Riders**: crossing a feature adds one fun sample (weighted by the type's `funWeight`): skill match against the
@@ -58,10 +59,10 @@ Turn is the segment's `TurnPermille` (100 ≈ 37°).
 | `berm` | dirt | 12 m | 200 | -5.0 … +0.5 | needs turn ≥ 100 | flow |
 | `rollers` | dirt | 15 m | 250 | -4.0 … 0.0 | – | flow |
 | `table` | dirt | 10 m | 450 | -3.5 … -0.5 | – | flow, some tech |
-| `double` | dirt | 12 m | 650 | -3.5 … -0.5 | – | flow, tech |
+| `double` | dirt | 12 m | 720 (black) | -3.5 … -0.5 | – | flow, tech |
 | `wall_ride` | wood | 8 m | 550 | -4.0 … +0.5 | needs turn ≥ 100 | tech, flow |
 | `kicker` | wood | 6 m | 500 | -4.0 … -0.5 | – | tech |
-| `drop` | wood | 5 m | 700 | -6.0 … -2.0 | – | tech |
+| `drop` | wood | 5 m | 600 (red: a small drop) | -6.0 … -2.0 | – | tech |
 
 Entry fields: `id`, `name`, `material` (`wood`/`dirt`), `kind` (enum, drives the view's mesh), `lengthMeters`,
 `difficulty` (0..1000), `minGradient`/`maxGradient`, `minTurn`, `flowAffinity`/`techAffinity` (0..1000),

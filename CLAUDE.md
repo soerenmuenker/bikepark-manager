@@ -97,7 +97,9 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
     structure validation lives in `StructurePlanner`. Bike access: `LiftMath.IsBikeCarrier` decides which carriers take
     bikes (sim and view); tier changes apply at the next opening; fees are charged by `FinanceSystem`.
 13. **Trail features** store only `{typeId, distanceCm}` on `Way.Features`; their effect (segment difficulty, rating
-    floor) is derived in `WayGeometry`/`WayNetwork`. All placement validation lives in `FeaturePlanner`.
+    floor) is derived in `WayGeometry`/`WayNetwork`. Rating = hardest of overall steepness (median gradient), steep
+    sections (90th-percentile terrain) and features (blue: berms/rollers/tables, red: kickers/wall-rides/small drops,
+    black: doubles). All placement validation lives in `FeaturePlanner`.
 14. **Crew jobs build things.** Player ways and features are planned (`Built = false`) and built by a `Job` (unless the
     debug `instant` flag is set; scenario ways are always built). Only built ways are routed/ridden and only built
     features count. All work, wood and speed numbers come from `WorkCosts`; which trees stand comes only from `Forest`
