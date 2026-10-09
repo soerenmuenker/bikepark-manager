@@ -83,6 +83,9 @@ public sealed class WayStats
     public long ClosedMinutes { get; set; }
 
     public int Repairs { get; set; }
+
+    /// <summary>Seconds riders lost stuck behind slower riders on this trail.</summary>
+    public long HeldUpSeconds { get; set; }
 }
 
 /// <summary>Building rules and rider tuning, loaded from the scenario and saved with the game.</summary>
@@ -137,6 +140,17 @@ public sealed class TrailRules
     public int DescentEnergyPer100Meters { get; set; } = 3;
     public int TiredEnergy { get; set; } = 150;
 
+    // ---- Traffic on trails (riders overtake only on access paths) ----
+
+    /// <summary>Distance a rider keeps to the rider ahead on a trail; nobody overtakes on trails.</summary>
+    public int RiderGapCm { get; set; } = 500;
+
+    /// <summary>Seconds a rider waits at a trail entrance before dropping in (faster riders waiting there go first).</summary>
+    public int EntryWaitSeconds { get; set; } = 10;
+
+    /// <summary>Mood a rider loses per full minute held up behind a slower rider.</summary>
+    public int HeldUpMoodPerMinute { get; set; } = 5;
+
     public List<string> Validate()
     {
         var errors = new List<string>();
@@ -162,6 +176,8 @@ public sealed class TrailRules
         if (DescentSpeedMinCmPerS <= 0 || DescentSpeedMaxCmPerS < DescentSpeedMinCmPerS) errors.Add("trailRules descent speeds are inconsistent");
         if (ClimbEnergyPerMeterGain < 0 || DescentEnergyPer100Meters < 0 || TiredEnergy is < 0 or > 1000)
             errors.Add("trailRules energy values are out of range");
+        if (RiderGapCm is < 0 or > 10_000 || EntryWaitSeconds is < 0 or > 60 || HeldUpMoodPerMinute is < 0 or > 1000)
+            errors.Add("trailRules traffic values must satisfy 0 <= riderGapCm <= 10000, 0 <= entryWaitSeconds <= 60, 0 <= heldUpMoodPerMinute <= 1000");
         return errors;
     }
 }

@@ -183,6 +183,13 @@ Design note: [lifts.md](lifts.md).
   applies booked tiers at opening, dispatches carriers on an integer ms clock and boards the bike carriers
   (`LiftMath.IsBikeCarrier`). GuestSystem charges queue mood and restores energy while queuing or riding.
   FinanceSystem pays each operator the active tier's daily fee.
+- **Trail traffic**: nobody overtakes on trails (only on access paths). Each minute `RiderSystem` first decides
+  (laps, lunch), then moves riders: those already on a trail first, front to back per trail, so each follower is
+  capped at `trailRules.riderGapCm` behind where the rider ahead is now (`TrailTraffic`, derived per minute). Time
+  lost behind a slower rider costs `heldUpMoodPerMinute` and is counted in `WayStats.HeldUpSeconds`. Every trail leg
+  starts with a wait at its entrance (`Guest.EntryWaitMs`, `entryWaitSeconds`): the rider re-checks the trail is
+  open, gives way to riders on the trail within the gap and to faster (higher-skill) riders waiting there (for up
+  to a minute), then drops in; `RunStarted` is published then.
 - **Commands**: `buildLift`, `buildParkingLot`, `setLiftBikeAccess` (from the next opening), `deleteLift`,
   `deleteParkingLot` (rejected while ways attach). `buildWay` gained `origin` (`scenario` ways can't be deleted).
 - **Saves**: all additions are new properties with defaults. Version-2 saves without them still load (tested), so

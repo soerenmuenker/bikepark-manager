@@ -203,9 +203,12 @@ public static class Jobs
             ctx.Publish(new TrailReopened(ctx.Tick, trail.Id));
     }
 
-    /// <summary>True while any rider is travelling along the way (riding down a trail, or on it on the way to another).</summary>
+    /// <summary>
+    /// True while any rider is travelling along the way (riding down a trail, or on it on the way to another). Riders
+    /// still waiting at its entrance don't count: they never drop into a closed trail.
+    /// </summary>
     public static bool HasRidersOn(WorldState state, int wayId) =>
-        state.Guests.Any(g => g.Activity is RiderActivity.Descending or RiderActivity.Climbing
+        state.Guests.Any(g => g.Activity is RiderActivity.Descending or RiderActivity.Climbing && g.EntryWaitMs < 0
                               && g.LegIndex >= 0 && g.LegIndex < g.Route.Count
                               && g.Route[g.LegIndex] is { Kind: LegKind.Way } leg && leg.WayId == wayId);
 

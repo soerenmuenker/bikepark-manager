@@ -142,7 +142,7 @@ public partial class RiderView : Node3D
             StopFollowing();
         var followed = _followId == 0 ? null : sim.State.Guests.FirstOrDefault(g => g.Id == _followId);
         FollowedRider = followed is null ? null
-            : $"Rider #{followed.Id} · skill {followed.Skill / 10} · {followed.Style} · {followed.Activity}" +
+            : $"Rider #{followed.Id} · skill {followed.Skill / 10} · {followed.Style} · {(followed.EntryWaitMs >= 0 ? "waiting to drop in" : followed.Activity)}" +
               (followed.TrailId != 0 ? $" → {network.FindWay(followed.TrailId)?.Name}" : "") +
               $" · energy {followed.Energy / 10}% · mood {followed.Happiness / 10}%";
     }

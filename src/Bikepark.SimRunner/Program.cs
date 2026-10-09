@@ -175,7 +175,8 @@ public static class Program
             trail ? w.Features.Where(f => f.Built).Select(f => $"{f.TypeId}@{f.DistanceCm / 100}m {TrailCondition.Permille(f) / 10.0:0.#} %").ToList() : null,
             trail ? TrailCondition.WorstPermille(w) : null,
             trail ? w.Stats.ClosedMinutes : null,
-            trail ? w.Stats.Repairs : null);
+            trail ? w.Stats.Repairs : null,
+            trail ? w.Stats.HeldUpSeconds / 60 : null);
     }).ToList();
 
     private static CrewReport? CrewReport(Simulation sim, List<string> completed)
@@ -289,7 +290,8 @@ internal sealed record WayReport(
     List<string>? FeatureConditions,
     int? WorstFeaturePermille,
     long? ClosedMinutes,
-    int? Repairs);
+    int? Repairs,
+    long? HeldUpMinutes);
 
 internal sealed record RunnerOutput(
     int Days,

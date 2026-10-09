@@ -13,7 +13,9 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     `TrailFeature` (feature catalog types + placed features), `FeaturePlanner` (feature placement validation)
   - `Lifts/` – `LiftType`/`LiftOperator`/`LiftRules` (content), `Lift`/`ParkingLot` (state), `LiftMath` (bike carriers,
     throughput), `StructurePlanner` (validation of lifts, parking, pads), `LiftNetwork` (hubs + links for the network)
-  - `Systems/RiderSystem.cs` – riders choose a trail and the cheaper way up (walk + lift queue, or pedal the paths), ride down, score fun (segments + features)
+  - `Systems/RiderSystem.cs` – riders choose a trail and the cheaper way up (walk + lift queue, or pedal the paths), ride down, score fun (segments + features);
+    no overtaking on trails (`TrailTraffic`: gap to the rider ahead, held-up riders lose mood; a short wait at each
+    trail entrance where faster riders go first)
   - `Systems/LiftSystem.cs` – booked bike access tiers at opening, carrier dispatch, boarding bike cabins from the FIFO queue
   - `Crew/` – `CrewRules`/`ToolType` (content), `CrewMember`/`Job` (state), `WorkCosts` (all work/wood/speed numbers),
     `Forest` (which scatter trees are gone or claimed), `ClearingPlanner` (felling areas), `Jobs` (queue/cancel/complete)

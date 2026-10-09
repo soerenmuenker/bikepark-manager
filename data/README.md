@@ -24,7 +24,10 @@ The same `{tick, command}` list format is accepted by `Bikepark.SimRunner --comm
 scale (1 point = 9°, 0 flat, ±10 vertical) in tenths: `pathMaxGradient` 40 / `pathSteepGradient` 20,
 `trailMaxDropGradient` 80 / `trailSteepDropGradient` 50, `trailMaxClimbGradient` 30 / `trailSteepClimbGradient` 15
 ("max" = can't build, "steep" = warning). Also `pathGradingMeters` (gravel smoothing), `snapRadiusMeters`,
-min/max length, corridor widths, climb/descent speeds in cm/s, energy costs, `tiredEnergy`.
+min/max length, corridor widths, climb/descent speeds in cm/s, energy costs, `tiredEnergy`. Trail traffic:
+`riderGapCm` (distance kept to the rider ahead; nobody overtakes on trails, only on gravel paths), `entryWaitSeconds`
+(wait at a trail entrance; faster riders waiting there go first) and `heldUpMoodPerMinute` (mood lost while stuck
+behind a slower rider).
 
 `terrain` (`TerrainSettings`, all optional): `seed` (defaults to the scenario seed), `sizeMeters`,
 `baseElevationCm`, `reliefCm`, `peakXMeters`, `peakZMeters`, `peakRadiusMeters`, `ridgeCount`,

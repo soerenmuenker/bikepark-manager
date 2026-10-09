@@ -323,6 +323,12 @@ public sealed class Guest
     /// <summary>Index of the leg the rider is on.</summary>
     public int LegIndex { get; set; }
 
+    /// <summary>
+    /// Milliseconds the rider has been waiting at the entrance of the trail leg they are on; -1 once they have dropped in
+    /// (or when they are not on a trail).
+    /// </summary>
+    public int EntryWaitMs { get; set; } = -1;
+
     /// <summary>The trail this lap is for (0 = none).</summary>
     public int TrailId { get; set; }
 

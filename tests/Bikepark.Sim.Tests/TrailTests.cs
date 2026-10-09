@@ -378,6 +378,134 @@ public class RiderTests
     }
 
     /// <summary>A test world at 08:00 on day 0 with the demo network built.</summary>
+    // ---------------------------------------------------------------- traffic on trails
+
+    [Fact]
+    public void OnBusyTrails_NobodyOvertakes_AndRidersGetHeldUp()
+    {
+        var sim = TestWorlds.RunLift(1337, 11 * 60, TestWorlds.DemoLiftNetwork());
+        var network = sim.Network;
+        Dictionary<int, (List<RouteLeg> Route, int Trail, long Position)> before = [];
+        int pairsChecked = 0;
+        for (int tick = 0; tick < 180; tick++)
+        {
+            sim.Step();
+            var now = sim.State.Guests
+                .Where(g => g.Activity == RiderActivity.Descending && g.EntryWaitMs < 0 && g.Route.Count > 0)
+                .ToDictionary(g => g.Id, g => (g.Route, Trail: g.Route[g.LegIndex].WayId, Position: TrailPosition(g)));
+            foreach (var (a, pa) in now)
+                foreach (var (b, pb) in now)
+                {
+                    if (a == b || pa.Trail != pb.Trail) continue;
+                    if (!before.TryGetValue(a, out var wa) || !before.TryGetValue(b, out var wb)) continue;
+                    if (!ReferenceEquals(wa.Route, pa.Route) || !ReferenceEquals(wb.Route, pb.Route) || wa.Trail != pa.Trail || wb.Trail != pb.Trail) continue;
+                    if (wa.Position > wb.Position)
+                    {
+                        Assert.True(pa.Position > pb.Position, $"rider {b} overtook rider {a} on trail {pa.Trail}");
+                        pairsChecked++;
+                    }
+                }
+            before = now;
+        }
+        Assert.True(pairsChecked > 100, $"only {pairsChecked} pairs of riders seen on a trail");
+        Assert.True(sim.State.Ways.Sum(w => w.Stats.HeldUpSeconds) > 0);
+        Assert.All(sim.State.Ways.Where(w => w.Kind == WayKind.AccessPath), w => Assert.Equal(0, w.Stats.HeldUpSeconds));
+
+        static long TrailPosition(Guest g)
+        {
+            long before = g.Route.Take(g.LegIndex).Sum(l => l.LengthCm);
+            var leg = g.Route[g.LegIndex];
+            return leg.FromCm + (g.RouteProgressCm - before);
+        }
+    }
+
+    [Fact]
+    public void AFastRiderBehindASlowOne_StaysBehind_AndLosesMood()
+    {
+        var sim = DemoWorld(out var network);
+        sim.RunTicks(2 * 60); // the park is open
+        const int redRocket = 3;
+        long length = network.Geometry(redRocket).LengthCm;
+        var slow = OnTrail(AddRider(sim, skill: 0), 3_000);
+        var fast = OnTrail(AddRider(sim, skill: 1000), 2_000);
+
+        sim.RunTicks(3);
+        Assert.Equal(RiderActivity.Descending, fast.Activity);
+        Assert.True(fast.RouteProgressCm <= slow.RouteProgressCm - sim.State.TrailRules.RiderGapCm);
+        Assert.True(fast.Happiness < 700 - 8, $"fast rider's mood {fast.Happiness}"); // ~5 per minute held up (± 1 noise)
+        Assert.True(slow.Happiness >= 700 - 3, $"slow rider's mood {slow.Happiness}");
+        Assert.True(network.FindWay(redRocket)!.Stats.HeldUpSeconds >= 120);
+
+        Guest OnTrail(Guest g, long at)
+        {
+            g.Activity = RiderActivity.Descending;
+            g.Route = [new RouteLeg(redRocket, 0, length)];
+            g.TrailId = redRocket;
+            g.RouteProgressCm = at;
+            g.EntryWaitMs = -1;
+            return g;
+        }
+    }
+
+    [Fact]
+    public void AtATrailEntrance_RidersWait_AndGiveWayToFasterOnes()
+    {
+        var sim = DemoWorld(out var network);
+        const int redRocket = 3;
+        var leg = new RouteLeg(redRocket, 0, network.Geometry(redRocket).LengthCm);
+        Guest Rider(int skill, int waitedMs, long progress = 0)
+        {
+            var g = AddRider(sim, skill);
+            g.Activity = RiderActivity.Descending;
+            g.Route = [leg];
+            g.EntryWaitMs = waitedMs;
+            g.RouteProgressCm = progress;
+            return g;
+        }
+        int gap = sim.State.TrailRules.RiderGapCm;
+
+        var slow = Rider(300, 10_000);
+        var fast = Rider(900, 0);
+        var traffic = new TrailTraffic(network, [slow, fast]);
+        Assert.True(traffic.MustGiveWay(slow, leg, gap));   // a faster rider is waiting too
+        Assert.False(traffic.MustGiveWay(fast, leg, gap));
+        slow.EntryWaitMs = 60_000;
+        Assert.False(traffic.MustGiveWay(slow, leg, gap));  // waited long enough: no more giving way
+
+        var onTrail = Rider(500, -1, progress: gap / 2);
+        traffic = new TrailTraffic(network, [fast, onTrail]);
+        Assert.True(traffic.MustGiveWay(fast, leg, gap));   // somebody just dropped in
+        onTrail.RouteProgressCm = gap;
+        Assert.False(traffic.MustGiveWay(fast, leg, gap));
+        Assert.Equal(0, traffic.RoomAhead(new Guest { Id = 999_999, Route = [leg], Activity = RiderActivity.Descending }, redRocket, 0, gap));
+    }
+
+    [Fact]
+    public void ARunStarts_AfterTheEntranceWait()
+    {
+        var sim = DemoWorld(out _);
+        sim.RunTicks(2 * 60);
+        sim.State.TrailRules.EntryWaitSeconds = 60; // a whole minute, so the wait is seen between two ticks
+        var started = new List<RunStarted>();
+        sim.Events.Clear();
+        sim.Events.Subscribe<RunStarted>(started.Add);
+        var guest = AddRider(sim, skill: 600);
+        bool sawWaiting = false;
+        for (int i = 0; i < 120 && guest.RunsCompleted == 0; i++)
+        {
+            sim.Step();
+            sim.Events.Dispatch();
+            if (guest.EntryWaitMs >= 0)
+            {
+                sawWaiting = true;
+                Assert.Equal(guest.Route.Take(guest.LegIndex).Sum(l => l.LengthCm), guest.RouteProgressCm); // still at the entrance
+            }
+        }
+        Assert.Equal(1, guest.RunsCompleted);
+        Assert.True(sawWaiting);
+        Assert.Contains(started, s => s.GuestId == guest.Id);
+    }
+
     private static Simulation DemoWorld(out WayNetwork network)
     {
         var sim = new Simulation(TestWorlds.Create());

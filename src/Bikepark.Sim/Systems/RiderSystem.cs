@@ -33,6 +33,7 @@ internal sealed class RiderSystem : ISimSystem
             return;
         }
 
+        var movers = new List<Guest>();
         foreach (var guest in state.Guests)
         {
             if (guest.Activity == RiderActivity.Wandering)
@@ -52,8 +53,14 @@ internal sealed class RiderSystem : ISimSystem
                 if (!StartLap(ctx, network, guest)) continue;
             }
 
-            Advance(ctx, network, guest, TickMilliseconds);
+            if (IsMoving(guest)) movers.Add(guest);
         }
+
+        // Riders already on a trail move first, front to back, so each one sees where the rider ahead is now; then the
+        // others in list order (riders dropping into a trail this minute line up behind them).
+        var traffic = new TrailTraffic(network, movers);
+        foreach (var guest in traffic.MovingOrder(movers))
+            Advance(ctx, network, traffic, guest, TickMilliseconds);
     }
 
     /// <summary>
@@ -134,6 +141,7 @@ internal sealed class RiderSystem : ISimSystem
         guest.Route = [];
         guest.RouteProgressCm = 0;
         guest.LegIndex = 0;
+        guest.EntryWaitMs = -1;
         guest.TrailId = 0;
         guest.RunFun = 0;
         guest.RunSegments = 0;
@@ -236,13 +244,44 @@ internal sealed class RiderSystem : ISimSystem
     private static bool IsMoving(Guest guest) =>
         guest.Activity is RiderActivity.Climbing or RiderActivity.Descending or RiderActivity.Walking or RiderActivity.OnLift;
 
-    private static void Advance(SimContext ctx, WayNetwork network, Guest guest, int budgetMs)
+    private static void Advance(SimContext ctx, WayNetwork network, TrailTraffic traffic, Guest guest, int budgetMs)
     {
         var rules = ctx.State.TrailRules;
+        int heldUpMs = 0;
         while (budgetMs > 0 && IsMoving(guest))
         {
             var (legIndex, offset) = LocateOnRoute(guest);
             var leg = guest.Route[legIndex];
+            if (guest.EntryWaitMs >= 0)
+            {
+                // At a trail entrance: re-check it is open, wait a moment, give way, then drop in.
+                traffic.Track(guest);
+                if (network.FindWay(leg.WayId) is { IsRideable: false } closed)
+                {
+                    ChooseAgainAt(ctx, network, guest, closed, leg.FromCm);
+                    continue;
+                }
+                int wait = rules.EntryWaitSeconds * 1000 - guest.EntryWaitMs;
+                if (wait > 0)
+                {
+                    wait = Math.Min(wait, budgetMs);
+                    guest.EntryWaitMs += wait;
+                    budgetMs -= wait;
+                    continue;
+                }
+                if (traffic.MustGiveWay(guest, leg, rules.RiderGapCm))
+                {
+                    guest.EntryWaitMs += budgetMs;
+                    break;
+                }
+                guest.EntryWaitMs = -1;
+                if (legIndex == guest.Route.Count - 1)
+                {
+                    guest.RunStartTick = ctx.Tick;
+                    ctx.Publish(new RunStarted(ctx.Tick, guest.Id, guest.TrailId));
+                }
+                continue;
+            }
             if (offset == leg.LengthCm)
             {
                 FinishLeg(ctx, network, guest, legIndex);
@@ -290,7 +329,15 @@ internal sealed class RiderSystem : ISimSystem
             long reach = (long)speed * budgetMs / 1000;
             if (reach <= 0) break;
             long move = Math.Min(reach, toBoundary);
-            budgetMs -= (int)Math.Min(budgetMs, Math.Max(1, (move * 1000 + speed - 1) / speed));
+            // No overtaking on trails: stay a gap behind the rider ahead (who has already moved this minute).
+            bool heldUp = false;
+            if (geometry.Kind == WayKind.Trail && traffic.RoomAhead(guest, leg.WayId, position, rules.RiderGapCm) is var room && room < move)
+            {
+                move = Math.Max(0, room);
+                heldUp = true;
+            }
+            if (move > 0 || !heldUp)
+                budgetMs -= (int)Math.Min(budgetMs, Math.Max(1, (move * 1000 + speed - 1) / speed));
             guest.RouteProgressCm += move;
 
             // Energy: climbing costs per meter gained, more on steep grades (a 100 % grade doubles it);
@@ -321,7 +368,18 @@ internal sealed class RiderSystem : ISimSystem
                     guest.RunSegments++;
                 }
             }
+
+            if (heldUp)
+            {
+                // Stuck behind a slower rider for the rest of the minute.
+                heldUpMs += budgetMs;
+                if (network.FindWay(leg.WayId) is { } held) held.Stats.HeldUpSeconds += budgetMs / 1000;
+                budgetMs = 0;
+            }
         }
+
+        if (heldUpMs > 0)
+            guest.Happiness = Math.Max(0, guest.Happiness - (int)((long)rules.HeldUpMoodPerMinute * heldUpMs / TickMilliseconds));
     }
 
     /// <summary>Speed along a lift or walk leg in cm/s (0 if the lift no longer exists).</summary>
@@ -354,18 +412,24 @@ internal sealed class RiderSystem : ISimSystem
             var next = guest.Route[legIndex + 1];
             if (next.Kind == LegKind.Way && network.FindWay(next.WayId) is { Kind: WayKind.Trail, IsRideable: false } closed)
             {
-                guest.LocationHubId = 0;
-                guest.LocationWayId = closed.Id;
-                guest.LocationCm = next.FromCm;
-                ClearLap(ctx.State, guest);
-                if (!StartLap(ctx, network, guest))
-                    PlaceAtBase(ctx.State, guest, network);
+                ChooseAgainAt(ctx, network, guest, closed, next.FromCm);
                 return;
             }
             EnterLeg(ctx, network, guest, legIndex + 1);
         }
         else
             FinishRun(ctx, network, guest);
+    }
+
+    /// <summary>A rider at the entrance of a closed trail picks another lap from there (back to the base if there is none).</summary>
+    private static void ChooseAgainAt(SimContext ctx, WayNetwork network, Guest guest, Way closed, long entranceCm)
+    {
+        guest.LocationHubId = 0;
+        guest.LocationWayId = closed.Id;
+        guest.LocationCm = entranceCm;
+        ClearLap(ctx.State, guest);
+        if (!StartLap(ctx, network, guest))
+            PlaceAtBase(ctx.State, guest, network);
     }
 
     private static void EnterLeg(SimContext ctx, WayNetwork network, Guest guest, int legIndex)
@@ -389,12 +453,9 @@ internal sealed class RiderSystem : ISimSystem
             default:
                 bool onTrail = network.FindWay(leg.WayId)?.Kind == WayKind.Trail;
                 guest.Activity = onTrail ? RiderActivity.Descending : RiderActivity.Climbing;
+                // Every trail starts with a short wait at its entrance (see Advance); the run starts on dropping in.
+                guest.EntryWaitMs = onTrail ? 0 : -1;
                 break;
-        }
-        if (legIndex == guest.Route.Count - 1)
-        {
-            guest.RunStartTick = ctx.Tick;
-            ctx.Publish(new RunStarted(ctx.Tick, guest.Id, guest.TrailId));
         }
     }
 
@@ -491,5 +552,98 @@ internal sealed class RiderSystem : ISimSystem
         int fun = (match * 45 + speedScore * 25 + style * 30) / 100;
         if (difficulty > guest.Skill + 200) fun /= 2; // scared
         return fun;
+    }
+}
+
+/// <summary>
+/// Who is on which trail during one minute of <see cref="RiderSystem"/> (derived, rebuilt every minute). Riders on a
+/// trail keep <see cref="TrailRules.RiderGapCm"/> to the rider ahead, so nobody overtakes on trails; at an entrance a
+/// rider gives way to riders close by on the trail and to faster riders waiting there too.
+/// </summary>
+internal sealed class TrailTraffic
+{
+    /// <summary>A rider who has waited this long at an entrance doesn't give way to faster riders any more.</summary>
+    private const int MaxGiveWayMs = 60_000;
+
+    private readonly WayNetwork _network;
+    private readonly Dictionary<int, List<Guest>> _byTrail = [];
+
+    public TrailTraffic(WayNetwork network, List<Guest> movers)
+    {
+        _network = network;
+        foreach (var guest in movers)
+            Track(guest);
+    }
+
+    /// <summary>Riders on a trail (dropped in) first, by trail and front to back; then everybody else in list order.</summary>
+    public IEnumerable<Guest> MovingOrder(List<Guest> movers) =>
+        movers.Select((g, i) => (Guest: g, Index: i, Trail: OnTrail(g, out long position) ? Leg(g).WayId : 0, Position: position))
+            .OrderBy(x => x.Trail == 0 ? 1 : 0)
+            .ThenBy(x => x.Trail)
+            .ThenByDescending(x => x.Position)
+            .ThenBy(x => x.Index)
+            .Select(x => x.Guest)
+            .ToList();
+
+    /// <summary>Registers a rider whose current leg is a trail (call when they get there).</summary>
+    public void Track(Guest guest)
+    {
+        if (guest.Route.Count == 0 || Leg(guest) is not { Kind: LegKind.Way } leg || _network.FindWay(leg.WayId)?.Kind != WayKind.Trail)
+            return;
+        if (!_byTrail.TryGetValue(leg.WayId, out var list))
+            _byTrail[leg.WayId] = list = [];
+        if (!list.Contains(guest))
+            list.Add(guest);
+    }
+
+    /// <summary>How far the rider may move from <paramref name="position"/> on the trail before closing up on the rider ahead.</summary>
+    public long RoomAhead(Guest guest, int trailId, long position, int gapCm)
+    {
+        if (!_byTrail.TryGetValue(trailId, out var list)) return long.MaxValue;
+        long room = long.MaxValue;
+        foreach (var other in list)
+        {
+            if (other == guest || !OnTrail(other, out long at) || Leg(other).WayId != trailId) continue;
+            bool ahead = at > position || at == position && other.Id < guest.Id;
+            if (ahead) room = Math.Min(room, at - gapCm - position);
+        }
+        return room;
+    }
+
+    /// <summary>
+    /// True if a rider at the entrance of <paramref name="leg"/> has to wait: a rider on the trail is within the gap of
+    /// the entrance (just ahead, or coming down from behind at a junction), or a faster rider is waiting there too.
+    /// </summary>
+    public bool MustGiveWay(Guest guest, RouteLeg leg, int gapCm)
+    {
+        if (!_byTrail.TryGetValue(leg.WayId, out var list)) return false;
+        foreach (var other in list)
+        {
+            if (other == guest || other.Route.Count == 0 || Leg(other) is not { Kind: LegKind.Way } otherLeg || otherLeg.WayId != leg.WayId) continue;
+            if (OnTrail(other, out long at))
+            {
+                if (Math.Abs(at - leg.FromCm) < gapCm) return true;
+            }
+            else if (other.EntryWaitMs >= 0 && otherLeg.FromCm == leg.FromCm && other.Skill > guest.Skill
+                     && guest.EntryWaitMs < MaxGiveWayMs && other.Activity == RiderActivity.Descending)
+                return true;
+        }
+        return false;
+    }
+
+    private static RouteLeg Leg(Guest guest) => guest.Route[Math.Clamp(guest.LegIndex, 0, guest.Route.Count - 1)];
+
+    /// <summary>True if the rider has dropped into the trail of their current leg; <paramref name="position"/> is where on it.</summary>
+    private bool OnTrail(Guest guest, out long position)
+    {
+        position = 0;
+        if (guest.EntryWaitMs >= 0 || guest.Activity != RiderActivity.Descending || guest.Route.Count == 0) return false;
+        var leg = Leg(guest);
+        if (leg.Kind != LegKind.Way || _network.FindWay(leg.WayId)?.Kind != WayKind.Trail) return false;
+        long before = 0;
+        for (int i = 0; i < guest.LegIndex; i++)
+            before += guest.Route[i].LengthCm;
+        position = leg.FromCm + Math.Clamp(guest.RouteProgressCm - before, 0, leg.LengthCm);
+        return true;
     }
 }

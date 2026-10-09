@@ -56,7 +56,12 @@
     "descentSpeedMaxCmPerS": 900,
     "climbEnergyPerMeterGain": 2,
     "descentEnergyPer100Meters": 3,
-    "tiredEnergy": 150
+    "tiredEnergy": 150,
+    // Trail traffic: no overtaking on trails (only on gravel paths); riders keep this gap, wait a moment at the trail
+    // entrance (letting faster riders waiting there go first) and lose mood while held up behind a slower rider.
+    "riderGapCm": 500,
+    "entryWaitSeconds": 10,
+    "heldUpMoodPerMinute": 5
   },
   // Weather: each day is rolled at midnight from these odds (permille), tomorrow's is the forecast. Rain wets the ground
   // (wetness 0..1000), which dries afterwards; fewer guests come on bad days and riders in the rain lose mood.
