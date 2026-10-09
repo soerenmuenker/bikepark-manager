@@ -321,6 +321,9 @@ internal sealed class FinanceSystem : ISimSystem
             InsuranceCents: state.Safety.InsuranceTodayCents,
             LiftUpkeepCents: state.Finance.LiftUpkeepTodayCents);
         ctx.Publish(new DayEnded(ctx.Tick, report));
+        state.DayHistory.Add(report);
+        if (state.DayHistory.Count > WorldState.DayHistoryDays)
+            state.DayHistory.RemoveRange(0, state.DayHistory.Count - WorldState.DayHistoryDays);
 
         foreach (var way in state.Ways)
             way.Stats.RunsToday = 0;

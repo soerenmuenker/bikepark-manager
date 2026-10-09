@@ -1152,6 +1152,9 @@ public partial class MapPanel : HudPanel
 
 public partial class SystemPanel : HudPanel
 {
+    private Button _menu = null!;
+    private Label _saveNote = null!;
+
     public override string Title => "Game";
 
     protected override void Build()
@@ -1161,8 +1164,11 @@ public partial class SystemPanel : HudPanel
         time.AddChild(UiTheme.Button("Turbo till closing", Ctx.Host.TurboToClosingHours, "Run fast until the park closes"));
         Body.AddChild(time);
         var files = Row(8);
-        files.AddChild(UiTheme.Button("Save", Ctx.Host.Save));
-        files.AddChild(UiTheme.Button("Load", () => Ctx.Host.Load()));
+        _menu = UiTheme.Button("Back to menu", Ctx.Host.BackToMenu, "To the start screen (your career is saved first)");
+        files.AddChild(_menu);
+        _saveNote = UiTheme.Label("", 12, UiTheme.TextDim);
+        _saveNote.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        files.AddChild(_saveNote);
         Body.AddChild(files);
         var instant = new CheckButton
         {
@@ -1183,5 +1189,12 @@ public partial class SystemPanel : HudPanel
         Body.AddChild(UiTheme.Label("Space pause · 1–4 speed · +/− zoom · B build · V trails · C crew · R riders · G lifts · M finances · U reputation · O map", 11, UiTheme.TextDim));
     }
 
-    public override void Refresh() { }
+    public override void Refresh()
+    {
+        bool career = Ctx.Host.CurrentCareerId is not null;
+        _menu.Text = career ? "Save & back to menu" : "Back to menu";
+        _saveNote.Text = career
+            ? "Your career is saved automatically when you quit or go back to the menu."
+            : "The Demo is a sandbox: it is never saved.";
+    }
 }

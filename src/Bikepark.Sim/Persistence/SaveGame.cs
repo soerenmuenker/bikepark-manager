@@ -80,7 +80,18 @@ public static class SaveGame
         return root.ToJsonString();
     }
 
-    public static void Save(WorldState state, string path) => File.WriteAllText(path, Serialize(state));
+    public static void Save(WorldState state, string path) => SaveAtomic(state, path);
+
+    /// <summary>
+    /// Writes the save next to <paramref name="path"/> first and then moves it into place, so a crash while writing never
+    /// leaves a broken file behind (the old one stays until the new one is complete).
+    /// </summary>
+    public static void SaveAtomic(WorldState state, string path)
+    {
+        string temp = path + ".tmp";
+        File.WriteAllText(temp, Serialize(state));
+        File.Move(temp, path, overwrite: true);
+    }
 
     public static WorldState Load(string path) => Deserialize(File.ReadAllText(path));
 

@@ -94,6 +94,7 @@ public partial class Hud : CanvasLayer
         BuildUi();
         _ctx.Host.SimulationReplaced += Subscribe;
         Subscribe(_ctx.Sim);
+        _ctx.Host.CareerSaved += OnCareerSaved;
         _land = new LandView(_ctx.Host, _ctx.Terrain, () => _ctx.Kpi.Level);
         _ctx.Terrain.CallDeferred(Node.MethodName.AddChild, _land);
         _startScreen = new StartScreen(_ctx.Host);
@@ -112,6 +113,7 @@ public partial class Hud : CanvasLayer
     public override void _ExitTree()
     {
         _ctx.Host.SimulationReplaced -= Subscribe;
+        _ctx.Host.CareerSaved -= OnCareerSaved;
         foreach (var s in _subscriptions) s.Dispose();
     }
 
@@ -386,7 +388,15 @@ public partial class Hud : CanvasLayer
             _repairDialog.Refresh();
         }
         _land.ShowLabels = _open == Menu.Land;
-        _startScreen.Visible = _ctx.Host.ShowStartScreen;
+        if (_startScreen.Visible != _ctx.Host.ShowStartScreen)
+        {
+            _startScreen.Visible = _ctx.Host.ShowStartScreen;
+            if (_startScreen.Visible)
+            {
+                _startScreen.Refresh();
+                Toggle(Menu.None);
+            }
+        }
         UpdateClock();
         UpdateToolPanel();
         UpdateToolChip();
@@ -646,6 +656,7 @@ public partial class Hud : CanvasLayer
         foreach (var s in _subscriptions) s.Dispose();
         _subscriptions.Clear();
         _ctx.Days.Clear();
+        _ctx.Days.AddRange(sim.State.DayHistory); // charts continue after loading a career
         _repairDialog.Clear();
         var events = sim.Events;
         _subscriptions.Add(events.Subscribe<DayEnded>(e =>
@@ -727,6 +738,11 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<ParkingLotBuilt>(_ => Toast("Built a parking lot", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessBooked>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: true), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessChanged>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: false), UiTheme.Accent)));
+    }
+
+    private void OnCareerSaved(CareerInfo info)
+    {
+        if (IsInsideTree()) Toast($"Career saved: {info.ParkName}, day {info.Day + 1}", UiTheme.Good);
     }
 
     private string LiftName(int liftId) => _ctx.Sim.State.Lifts.FirstOrDefault(l => l.Id == liftId)?.Name ?? "The lift";

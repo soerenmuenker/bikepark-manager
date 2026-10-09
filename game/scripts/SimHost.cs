@@ -50,8 +50,6 @@ public partial class SimHost : Node
     /// <summary>Upper bound on ticks per frame, so a slow frame never snowballs.</summary>
     [Export] public int MaxTicksPerFrame { get; set; } = 240;
 
-    [Export] public string SavePath { get; set; } = "user://savegame.json";
-
     [Export] public string DemoNetworkFile { get; set; } = "data/scripts/demo_lift_network.json";
 
     [Export] public string DemoFeaturesFile { get; set; } = "data/scripts/demo_features.json";
@@ -111,9 +109,18 @@ public partial class SimHost : Node
                 };
         var scenario = ScenarioLoader.LoadFile(ResolveContentPath(ScenarioFile));
         ReplaceSimulation(new Simulation(ScenarioLoader.CreateWorld(scenario)));
-        // Debug runs that set up a world (--demo, --scenario=, --script=, --advance=) skip the start screen.
-        if (!args.Any(a => a.StartsWith("--demo", StringComparison.Ordinal) || a.StartsWith("--scenario=", StringComparison.Ordinal)
-                           || a.StartsWith("--script=", StringComparison.Ordinal) || a.StartsWith("--advance=", StringComparison.Ordinal)))
+        foreach (string arg in args)
+        {
+            if (arg.StartsWith("--new-career=", StringComparison.Ordinal)) NewCareer(arg[13..]);
+            else if (arg.StartsWith("--career=", StringComparison.Ordinal)) ContinueCareer(arg[9..]);
+            else if (arg == "--list-careers")
+                foreach (var career in CareerStore.List())
+                    GD.Print($"career {career.Id}: {career.ParkName}, day {career.Day + 1}, level {career.Level}, {career.MoneyCents / 100} €");
+        }
+        // Debug runs that set up a world (--demo, --scenario=, --script=, --advance=, a career) skip the start screen.
+        if (CurrentCareerId is null
+            && !args.Any(a => a.StartsWith("--demo", StringComparison.Ordinal) || a.StartsWith("--scenario=", StringComparison.Ordinal)
+                              || a.StartsWith("--script=", StringComparison.Ordinal) || a.StartsWith("--advance=", StringComparison.Ordinal)))
         {
             ShowStartScreen = true;
             SetSpeedIndex(0);
@@ -280,24 +287,74 @@ public partial class SimHost : Node
             LoadDemoFeatures();
             InstantBuild = instant;
         }
+        CurrentCareerId = null;
         ShowStartScreen = false;
         SetSpeedIndex(1);
     }
 
-    public void Save()
+    // ---------------------------------------------------------------- careers
+
+    /// <summary>The career being played (its save file id), or null (the Demo, which is never saved).</summary>
+    public string? CurrentCareerId { get; private set; }
+
+    /// <summary>Raised after the career was saved (back to the menu, quitting).</summary>
+    public event Action<CareerInfo>? CareerSaved;
+
+    /// <summary>Starts a new Starter Valley career with this park name and saves it at once (so it is in the list).</summary>
+    public void NewCareer(string parkName)
     {
-        SaveGame.Save(Sim.State, ProjectSettings.GlobalizePath(SavePath));
-        GD.Print($"Saved to {ProjectSettings.GlobalizePath(SavePath)}");
+        ScenarioFile = CareerScenarioFile;
+        var scenario = ScenarioLoader.LoadFile(ResolveContentPath(CareerScenarioFile));
+        if (!string.IsNullOrWhiteSpace(parkName))
+            scenario.ParkName = parkName.Trim()[..Math.Min(parkName.Trim().Length, RenameParkCommand.MaxLength)];
+        ReplaceSimulation(new Simulation(ScenarioLoader.CreateWorld(scenario)));
+        CurrentCareerId = CareerStore.NewId(Sim.State.Park.Name);
+        SaveCareer();
+        ShowStartScreen = false;
+        SetSpeedIndex(1);
     }
 
-    public bool Load()
+    /// <summary>Continues a saved career where it was left.</summary>
+    public void ContinueCareer(string id)
     {
-        string path = ProjectSettings.GlobalizePath(SavePath);
-        if (!File.Exists(path))
-            return false;
-        ReplaceSimulation(new Simulation(SaveGame.Load(path)));
+        ReplaceSimulation(new Simulation(CareerStore.Load(id)));
+        CurrentCareerId = id;
+        ShowStartScreen = false;
+        SetSpeedIndex(1);
+    }
+
+    /// <summary>Saves the current career (no-op in the Demo). Saves happen between frames, never in the middle of a tick.</summary>
+    public bool SaveCareer()
+    {
+        if (CurrentCareerId is not { } id || Sim is null) return false;
+        var info = CareerStore.Save(id, Sim);
+        GD.Print($"Saved career {id} (day {info.Day + 1}) to {CareerStore.Directory}");
+        CareerSaved?.Invoke(info);
         return true;
     }
+
+    /// <summary>Back into the game that waited behind the start screen (the open career), at 1x.</summary>
+    public void ResumeFromMenu()
+    {
+        ShowStartScreen = false;
+        SetSpeedIndex(1);
+    }
+
+    /// <summary>Saves the career and shows the start screen (the game waits, paused, behind it).</summary>
+    public void BackToMenu()
+    {
+        SaveCareer();
+        ShowStartScreen = true;
+        SetSpeedIndex(0);
+    }
+
+    // The career is saved automatically when the window closes (or the game quits otherwise).
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMCloseRequest) SaveCareer();
+    }
+
+    public override void _ExitTree() => SaveCareer();
 
     private void ReplaceSimulation(Simulation sim)
     {

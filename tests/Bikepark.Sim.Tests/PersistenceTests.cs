@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Scenarios;
+using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Tests;
 
@@ -103,5 +104,40 @@ public class PersistenceTests
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Bikepark.sln")))
             dir = dir.Parent;
         return dir?.FullName ?? throw new DirectoryNotFoundException("Could not locate repository root.");
+    }
+
+    [Fact]
+    public void SaveAtomic_WritesTheWholeSave_AndLeavesNoTempFile()
+    {
+        var sim = TestWorlds.Run(1337, 1, TestWorlds.DemoNetwork());
+        string dir = Path.Combine(Path.GetTempPath(), $"bikepark-save-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string path = Path.Combine(dir, "career.json");
+            File.WriteAllText(path, "old");
+            SaveGame.SaveAtomic(sim.State, path);
+            Assert.False(File.Exists(path + ".tmp"));
+            Assert.Equal(StateHash.Compute(sim.State), StateHash.Compute(SaveGame.Load(path)));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DayHistory_KeepsTheLastDays_AndIsSaved()
+    {
+        var sim = TestWorlds.Run(1337, 3, TestWorlds.DemoNetwork());
+        Assert.Equal([0L, 1L, 2L], sim.State.DayHistory.Select(d => d.Day));
+        Assert.True(sim.State.DayHistory.All(d => d.Visitors > 0));
+        Assert.Equal(sim.State.DayHistory, SaveGame.Clone(sim.State).DayHistory);
+
+        var state = TestWorlds.Create();
+        var quick = new Simulation(state);
+        quick.RunDays(WorldState.DayHistoryDays + 2);
+        Assert.Equal(WorldState.DayHistoryDays, state.DayHistory.Count);
+        Assert.Equal(2L, state.DayHistory[0].Day);
     }
 }

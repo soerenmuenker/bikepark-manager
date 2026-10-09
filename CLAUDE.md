@@ -169,8 +169,12 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 
 ## Game controls (debug build)
 
-Start screen (when run without world-setting debug args): pick Starter Valley (career) or Demo (sandbox, demo trails
-built). HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · U rating
+Start screen (when run without world-setting debug args): start a new career (park name), continue or delete a saved
+career, or play the Demo (sandbox, demo trails built, never saved). Careers are saved automatically, one file each
+(`game/scripts/CareerStore.cs`: `user://careers/<id>.json` + `<id>.meta.json`, on macOS in
+`~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`), when the window closes / the game quits
+(`SimHost._ExitTree`, WM close) and on System menu → Save & back to menu; there is no manual save. Saves are written
+atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · U rating
 (reputation: stars per skill group and what they value, demand, park level, FakeSocial posts) · N land (parcels: buy,
 level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
@@ -184,7 +188,7 @@ Fell trees: click the centre, move to size, click to mark · while a build tool 
 their stats; ✕ or panning stops following; influencers wear pink; injured riders: red and lying (serious: they
 block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
-(`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--scenario=<demo|starter|file>` (default the Demo; skips the start screen like `--demo`, `--script=`, `--advance=`), `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
+(`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--new-career=<park name>` / `--career=<id>` (start or continue a career, saved on quit), `--list-careers`, `--scenario=<demo|starter|file>` (default the Demo; skips the start screen like `--demo`, `--script=`, `--advance=`), `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
 `--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
 `--features=<wayId>` (open the feature overview), `--follow` (follow the first rider, shows the rider card), `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
 (queue a command script, before `--advance`), `--no-night-skip`

@@ -110,6 +110,11 @@ public sealed class WorldState
 
     public ParkStats Stats { get; set; } = new();
 
+    /// <summary>The last closed days' reports (oldest first, at most <see cref="DayHistoryDays"/>), for charts after a load.</summary>
+    public List<Events.DayReport> DayHistory { get; set; } = [];
+
+    public const int DayHistoryDays = 60;
+
     /// <summary>Reviews, rating, influencers and park XP (off by default).</summary>
     public ReputationRules ReputationRules { get; set; } = new();
 
