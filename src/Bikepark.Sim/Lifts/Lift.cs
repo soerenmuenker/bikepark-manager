@@ -136,3 +136,11 @@ public static class LiftMath
     /// <summary>Ride time in seconds (rounded up).</summary>
     public static int RideSeconds(LiftType type, long lengthCm) => (int)((lengthCm + type.SpeedCmPerS - 1) / type.SpeedCmPerS);
 }
+
+/// <summary>A small square gravel platform (a flattened pad) where paths and trails can start and end, to link them up.</summary>
+public sealed class Platform
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public int TerrainEditId { get; set; }
+}

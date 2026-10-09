@@ -9,7 +9,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks),
     `TerrainEdit`/`TerrainEditor` (stored flattened pads applied on top of the generated grid)
   - `Trails/` – `Way` (player-built access paths and trails), `WayGeometry` (integer spline, segments, rating),
-    `WayPlanner` (validation, shared by command and preview), `WayNetwork` (derived graph, routing, corridors),
+    `WayPlanner` (validation, shared by command and preview), `WayNetwork` (derived graph, routing, corridors,
+    `IsConnected`/`IsRideable`), `WayEditing` (split, renaturalize, join onto loose ends, split at gravel paths),
     `TrailFeature` (feature catalog types + placed features), `FeaturePlanner` (feature placement validation)
   - `Land/` – `Parcel` (content: named land outlines with price and required level), `LandMath` (who owns which point,
     the only land check, used by every planner); `Commands/LandCommands.cs` (`BuyParcelCommand`)
@@ -159,6 +160,16 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     the price (`RestoreLiftCommand`); `Lift.InService` gates dispatch, routing (bike carriers 0) and upkeep
     (`FinanceSystem`, own lifts only). Company lifts are rented: tiers above 0 need the land at both stations
     (`LiftWorks.StationsOwned`). Riders on unsheltered lifts (T-bar, chairlift) get wet in the rain.
+20. **Trail editing** (`WayEditing`, instant and free): `SplitTrailCommand` (the upper part keeps the trail, the lower one
+    is "<name> 2", joined to its end), `RenaturalizeTrailCommand` (the section is gone, trees grow back; the pieces get
+    loose ends, remnants under `MinLengthMeters` go, joins onto the removed section become loose). Pieces get control
+    points re-sampled from the derived geometry; features and joins move with them. When a way becomes built
+    (`OnBuilt`, from `BuildWayCommand` and the BuildWay job): a trail that starts on a trail's loose end is absorbed into
+    it, and one that ends on a trail's loose start absorbs that trail (one trail again); a gravel path ending in the middle
+    of a trail splits it there (gravel routes divide trails). Connectivity is derived: `WayNetwork.IsConnected` (start
+    reachable from the base, base reachable from the end); unconnected trails are closed via `WayNetwork.IsRideable`
+    (riders check it, never `Way.IsRideable` alone). Gravel platforms (`Platform`, `HubKind.Platform`, 12 × 12 m pad,
+    free) are hubs ways can start and end on.
     A T-bar (`NetworkLink.Towed`) pulls riders up a straight gravel track on the ground between its stations; the track
     is derived (never a `Way`, nobody walks it): ways crossing it are found in `WayNetwork.TowCrossingsOn` (warned
     about in `WayPlanner` and in `StructurePlanner.PlanLift`), and a trail rider passing such a crossing while a towed
@@ -179,7 +190,7 @@ atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports
 level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter plans it for the crew, Esc cancel;
-preview colored by gradient, tool panel shows trees to fell and crew-hours; ends snap onto plateaus) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) ·
+preview colored by gradient, tool panel shows trees to fell and crew-hours; ends snap onto plateaus) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) · Build → Gravel platform (centre, then direction; link paths and trails) · Build → Renaturalize (click where a trail section starts and ends: it's removed, the pieces stay closed until connected; draw a trail from a loose end to join it again) · Build → Split trail (click a point) · a warning lists unconnected trails when you leave the Build menu, the Trails menu marks them ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
 Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu per trail: worst feature, click the trail (or Features…) for the feature overview + repairs, Close/Open ·
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →
@@ -189,7 +200,7 @@ their stats; ✕ or panning stops following; influencers wear pink; injured ride
 block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--new-career=<park name>` / `--career=<id>` (start or continue a career, saved on quit), `--list-careers`, `--scenario=<demo|starter|file>` (default the Demo; skips the start screen like `--demo`, `--script=`, `--advance=`), `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
-`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
+`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|platform|renaturalize|split|featureId>`, `--look=<x>,<z>,<distance>` (camera focus, meters),
 `--features=<wayId>` (open the feature overview), `--follow` (follow the first rider, shows the rider card), `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
 (queue a command script, before `--advance`), `--no-night-skip`
 (turn off the automatic night skip, e.g. for screenshots at night with `--speed=0`).

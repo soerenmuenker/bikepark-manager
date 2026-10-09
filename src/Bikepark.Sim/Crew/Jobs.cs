@@ -140,6 +140,7 @@ public static class Jobs
     public static void Complete(SimContext ctx, Job job)
     {
         var state = ctx.State;
+        string title = Title(state, job); // before the work changes the way (a finished trail may join another one)
         switch (job.Kind)
         {
             case JobKind.BuildWay when state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } way:
@@ -151,6 +152,7 @@ public static class Jobs
                     var own = new HashSet<PointCm>(job.Trees);
                     state.FelledTrees.RemoveAll(own.Contains);
                 }
+                WayEditing.OnBuilt(ctx, way); // joins loose trail ends, splits trails at a new gravel path
                 break;
             case JobKind.BuildFeature when state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Features.FirstOrDefault(f => f.Id == job.FeatureId) is { } feature:
                 feature.Built = true;
@@ -167,7 +169,6 @@ public static class Jobs
                 break;
         }
         state.CrewStats.JobsCompleted++;
-        string title = Title(state, job);
         Release(state, job);
         ctx.Publish(new JobCompleted(ctx.Tick, job.Id, job.Kind, job.WayId, job.FeatureId, title));
     }

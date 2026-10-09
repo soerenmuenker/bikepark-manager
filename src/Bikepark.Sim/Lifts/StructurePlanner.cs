@@ -143,6 +143,21 @@ public static class StructurePlanner
         return new ParkingPlan { Pad = pad, LiftId = liftId, Issues = issues };
     }
 
+    /// <summary>Side of a gravel platform (square).</summary>
+    public const int PlatformMeters = 12;
+
+    /// <summary>A square gravel platform centred at <paramref name="center"/>, turned towards <paramref name="toward"/>; on the park's land.</summary>
+    public static ParkingPlan PlanPlatform(TerrainGrid grid, WayNetwork network, WorldState state, PointCm center, PointCm toward)
+    {
+        var issues = new List<WayIssue>();
+        if (!grid.Contains(center.X, center.Z))
+            return new ParkingPlan { Issues = [Error("outsideMap", "The platform must be on the map.")] };
+        var (dirX, dirZ) = TerrainPad.Direction(toward.X - center.X, toward.Z - center.Z);
+        var pad = MakePad(grid, state.LiftRules, center, PlatformMeters, PlatformMeters, dirX, dirZ);
+        CheckPad(grid, network, state, state.LiftRules, pad, "Platform", issues);
+        return new ParkingPlan { Pad = pad, Issues = issues };
+    }
+
     /// <summary>Length and width in meters of a lot with that many spaces.</summary>
     public static (int LengthMeters, int WidthMeters) ParkingSize(LiftRules rules, int spaces) =>
         (Math.Max(10, (spaces * rules.ParkingSquareMetersPerSpace + rules.ParkingWidthMeters - 1) / rules.ParkingWidthMeters), rules.ParkingWidthMeters);

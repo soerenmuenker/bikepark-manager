@@ -34,6 +34,9 @@ public static class LiftNetwork
             long length = WalkLengthCm(pad, station);
             links.Add(new NetworkLink(LegKind.Walk, lot.Id, lot.Id, lift.Valley.Id, length, length, 0));
         }
+        foreach (var platform in state.Platforms)
+            if (Pad(state, platform.TerrainEditId) is { } pad)
+                hubs.Add(new NetworkHub(platform.Id, HubKind.Platform, platform.Id, pad));
         return (hubs, links);
     }
 

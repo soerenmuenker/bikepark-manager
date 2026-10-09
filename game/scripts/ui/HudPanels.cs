@@ -31,6 +31,9 @@ internal sealed class HudContext
     public required TerrainView Terrain { get; init; }
     public required RtsCamera Camera { get; init; }
 
+    /// <summary>Renaturalize / split trails (created by the HUD).</summary>
+    public TrailEditTool TrailEdit { get; set; } = null!;
+
     /// <summary>Closed days seen this session (from <see cref="DayEnded"/>), for the finance chart.</summary>
     public List<DayReport> Days { get; } = [];
 
@@ -182,7 +185,7 @@ public partial class ToolCard : PanelContainer
 
 public partial class BuildPanel : HudPanel
 {
-    private ToolCard _path = null!, _trail = null!, _parking = null!, _fell = null!;
+    private ToolCard _path = null!, _trail = null!, _parking = null!, _fell = null!, _platform = null!, _renaturalize = null!, _split = null!;
     private readonly List<(LiftType Type, ToolCard Card)> _lifts = [];
     private readonly List<(string TypeId, ToolCard Card)> _features = [];
     private Label _demoStatus = null!;
@@ -208,7 +211,14 @@ public partial class BuildPanel : HudPanel
                 _demoStatus.Text = Ctx.Host.LoadDemoFeatures() ? "" : "Build the demo trails first.";
                 _demoStatus.Visible = _demoStatus.Text.Length > 0;
             });
-        foreach (var card in new[] { _path, _trail, _fell, _parking }) cards.AddChild(card);
+        _platform = new ToolCard(UiIcon.Parking, "Gravel platform", "12 × 12 m", "A small gravel pad where paths and trails can start and end, to link them up (free); on your land",
+            () => ToggleStructure(StructureTool.ToolMode.Platform));
+        _renaturalize = new ToolCard(UiIcon.Felling, "Renaturalize", "remove", "Give a section of a trail back to nature: click where it starts and where it ends. " +
+                                                                             "What is left keeps loose ends and stays closed until you connect it again (draw a trail from the loose end)",
+            () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize));
+        _split = new ToolCard(UiIcon.Trail, "Split trail", "cut", "Cut a trail into two trails at a point (each keeps its features)",
+            () => ToggleTrailEdit(TrailEditTool.ToolMode.Split));
+        foreach (var card in new[] { _path, _trail, _fell, _parking, _platform, _renaturalize, _split }) cards.AddChild(card);
         if (Ctx.Sim.State.Parcels.Count == 0)
         {
             // Sandbox only: the demo content.
@@ -294,8 +304,18 @@ public partial class BuildPanel : HudPanel
                $"Flow riders {type.FlowAffinity / 10}%, technical riders {type.TechAffinity / 10}%. Building it takes {build}.";
     }
 
+    private void ToggleTrailEdit(TrailEditTool.ToolMode mode)
+    {
+        Ctx.Ways.SetMode(WayTool.ToolMode.None);
+        Ctx.Structures.SetMode(StructureTool.ToolMode.None);
+        Ctx.Features.SetType(null);
+        Ctx.Clearing.SetActive(false);
+        Ctx.TrailEdit.SetMode(Ctx.TrailEdit.Mode == mode ? TrailEditTool.ToolMode.None : mode);
+    }
+
     private void ToggleWay(WayTool.ToolMode mode)
     {
+        Ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.None);
         Ctx.Structures.SetMode(StructureTool.ToolMode.None);
         Ctx.Features.SetType(null);
         Ctx.Clearing.SetActive(false);
@@ -304,6 +324,7 @@ public partial class BuildPanel : HudPanel
 
     private void ToggleStructure(StructureTool.ToolMode mode)
     {
+        Ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.None);
         Ctx.Features.SetType(null);
         Ctx.Clearing.SetActive(false);
         Ctx.Structures.SetMode(Ctx.Structures.Mode == mode ? StructureTool.ToolMode.None : mode);
@@ -341,6 +362,9 @@ public partial class BuildPanel : HudPanel
             card.Modulate = locked is null ? Colors.White : new Color(1, 1, 1, 0.55f);
         }
         _parking.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Parking;
+        _platform.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Platform;
+        _renaturalize.Active = Ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Renaturalize;
+        _split.Active = Ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Split;
         _fell.Active = Ctx.Clearing.Active;
         foreach (var (id, card) in _features)
             card.Active = Ctx.Features.TypeId == id;
@@ -401,8 +425,12 @@ public partial class TrailsPanel : HudPanel
             }
             var s = way.Stats;
             string avg = s.Runs == 0 ? "no runs yet" : $"{(double)s.SumRunMinutes / s.Runs:F1} min · fun {s.SumFun / s.Runs / 10}%";
-            main.Text = way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Repairing ? $"{way.Name}  · CLOSED (crew at work)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
-            main.AddThemeColorOverride("font_color", way.IsRideable ? UiTheme.Text : UiTheme.Bad);
+            bool connected = network.IsConnected(way);
+            main.Text = !connected ? $"{way.Name}  · NOT CONNECTED (closed)"
+                : way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Repairing ? $"{way.Name}  · CLOSED (crew at work)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
+            main.AddThemeColorOverride("font_color", network.IsRideable(way) ? UiTheme.Text : UiTheme.Bad);
+            if (!connected)
+                main.TooltipText = "A loose end: riders can't reach its start or can't get away from its end. Draw a trail from its loose end (or onto its loose start) to connect it.";
             detail.Text = $"{WayMeshes.RatingText(g)} · {g.LengthCm / 100} m · -{(g.StartHeightCm - g.EndHeightCm) / 100} m · steepest {Gradient.Format(-g.MaxDropGradient)}\n" +
                           $"{s.Runs} runs ({s.RunsToday} today) · {avg}\n" +
                           (state.CrashRules.Enabled ? CrashSummary(state, way, network) + "\n" : "") +

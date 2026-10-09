@@ -195,3 +195,19 @@ public sealed record LiftStopped(long Tick, int LiftId, long UntilTick, int Gues
 
 /// <summary>The helicopter flew the injured rider out; the trail is clear again.</summary>
 public sealed record RiderEvacuated(long Tick, int GuestId, int WayId) : ISimEvent;
+
+/// <summary>A trail was split in two: <paramref name="WayId"/> keeps the upper part, <paramref name="NewWayId"/> is the lower one.</summary>
+public sealed record TrailSplit(long Tick, int WayId, int NewWayId) : ISimEvent;
+
+/// <summary>
+/// A section of a trail was renaturalized. <paramref name="WayId"/> keeps what is left (if anything), the lower rest is
+/// <paramref name="NewWayId"/> (0: none).
+/// </summary>
+public sealed record TrailRenaturalized(long Tick, int WayId, int NewWayId, long FromCm, long ToCm) : ISimEvent;
+
+/// <summary>A trail was joined onto another one and is part of it now.</summary>
+public sealed record TrailsJoined(long Tick, int WayId, int AbsorbedWayId) : ISimEvent;
+
+public sealed record PlatformBuilt(long Tick, int PlatformId) : ISimEvent;
+
+public sealed record PlatformDeleted(long Tick, int PlatformId) : ISimEvent;

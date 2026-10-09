@@ -22,6 +22,9 @@ public partial class StructureTool : Node3D
         None,
         Lift,
         Parking,
+
+        /// <summary>A small square gravel platform to connect paths and trails (click the centre, then a direction).</summary>
+        Platform,
     }
 
     [Export] public NodePath SimHostPath { get; set; } = "../SimHost";
@@ -76,6 +79,7 @@ public partial class StructureTool : Node3D
         {
             ToolMode.Lift => "Lift: click the valley station, then the top station",
             ToolMode.Parking => $"Parking lot ({ParkingSpaces} spaces): click the centre, then where it should point",
+            ToolMode.Platform => "Gravel platform: click the centre, then where one side should point",
             _ => "",
         };
     }
@@ -152,7 +156,9 @@ public partial class StructureTool : Node3D
         }
         else
         {
-            ParkingPlan = StructurePlanner.PlanParking(grid, sim.Network, sim.State, candidate[0], candidate[1], ParkingSpaces);
+            ParkingPlan = Mode == ToolMode.Platform
+                ? StructurePlanner.PlanPlatform(grid, sim.Network, sim.State, candidate[0], candidate[1])
+                : StructurePlanner.PlanParking(grid, sim.Network, sim.State, candidate[0], candidate[1], ParkingSpaces);
             var color = ParkingPlan.IsValid ? new Color(0.2f, 1f, 0.4f) : new Color(1f, 0.25f, 0.2f);
             if (ParkingPlan.Pad is { } pad)
             {
@@ -181,6 +187,13 @@ public partial class StructureTool : Node3D
             Status = _host.InstantBuild
                 ? $"Built a {plan.Type?.Name} ({plan.LengthCm / 100} m, {plan.RideSeconds / 60} min ride). Connect trails to its plateau."
                 : $"Ordered a {plan.Type?.Name} ({plan.LengthCm / 100} m): the contractor needs {plan.Type?.BuildDays} days. Connect trails to its plateau.";
+        }
+        else if (Mode == ToolMode.Platform)
+        {
+            var plan = StructurePlanner.PlanPlatform(grid, sim.Network, sim.State, _points[0], _points[1]);
+            if (!plan.IsValid) { Status = plan.FirstError ?? "Not valid."; return; }
+            _host.Enqueue(new BuildPlatformCommand("", _points[0], _points[1]));
+            Status = "Built a gravel platform: start or end paths and trails on it.";
         }
         else
         {

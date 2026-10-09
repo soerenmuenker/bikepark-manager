@@ -46,6 +46,7 @@ public sealed record BuildWayCommand(
         state.Ways.Add(way);
         state.WaysRevision++;
         ctx.Publish(new WayBuilt(ctx.Tick, id));
+        if (way.Built) WayEditing.OnBuilt(ctx, way);
     }
 
     private WayPlan Plan(SimContext ctx) =>
@@ -85,4 +86,25 @@ public sealed record DeleteWayCommand(int WayId) : ICommand
         Systems.RiderSystem.ResetRidersUsing(ctx, WayId);
         ctx.Publish(new WayDeleted(ctx.Tick, WayId));
     }
+}
+
+/// <summary>Splits a built trail into two trails at a distance along it (instant, free).</summary>
+public sealed record SplitTrailCommand(int WayId, long AtCm) : ICommand
+{
+    public string? Validate(SimContext ctx) => WayEditing.CannotSplit(ctx.State, ctx.Network, ctx.State.Ways.FirstOrDefault(w => w.Id == WayId), AtCm);
+
+    public void Apply(SimContext ctx) => WayEditing.Split(ctx, ctx.State.Ways.First(w => w.Id == WayId), AtCm);
+}
+
+/// <summary>
+/// Gives a section of a built trail back to nature (instant, free): the trail is gone there and trees grow back. What is
+/// left above and below has a loose end and stays closed until it is connected again.
+/// </summary>
+public sealed record RenaturalizeTrailCommand(int WayId, long FromCm, long ToCm) : ICommand
+{
+    public string? Validate(SimContext ctx) =>
+        WayEditing.CannotRenaturalize(ctx.State, ctx.Network, ctx.State.Ways.FirstOrDefault(w => w.Id == WayId), Math.Min(FromCm, ToCm), Math.Max(FromCm, ToCm));
+
+    public void Apply(SimContext ctx) =>
+        WayEditing.Renaturalize(ctx, ctx.State.Ways.First(w => w.Id == WayId), Math.Min(FromCm, ToCm), Math.Max(FromCm, ToCm));
 }

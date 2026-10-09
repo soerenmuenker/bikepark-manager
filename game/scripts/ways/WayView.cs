@@ -106,6 +106,11 @@ public partial class WayView : Node3D
         _subscriptions.Clear();
         _subscriptions.Add(sim.Events.Subscribe<WayBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<WayDeleted>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<TrailSplit>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<TrailRenaturalized>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<TrailsJoined>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<PlatformBuilt>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<PlatformDeleted>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<TrailFeaturePlaced>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<TrailFeatureRemoved>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<JobCompleted>(_ => _dirty = true));

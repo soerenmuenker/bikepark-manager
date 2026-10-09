@@ -171,7 +171,7 @@ internal sealed class RiderSystem : ISimSystem
         var options = new List<(Way Trail, List<RouteLeg> Route, int Weight)>();
         foreach (var trail in network.Trails)
         {
-            if (!trail.IsRideable) continue; // closed or worn out
+            if (!network.IsRideable(trail)) continue; // closed, worn out or not connected
             var route = BestRoute(state, network, guest, from, network.StartNode(trail));
             if (route is null) continue;
             options.Add((trail, route, Weight(guest, trail, network.Geometry(trail.Id))));
@@ -205,7 +205,7 @@ internal sealed class RiderSystem : ISimSystem
     internal static List<RouteLeg>? BestRoute(WorldState state, WayNetwork network, Guest guest, int from, int to)
     {
         bool Usable(int liftId) => state.Lifts.FirstOrDefault(l => l.Id == liftId) is { BikeCarrierPermille: > 0 };
-        bool Open(int wayId) => network.FindWay(wayId) is not { Kind: WayKind.Trail, IsRideable: false };
+        bool Open(int wayId) => network.FindWay(wayId) is not { } way || network.IsRideable(way);
         var withLifts = network.Route(from, to, Usable, out long liftCost, Open);
         if (withLifts is null || withLifts.All(l => l.Kind != LegKind.Lift)) return withLifts;
 
@@ -265,7 +265,7 @@ internal sealed class RiderSystem : ISimSystem
             {
                 // At a trail entrance: re-check it is open, wait a moment, give way, then drop in.
                 traffic.Track(guest);
-                if (network.FindWay(leg.WayId) is { IsRideable: false } closed)
+                if (network.FindWay(leg.WayId) is { } closed && !network.IsRideable(closed))
                 {
                     ChooseAgainAt(ctx, network, guest, closed, leg.FromCm);
                     continue;
@@ -575,7 +575,7 @@ internal sealed class RiderSystem : ISimSystem
             // Every trail entrance is checked again: riders whose next leg is a trail that closed since they planned
             // the lap (their run or a trail on the way to it) don't enter it; they choose again from where they stand.
             var next = guest.Route[legIndex + 1];
-            if (next.Kind == LegKind.Way && network.FindWay(next.WayId) is { Kind: WayKind.Trail, IsRideable: false } closed)
+            if (next.Kind == LegKind.Way && network.FindWay(next.WayId) is { Kind: WayKind.Trail } closed && !network.IsRideable(closed))
             {
                 ChooseAgainAt(ctx, network, guest, closed, next.FromCm);
                 return;

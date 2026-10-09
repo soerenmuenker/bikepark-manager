@@ -75,6 +75,9 @@ public sealed class WorldState
 
     public List<ParkingLot> ParkingLots { get; set; } = [];
 
+    /// <summary>Gravel platforms the player built to connect paths and trails.</summary>
+    public List<Platform> Platforms { get; set; } = [];
+
     /// <summary>Land the park can own (content, from the scenario). None = all land is the park's.</summary>
     public List<Parcel> Parcels { get; set; } = [];
 

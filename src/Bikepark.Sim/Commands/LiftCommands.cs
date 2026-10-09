@@ -253,3 +253,52 @@ public static class LiftWorks
             state.TerrainEdits.FirstOrDefault(e => e.Id == station.TerrainEditId) is not { } edit
             || Land.LandMath.IsOwned(state, edit.Pad.CenterX, edit.Pad.CenterZ));
 }
+
+/// <summary>Builds a small square gravel platform (instant, free) where paths and trails can start and end.</summary>
+public sealed record BuildPlatformCommand(string Name, PointCm Center, PointCm Toward) : ICommand
+{
+    public string? Validate(SimContext ctx)
+    {
+        if (Name is { Length: > BuildLiftCommand.MaxNameLength }) return $"Name cannot exceed {BuildLiftCommand.MaxNameLength} characters.";
+        return StructurePlanner.PlanPlatform(ctx.Terrain, ctx.Network, ctx.State, Center, Toward).FirstError;
+    }
+
+    public void Apply(SimContext ctx)
+    {
+        var plan = StructurePlanner.PlanPlatform(ctx.Terrain, ctx.Network, ctx.State, Center, Toward);
+        var state = ctx.State;
+        int id = state.AllocateEntityId();
+        var edit = new TerrainEdit(state.AllocateEntityId(), id, plan.Pad!);
+        state.TerrainEdits.Add(edit);
+        state.TerrainRevision++;
+        state.Platforms.Add(new Platform
+        {
+            Id = id,
+            Name = string.IsNullOrWhiteSpace(Name) ? $"Platform {state.Platforms.Count + 1}" : Name.Trim(),
+            TerrainEditId = edit.Id,
+        });
+        ctx.Publish(new PlatformBuilt(ctx.Tick, id));
+    }
+}
+
+/// <summary>Removes a gravel platform. Rejected while paths or trails attach to it.</summary>
+public sealed record DeletePlatformCommand(int PlatformId) : ICommand
+{
+    public string? Validate(SimContext ctx)
+    {
+        var state = ctx.State;
+        if (state.Platforms.All(p => p.Id != PlatformId)) return "No such platform.";
+        var way = state.Ways.FirstOrDefault(w => w.StartHubId == PlatformId || w.EndHubId == PlatformId);
+        return way is null ? null : $"'{way.Name}' is attached to it; remove that first.";
+    }
+
+    public void Apply(SimContext ctx)
+    {
+        var state = ctx.State;
+        Systems.RiderSystem.ResetRidersUsing(ctx, PlatformId);
+        state.Platforms.RemoveAll(p => p.Id == PlatformId);
+        state.TerrainEdits.RemoveAll(e => e.OwnerId == PlatformId);
+        state.TerrainRevision++;
+        ctx.Publish(new PlatformDeleted(ctx.Tick, PlatformId));
+    }
+}

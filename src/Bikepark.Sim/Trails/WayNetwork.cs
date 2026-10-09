@@ -29,6 +29,9 @@ public enum HubKind : byte
     ValleyStation = 0,
     MountainStation = 1,
     Parking = 2,
+
+    /// <summary>A small gravel platform the player built to connect paths and trails.</summary>
+    Platform = 3,
 }
 
 /// <summary>A network node that is an area, not a point on a way: a station platform, plateau or parking lot.</summary>
@@ -181,6 +184,53 @@ public sealed class WayNetwork
 
     /// <summary>Node of a hub, or -1.</summary>
     public int HubNode(int hubId) => NodeAt(HubKey(hubId), 0);
+
+    /// <summary>
+    /// A built trail riders can use: its start can be reached from where guests arrive, and from its end they can get
+    /// back there. Trails left with a loose end (after renaturalizing a section) are not, and stay closed until reconnected.
+    /// </summary>
+    public bool IsConnected(Way way)
+    {
+        if (!HasBase || !way.Built || !_geometries.ContainsKey(way.Id)) return false;
+        _reachable ??= Reach(forward: true);
+        _returnable ??= Reach(forward: false);
+        int start = StartNode(way), end = EndNode(way);
+        return start >= 0 && end >= 0 && _reachable[start] && _returnable[end];
+    }
+
+    private bool[]? _reachable, _returnable;
+
+    /// <summary>Riders may ride it: paths always; trails when open (<see cref="Way.IsRideable"/>) and connected.</summary>
+    public bool IsRideable(Way way) => way.Kind != WayKind.Trail || way.IsRideable && IsConnected(way);
+
+    /// <summary>Nodes reachable from the base (forward) or from which the base can be reached (backward), over all edges.</summary>
+    private bool[] Reach(bool forward)
+    {
+        var seen = new bool[_edges.Count];
+        List<List<int>>? reverse = null;
+        if (!forward)
+        {
+            reverse = _edges.Select(_ => new List<int>()).ToList();
+            for (int a = 0; a < _edges.Count; a++)
+                foreach (var edge in _edges[a])
+                    reverse[edge.To].Add(a);
+        }
+        var stack = new Stack<int>();
+        stack.Push(BaseNode);
+        seen[BaseNode] = true;
+        while (stack.Count > 0)
+        {
+            int node = stack.Pop();
+            IEnumerable<int> next = forward ? _edges[node].Select(e => e.To) : reverse![node];
+            foreach (int n in next)
+                if (!seen[n])
+                {
+                    seen[n] = true;
+                    stack.Push(n);
+                }
+        }
+        return seen;
+    }
 
     public int StartNode(Way way) => NodeAt(way.Id, 0);
 

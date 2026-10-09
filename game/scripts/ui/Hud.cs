@@ -95,6 +95,8 @@ public partial class Hud : CanvasLayer
         _ctx.Host.SimulationReplaced += Subscribe;
         Subscribe(_ctx.Sim);
         _ctx.Host.CareerSaved += OnCareerSaved;
+        _ctx.TrailEdit = new TrailEditTool(_ctx.Host, _ctx.Terrain, _ctx.Camera);
+        GetParent().CallDeferred(Node.MethodName.AddChild, _ctx.TrailEdit);
         _land = new LandView(_ctx.Host, _ctx.Terrain, () => _ctx.Kpi.Level);
         _ctx.Terrain.CallDeferred(Node.MethodName.AddChild, _land);
         _startScreen = new StartScreen(_ctx.Host);
@@ -309,6 +311,7 @@ public partial class Hud : CanvasLayer
 
     private void Toggle(Menu menu)
     {
+        bool wasBuild = _open == Menu.Build;
         _open = _open == menu ? Menu.None : menu;
         foreach (var (m, panel) in _panels)
         {
@@ -316,9 +319,11 @@ public partial class Hud : CanvasLayer
             if (panel.Visible) panel.Refresh();
         }
         foreach (var (m, button) in _menuButtons) button.Active = m == _open;
-        // Leaving the build menu ends the build tools.
+        // Leaving the build menu ends the build tools (and reminds of trails left with a loose end).
         if (_open != Menu.Build)
         {
+            if (wasBuild) WarnUnconnected();
+            _ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.None);
             _ctx.Ways.SetMode(WayTool.ToolMode.None);
             _ctx.Structures.SetMode(StructureTool.ToolMode.None);
             _ctx.Features.SetType(null);
@@ -397,6 +402,10 @@ public partial class Hud : CanvasLayer
                 Toggle(Menu.None);
             }
         }
+        // Picking a path, trail, structure, feature or felling tool ends trail editing.
+        if (_ctx.TrailEdit.Active && (_ctx.Ways.Mode != WayTool.ToolMode.None || _ctx.Structures.Mode != StructureTool.ToolMode.None
+                                      || _ctx.Features.Active || _ctx.Clearing.Active))
+            _ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.None);
         UpdateClock();
         UpdateToolPanel();
         UpdateToolChip();
@@ -477,7 +486,7 @@ public partial class Hud : CanvasLayer
     }
 
     private bool ToolActive => _ctx.Ways.Mode != WayTool.ToolMode.None || _ctx.Structures.Mode != StructureTool.ToolMode.None
-                               || _ctx.Features.Active || _ctx.Clearing.Active;
+                               || _ctx.Features.Active || _ctx.Clearing.Active || _ctx.TrailEdit.Active;
 
     /// <summary>
     /// While a build tool is active the open menu (Build, or Crew for felling) is folded away so the map is free to work
@@ -494,7 +503,10 @@ public partial class Hud : CanvasLayer
         _toolChip.Visible = active;
         if (!active) return;
 
-        var (icon, name) = _ctx.Clearing.Active ? (UiIcon.Felling, "Fell trees")
+        var (icon, name) = _ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Renaturalize ? (UiIcon.Felling, "Renaturalize")
+            : _ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Split ? (UiIcon.Trail, "Split trail")
+            : _ctx.Structures.Mode == StructureTool.ToolMode.Platform ? (UiIcon.Parking, "Gravel platform")
+            : _ctx.Clearing.Active ? (UiIcon.Felling, "Fell trees")
             : _ctx.Features.Active && TrailFeatures.FindType(_ctx.Sim.State.TrailFeatureTypes, _ctx.Features.TypeId!) is { } type
                 ? (BuildPanel.FeatureIcon(type.Kind), $"Feature: {type.Name}")
             : _ctx.Structures.Mode == StructureTool.ToolMode.Lift ? (UiIcon.Lift, "Lift")
@@ -516,6 +528,9 @@ public partial class Hud : CanvasLayer
             case "fell": _ctx.Clearing.SetActive(true); break;
             case "lift": _ctx.Structures.SetMode(StructureTool.ToolMode.Lift); break;
             case "parking": _ctx.Structures.SetMode(StructureTool.ToolMode.Parking); break;
+            case "platform": _ctx.Structures.SetMode(StructureTool.ToolMode.Platform); break;
+            case "renaturalize": _ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.Renaturalize); break;
+            case "split": _ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.Split); break;
             default: _ctx.Features.SetType(tool); break;
         }
     }
@@ -523,6 +538,7 @@ public partial class Hud : CanvasLayer
     /// <summary>Ends every build tool (the chip's ✕).</summary>
     private void EndTools()
     {
+        _ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.None);
         _ctx.Ways.SetMode(WayTool.ToolMode.None);
         _ctx.Structures.SetMode(StructureTool.ToolMode.None);
         _ctx.Features.SetType(null);
@@ -536,7 +552,13 @@ public partial class Hud : CanvasLayer
         var ways = _ctx.Ways;
         var features = _ctx.Features;
         var clearing = _ctx.Clearing;
-        if (clearing.Active)
+        if (_ctx.TrailEdit.Active)
+        {
+            lines.Add(_ctx.TrailEdit.Status);
+            if (_ctx.TrailEdit.Problem is { } problem) lines.Add($"✗ {problem}");
+            else lines.Add(_ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Split ? "✓ Click to split · Esc to stop" : "Esc to start over or stop");
+        }
+        else if (clearing.Active)
         {
             lines.Add(clearing.Status);
             if (clearing.Plan is { } cp)
@@ -673,6 +695,16 @@ public partial class Hud : CanvasLayer
             e.Post.EffectPermille > 0 ? UiTheme.Good : e.Post.EffectPermille < 0 ? UiTheme.Bad : UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<LevelChanged>(e => Toast(e.NewLevel > e.OldLevel
             ? $"Park level {e.NewLevel} reached!" : $"The park dropped to level {e.NewLevel}", e.NewLevel > e.OldLevel ? UiTheme.Good : UiTheme.Warn)));
+        _subscriptions.Add(events.Subscribe<TrailSplit>(e => Toast($"Split into {TrailName(e.WayId)} and {TrailName(e.NewWayId)}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<TrailRenaturalized>(e =>
+        {
+            Toast(e.WayId == 0 || _ctx.Sim.State.Ways.All(w => w.Id != e.WayId)
+                ? "Renaturalized the whole trail: nature takes it back"
+                : $"Renaturalized {(e.ToCm - e.FromCm) / 100} m of {TrailName(e.WayId)}", UiTheme.Accent);
+            WarnUnconnected();
+        }));
+        _subscriptions.Add(events.Subscribe<TrailsJoined>(e => Toast($"Joined into {TrailName(e.WayId)}", UiTheme.Good)));
+        _subscriptions.Add(events.Subscribe<PlatformBuilt>(_ => Toast("Built a gravel platform", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<ParcelBought>(e => Toast(
             $"Bought {_ctx.Sim.State.Parcels.FirstOrDefault(p => p.Id == e.ParcelId)?.Name} for {UiTheme.Money(e.PriceCents)}: you can build there now", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<LiftConstructionStarted>(e => Toast(
@@ -743,6 +775,15 @@ public partial class Hud : CanvasLayer
     private void OnCareerSaved(CareerInfo info)
     {
         if (IsInsideTree()) Toast($"Career saved: {info.ParkName}, day {info.Day + 1}", UiTheme.Good);
+    }
+
+    /// <summary>Toast about built trails that aren't connected (closed until they are).</summary>
+    private void WarnUnconnected()
+    {
+        var network = _ctx.Sim.Network;
+        var loose = _ctx.Sim.State.Ways.Where(w => w.Kind == WayKind.Trail && w.Built && !network.IsConnected(w)).Select(w => w.Name).ToList();
+        if (loose.Count > 0)
+            Toast($"Not connected, closed until connected: {string.Join(", ", loose)}. Draw a trail from a loose end to a path, trail, platform or station.", UiTheme.Warn);
     }
 
     private string LiftName(int liftId) => _ctx.Sim.State.Lifts.FirstOrDefault(l => l.Id == liftId)?.Name ?? "The lift";

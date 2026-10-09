@@ -76,6 +76,8 @@ public partial class LiftView : Node3D
         _subscriptions.Add(sim.Events.Subscribe<LiftReady>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<ParkingLotBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<ParkingLotDeleted>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<PlatformBuilt>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<PlatformDeleted>(_ => _dirty = true));
         _dirty = true;
     }
 
@@ -107,6 +109,13 @@ public partial class LiftView : Node3D
             if (LiftNetwork.Pad(state, lot.TerrainEditId) is not { } pad) continue;
             AddMesh(Surface(pad, new Color(0.22f, 0.22f, 0.24f)), lot.Name);
             AddLabel($"{lot.Name}\n{lot.Spaces} spaces", LiftShapes.Center(pad, 6f));
+        }
+
+        foreach (var platform in state.Platforms)
+        {
+            if (LiftNetwork.Pad(state, platform.TerrainEditId) is not { } pad) continue;
+            AddMesh(Surface(pad, Gravel), platform.Name);
+            AddLabel(platform.Name, LiftShapes.Center(pad, 5f));
         }
 
         foreach (var lift in state.Lifts)

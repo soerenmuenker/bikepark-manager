@@ -137,6 +137,10 @@ internal static class TestWorlds
         // Land and lifts (no parcels or lifts in the test world).
         new(700, new BuyParcelCommand("nowhere")), // rejected: unknown parcel
         new(700, new RestoreLiftCommand(99)), // rejected: no such lift
+        // Trail editing: Red Rocket has planned features (crew jobs), so editing it is rejected; the path can't be split.
+        new(720, new SplitTrailCommand(3, 20_000)), // rejected: the crew is working on it
+        new(720, new RenaturalizeTrailCommand(1, 1_000, 5_000)), // rejected: a gravel path
+        new(720, new BuildPlatformCommand("", new PointCm(-100, 0), new PointCm(0, 0))), // rejected: off the map
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)
