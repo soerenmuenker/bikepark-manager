@@ -204,7 +204,10 @@ internal sealed class RiderSystem : ISimSystem
     /// </summary>
     internal static List<RouteLeg>? BestRoute(WorldState state, WayNetwork network, Guest guest, int from, int to)
     {
-        bool Usable(int liftId) => state.Lifts.FirstOrDefault(l => l.Id == liftId) is { BikeCarrierPermille: > 0 };
+        // Without the day pass a guest needs the cash for it; if the pass is too expensive for them lifts are out.
+        long ticket = guest.HasLiftPass ? 0 : state.Park.LiftTicketCents;
+        bool canPay = ticket <= guest.CashCents;
+        bool Usable(int liftId) => canPay && state.Lifts.FirstOrDefault(l => l.Id == liftId) is { BikeCarrierPermille: > 0 };
         bool Open(int wayId) => network.FindWay(wayId) is not { } way || network.IsRideable(way);
         var withLifts = network.Route(from, to, Usable, out long liftCost, Open);
         if (withLifts is null || withLifts.All(l => l.Kind != LegKind.Lift)) return withLifts;
@@ -217,6 +220,7 @@ internal sealed class RiderSystem : ISimSystem
             int wait = Math.Max(0, LiftMath.ExpectedWaitMinutes(type, lift.BikeCarrierPermille, lift.Queue.Count));
             liftCost += (long)wait * state.LiftRules.LiftWaitCostCmPerMinute;
         }
+        liftCost += ticket * state.LiftRules.LiftTicketCostCmPerCent;
 
         var climbing = network.Route(from, to, _ => false, out long climbCost, Open);
         if (climbing is null) return withLifts;
@@ -613,6 +617,12 @@ internal sealed class RiderSystem : ISimSystem
                     PlaceAtBase(ctx.State, guest, network);
                     return;
                 }
+                if (!guest.HasLiftPass && !BuyLiftPass(ctx, guest))
+                {
+                    // Can't afford the day pass any more: back to the base, where lifts are out of the route choice.
+                    PlaceAtBase(ctx.State, guest, network);
+                    return;
+                }
                 LiftSystem.JoinQueue(ctx, lift, guest);
                 break;
             default:
@@ -622,6 +632,23 @@ internal sealed class RiderSystem : ISimSystem
                 guest.EntryWaitMs = onTrail ? 0 : -1;
                 break;
         }
+    }
+
+    /// <summary>Buys the day pass on the first lift of a visit. False if the guest can't pay for it.</summary>
+    private static bool BuyLiftPass(SimContext ctx, Guest guest)
+    {
+        long ticket = ctx.State.Park.LiftTicketCents;
+        if (guest.CashCents < ticket) return false;
+        guest.CashCents -= ticket;
+        guest.PaidEntryCents += ticket;
+        guest.HasLiftPass = true;
+        if (ticket > 0)
+        {
+            ctx.State.Finance.Earn(ticket);
+            ctx.State.Finance.TotalLiftTicketsCents += ticket;
+            ctx.State.Finance.LiftTicketsTodayCents += ticket;
+        }
+        return true;
     }
 
     private static void FinishRun(SimContext ctx, WayNetwork network, Guest guest)

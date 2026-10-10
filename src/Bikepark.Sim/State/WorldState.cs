@@ -144,7 +144,11 @@ public sealed class WorldState
 public sealed class ParkState
 {
     public string Name { get; set; } = "Unnamed Bikepark";
+    /// <summary>The general entrance fee, paid on arrival (the park without lifts).</summary>
     public long EntryFeeCents { get; set; }
+
+    /// <summary>The lift day pass, paid once per visit when a guest first boards a lift (0 = lifts are free).</summary>
+    public long LiftTicketCents { get; set; }
 }
 
 /// <summary>Balancing parameters, loaded from the scenario and saved with the game.</summary>
@@ -238,6 +242,10 @@ public sealed class FinanceState
     /// <summary>Bike access fees paid to lift companies (included in the expenses).</summary>
     public long TotalLiftFeesCents { get; set; }
     public long LiftFeesTodayCents { get; set; }
+
+    /// <summary>Lift day passes sold to guests (included in the revenue).</summary>
+    public long TotalLiftTicketsCents { get; set; }
+    public long LiftTicketsTodayCents { get; set; }
 
     /// <summary>Crew wages, tool and wood purchases (included in the expenses).</summary>
     public long TotalWagesCents { get; set; }
@@ -411,6 +419,9 @@ public sealed class Guest
 
     /// <summary>The entry fee paid on arrival (for the value-for-money part of the review).</summary>
     public long PaidEntryCents { get; set; }
+
+    /// <summary>Bought the lift day pass this visit (counted in <see cref="PaidEntryCents"/> too).</summary>
+    public bool HasLiftPass { get; set; }
 
     /// <summary>An influencer: their review becomes a FakeSocial post.</summary>
     public bool IsInfluencer { get; set; }

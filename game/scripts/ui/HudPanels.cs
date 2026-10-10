@@ -61,6 +61,7 @@ internal sealed class HudContext
     }
 
     public void ChangeFee(long delta) => Host.Enqueue(new SetEntryFeeCommand(Math.Max(0, Sim.State.Park.EntryFeeCents + delta)));
+    public void ChangeLiftTicket(long delta) => Host.Enqueue(new SetLiftTicketCommand(Math.Max(0, Sim.State.Park.LiftTicketCents + delta)));
 
     /// <summary>Books the next lower/higher tier on the first operator-run lift (from the next opening).</summary>
     public void StepBikeTier(int step)
@@ -1019,7 +1020,7 @@ public partial class LiftsPanel : HudPanel
 public partial class FinancePanel : HudPanel
 {
     private Label _money = null!, _revenue = null!, _expenses = null!, _net = null!;
-    private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _food = null!, _fee = null!;
+    private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _food = null!, _fee = null!, _liftTicket = null!, _tickets = null!;
     private Label _insurance = null!, _landAndLifts = null!, _liftUpkeep = null!;
     private DayChart _chart = null!;
 
@@ -1038,6 +1039,7 @@ public partial class FinancePanel : HudPanel
         totals.AddChild(UiTheme.StatTile("Total revenue", out _totalRevenue, 16));
         totals.AddChild(UiTheme.StatTile("Total expenses", out _totalExpenses, 16));
         totals.AddChild(UiTheme.StatTile("Lunch sales", out _food, 16));
+        totals.AddChild(UiTheme.StatTile("Lift tickets sold", out _tickets, 16));
         totals.AddChild(UiTheme.StatTile("Lift fees paid", out _liftFees, 16));
         totals.AddChild(UiTheme.StatTile("Crew wages", out _wages, 16));
         totals.AddChild(UiTheme.StatTile("Tools & wood", out _materials, 16));
@@ -1050,14 +1052,25 @@ public partial class FinancePanel : HudPanel
         Body.AddChild(UiTheme.Separator());
 
         var fee = Row(8);
-        fee.AddChild(UiTheme.Label("DAY TICKET", 11, UiTheme.TextDim, bold: true));
-        fee.AddChild(UiTheme.Button("−", () => Ctx.ChangeFee(-HudContext.FeeStepCents), "Lower the entry fee"));
+        fee.AddChild(UiTheme.Label("ENTRANCE", 11, UiTheme.TextDim, bold: true));
+        fee.AddChild(UiTheme.Button("−", () => Ctx.ChangeFee(-HudContext.FeeStepCents), "Lower the entrance fee"));
         _fee = UiTheme.Label("", 18, bold: true);
         _fee.CustomMinimumSize = new Vector2(80, 0);
         _fee.HorizontalAlignment = HorizontalAlignment.Center;
         fee.AddChild(_fee);
-        fee.AddChild(UiTheme.Button("+", () => Ctx.ChangeFee(HudContext.FeeStepCents), "Raise the entry fee (fewer guests come)"));
+        fee.AddChild(UiTheme.Button("+", () => Ctx.ChangeFee(HudContext.FeeStepCents), "Raise the entrance fee (fewer guests come)"));
         Body.AddChild(fee);
+
+        var ticket = Row(8);
+        ticket.AddChild(UiTheme.Label("LIFT PASS", 11, UiTheme.TextDim, bold: true));
+        ticket.AddChild(UiTheme.Button("−", () => Ctx.ChangeLiftTicket(-HudContext.FeeStepCents), "Lower the lift day pass"));
+        _liftTicket = UiTheme.Label("", 18, bold: true);
+        _liftTicket.CustomMinimumSize = new Vector2(80, 0);
+        _liftTicket.HorizontalAlignment = HorizontalAlignment.Center;
+        ticket.AddChild(_liftTicket);
+        ticket.AddChild(UiTheme.Button("+", () => Ctx.ChangeLiftTicket(HudContext.FeeStepCents),
+            "Raise the lift day pass (paid once per visit by guests who use a lift; too dear and they pedal instead)"));
+        Body.AddChild(ticket);
 
         Body.AddChild(UiTheme.Label("LAST DAYS — revenue and expenses", 11, UiTheme.TextDim, bold: true));
         _chart = new DayChart { CustomMinimumSize = new Vector2(520, 110) };
@@ -1091,6 +1104,8 @@ public partial class FinancePanel : HudPanel
               $"(a base plus every accident of the last {Ctx.Sim.State.CrashRules.InsuranceDays} days)"
             : "No accident insurance in this scenario";
         _fee.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.EntryFeeCents);
+        _liftTicket.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.LiftTicketCents);
+        _tickets.Text = UiTheme.Money(f.TotalLiftTicketsCents);
         _chart.Days = Ctx.Days;
         _chart.QueueRedraw();
     }

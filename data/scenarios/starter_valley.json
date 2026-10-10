@@ -6,6 +6,7 @@
   "parkName": "Old Ski Hill Bikepark",
   "startingMoneyCents": 15000000,
   "entryFeeCents": 1500,
+  "liftTicketCents": 1000,
   // Daily rhythm (minutes of the day): open 09:00-18:00, then 45 min of last rides; the gondola warms up from 08:30.
   // Arrivals follow the profile (permille of baseArrivalPermille): a morning rush, tapering off in the afternoon.
   // Guests take one lunch break between 11:00 and 13:00.

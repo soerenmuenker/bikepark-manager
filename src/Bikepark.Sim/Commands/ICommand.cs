@@ -10,6 +10,7 @@ namespace Bikepark.Sim.Commands;
 /// </summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(SetEntryFeeCommand), "setEntryFee")]
+[JsonDerivedType(typeof(SetLiftTicketCommand), "setLiftTicket")]
 [JsonDerivedType(typeof(RenameParkCommand), "renamePark")]
 [JsonDerivedType(typeof(BuildWayCommand), "buildWay")]
 [JsonDerivedType(typeof(DeleteWayCommand), "deleteWay")]

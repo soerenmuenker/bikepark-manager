@@ -124,7 +124,8 @@ public sealed record DayReport(
     int Crashes = 0,
     int SeriousCrashes = 0,
     long InsuranceCents = 0,
-    long LiftUpkeepCents = 0);
+    long LiftUpkeepCents = 0,
+    long LiftTicketsCents = 0);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
 

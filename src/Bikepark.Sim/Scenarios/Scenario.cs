@@ -19,6 +19,7 @@ public sealed class ScenarioDefinition
     public string ParkName { get; set; } = "Unnamed Bikepark";
     public long StartingMoneyCents { get; set; }
     public long EntryFeeCents { get; set; }
+    public long LiftTicketCents { get; set; }
     public ParkRules Rules { get; set; } = new();
 
     public Trails.TrailRules TrailRules { get; set; } = new();
@@ -118,7 +119,7 @@ public static class ScenarioLoader
             Seed = seed,
             ScenarioId = scenario.Id,
             Rng = SimRandom.FromSeed(seed),
-            Park = new ParkState { Name = scenario.ParkName, EntryFeeCents = scenario.EntryFeeCents },
+            Park = new ParkState { Name = scenario.ParkName, EntryFeeCents = scenario.EntryFeeCents, LiftTicketCents = scenario.LiftTicketCents },
             Rules = scenario.Rules,
             Terrain = scenario.Terrain with { Seed = scenario.Terrain.Seed ?? seed },
             TrailRules = scenario.TrailRules,
@@ -152,6 +153,7 @@ public static class ScenarioLoader
         var r = s.Rules;
         errors.AddRange(r.Validate());
         if (s.EntryFeeCents < 0 || s.EntryFeeCents > r.MaxEntryFeeCents) errors.Add("entryFeeCents out of range");
+        if (s.LiftTicketCents < 0 || s.LiftTicketCents > r.MaxEntryFeeCents) errors.Add("liftTicketCents out of range");
 
         errors.AddRange(s.Terrain.Validate());
         errors.AddRange(s.TrailRules.Validate());

@@ -154,6 +154,9 @@ public sealed class LiftRules
     public int LiftRideCostCmPerMinute { get; set; } = 9_000;
     public int LiftWaitCostCmPerMinute { get; set; } = 18_000;
 
+    /// <summary>Routing cost of the lift day pass a guest still has to buy, per cent (80: a 10 € pass weighs like four and a half minutes of waiting).</summary>
+    public int LiftTicketCostCmPerCent { get; set; } = 80;
+
     public List<string> Validate()
     {
         var errors = new List<string>();
@@ -164,7 +167,7 @@ public sealed class LiftRules
         if (MaxPadCutFillCm <= 0) errors.Add("liftRules.maxPadCutFillCm must be > 0");
         if (EmbankmentGradient is <= 0 or >= Gradient.MaxTenths) errors.Add($"liftRules.embankmentGradient must be within 1..{Gradient.MaxTenths - 1}");
         if (QueueGraceMinutes < 0 || QueueMoodPenaltyPerMinute < 0 || RestEnergyPerMinute < 0) errors.Add("liftRules queue values must be >= 0");
-        if (LiftRideCostCmPerMinute < 0 || LiftWaitCostCmPerMinute < 0) errors.Add("liftRules routing costs must be >= 0");
+        if (LiftRideCostCmPerMinute < 0 || LiftWaitCostCmPerMinute < 0 || LiftTicketCostCmPerCent < 0) errors.Add("liftRules routing costs must be >= 0");
         return errors;
     }
 }

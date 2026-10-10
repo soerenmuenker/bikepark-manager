@@ -151,6 +151,10 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     no staff), then `Evacuated` (even after closing). Crossings are derived geometry, never junctions. Crashes count on
     `WayStats`, `TrailFeature.Crashes` and `SafetyState`; reviews: a serious crash makes safety 0. Insurance =
     base + per accident of the last `InsuranceDays`, charged by `SafetySystem` (before `FinanceSystem`).
+19a. **Entrance fee and lift pass:** `Park.EntryFeeCents` is paid on arrival (drives demand); `Park.LiftTicketCents` (0 = free
+    lifts, the Demo) is a day pass bought once per visit when a guest first boards a lift (`RiderSystem.BuyLiftPass`,
+    `Guest.HasLiftPass`, revenue in `Finance.TotalLiftTicketsCents`). `BestRoute` adds the unbought pass to the lift cost
+    (`LiftRules.LiftTicketCostCmPerCent`) and rules lifts out for guests who can't pay it. `SetLiftTicketCommand`.
 19. **Land and owned lifts:** parcels are content; `OwnedParcelIds` is state (no parcels = all land owned). Ownership is
     checked only through `LandMath`, inside the planners (`WayPlanner` per geometry sample via its `onOwnLand` predicate,
     `StructurePlanner.CheckPad` for station and parking pads, `ClearingPlanner` for the centre and the trees), so preview

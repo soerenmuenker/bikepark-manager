@@ -319,7 +319,8 @@ internal sealed class FinanceSystem : ISimSystem
             Crashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick)) is { } accidents ? accidents.Minor + accidents.Serious : 0,
             SeriousCrashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick))?.Serious ?? 0,
             InsuranceCents: state.Safety.InsuranceTodayCents,
-            LiftUpkeepCents: state.Finance.LiftUpkeepTodayCents);
+            LiftUpkeepCents: state.Finance.LiftUpkeepTodayCents,
+            LiftTicketsCents: state.Finance.LiftTicketsTodayCents);
         ctx.Publish(new DayEnded(ctx.Tick, report));
         state.DayHistory.Add(report);
         if (state.DayHistory.Count > WorldState.DayHistoryDays)
@@ -333,6 +334,7 @@ internal sealed class FinanceSystem : ISimSystem
             lift.Stats.MaxQueueToday = 0;
         }
         state.Finance.LiftFeesTodayCents = 0;
+        state.Finance.LiftTicketsTodayCents = 0;
         state.Finance.WagesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
         state.Reputation.ReviewsToday = 0;
