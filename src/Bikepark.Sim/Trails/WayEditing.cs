@@ -4,11 +4,11 @@ using Bikepark.Sim.State;
 namespace Bikepark.Sim.Trails;
 
 /// <summary>
-/// Editing built trails: splitting one into two, renaturalizing a section (the trail is gone there, trees grow back),
+/// Editing built ways: renaturalizing a section of a trail or gravel path (the way is gone there, trees grow back),
 /// joining a newly built trail onto loose trail ends (it becomes part of them), and splitting a trail where a new gravel
-/// path attaches (gravel routes divide trails). Only stored input changes: control points (re-sampled from the derived
-/// geometry), joins, features and closures; everything else is derived again. Pieces shorter than the minimum way length
-/// are dropped.
+/// path attaches (gravel routes divide trails). A trail cut in two becomes "&lt;name&gt; Part 1" and "&lt;name&gt; Part 2".
+/// Only stored input changes: control points (re-sampled from the derived geometry), joins, features and closures;
+/// everything else is derived again.
 /// </summary>
 public static class WayEditing
 {
@@ -18,25 +18,17 @@ public static class WayEditing
     /// <summary>Spacing of the control points re-sampled from a trail's geometry.</summary>
     private const long SampleCm = 1_000;
 
-    /// <summary>Why a trail can't be split or renaturalized now, or null.</summary>
+    /// <summary>Leftovers shorter than this go with the removed section.</summary>
+    private const long MinPieceCm = 100;
+
+    private const string PartWord = " Part ";
+
+    /// <summary>Why a way can't be renaturalized now, or null.</summary>
     public static string? CannotEdit(WorldState state, Way? way)
     {
-        if (way is null) return "No such trail.";
-        if (way.Kind != WayKind.Trail) return $"{way.Name} is a gravel path: only trails can be split or renaturalized.";
-        if (!way.Built) return $"{way.Name} is only planned: cancel its job instead.";
-        if (way.Origin == WayOrigin.Scenario) return $"{way.Name} belongs to the scenario.";
-        if (state.Jobs.Any(j => j.WayId == way.Id)) return $"The crew is working on {way.Name}: wait or cancel the job first.";
-        return null;
-    }
-
-    /// <summary>Why the trail can't be split at this distance, or null.</summary>
-    public static string? CannotSplit(WorldState state, WayNetwork network, Way? way, long atCm)
-    {
-        if (CannotEdit(state, way) is { } reason) return reason;
-        long length = network.Geometry(way!.Id).LengthCm;
-        long min = MinPieceCm(state);
-        if (atCm < min || atCm > length - min) return $"Both parts must be at least {min / 100} m long.";
-        if (network.FeaturesOn(way.Id).Any(f => f.StartCm < atCm && atCm < f.EndCm)) return "Not on a feature: split before or after it.";
+        if (way is null) return "No such trail or path.";
+        if (!way.Built) return $"{way.Label} is only planned: cancel its job in the Crew menu instead.";
+        if (state.Jobs.Any(j => j.WayId == way.Id)) return $"The crew is working on {way.Label}: wait or cancel the job first.";
         return null;
     }
 
@@ -44,15 +36,27 @@ public static class WayEditing
     public static string? CannotRenaturalize(WorldState state, WayNetwork network, Way? way, long fromCm, long toCm)
     {
         if (CannotEdit(state, way) is { } reason) return reason;
-        long length = network.Geometry(way!.Id).LengthCm;
-        if (fromCm < 0 || toCm > length || toCm - fromCm < 100) return "Mark a section along the trail.";
+        if (!network.TryGetGeometry(way!.Id, out var geometry)) return "No such trail or path.";
+        if (fromCm < 0 || toCm > geometry.LengthCm || toCm - fromCm < 100) return "Mark a section along the way.";
+        if (Land.LandMath.OwnedPredicate(state) is { } owned)
+            for (int i = 0; i < geometry.SampleCount; i++)
+                if (geometry.Distances[i] >= fromCm && geometry.Distances[i] <= toCm && !owned(geometry.Xs[i], geometry.Zs[i]))
+                    return "Not your land: only sections on the park's land can be renaturalized.";
         return null;
     }
 
-    // ---------------------------------------------------------------- split
+    // ---------------------------------------------------------------- split (where a gravel path attaches)
 
-    /// <summary>Splits a trail at a distance: the upper part keeps the trail (name, stats), the lower one is a new trail.</summary>
-    public static Way Split(SimContext ctx, Way way, long atCm)
+    /// <summary>A gravel path attaching here may split the trail (built, nobody working on it, not on a feature or an end).</summary>
+    private static bool CanSplit(WorldState state, WayNetwork network, Way trail, long atCm)
+    {
+        if (!trail.Built || state.Jobs.Any(j => j.WayId == trail.Id) || !network.TryGetGeometry(trail.Id, out var geometry)) return false;
+        if (atCm <= EndToleranceCm || atCm >= geometry.LengthCm - EndToleranceCm) return false;
+        return !network.FeaturesOn(trail.Id).Any(f => f.StartCm < atCm && atCm < f.EndCm);
+    }
+
+    /// <summary>Splits a trail at a distance: the upper part keeps the trail (stats), the lower one is a new trail.</summary>
+    private static Way Split(SimContext ctx, Way way, long atCm)
     {
         var state = ctx.State;
         var geometry = ctx.Network.Geometry(way.Id);
@@ -61,7 +65,9 @@ public static class WayEditing
         var lower = Resample(state, geometry, atCm, length);
         long upperLength = Measure(ctx, way.Kind, upper);
 
-        var second = NewPiece(state, way, lower, NextName(state, way.Name));
+        var (upperName, lowerName) = PartNames(state, way);
+        var second = NewPiece(state, way, lower, lowerName);
+        way.Name = upperName;
         second.StartJoin = new WayJoin(way.Id, upperLength); // the lower part starts where the upper one ends
         second.EndJoin = way.EndJoin;
         second.EndHubId = way.EndHubId;
@@ -78,17 +84,16 @@ public static class WayEditing
     // ---------------------------------------------------------------- renaturalize
 
     /// <summary>
-    /// Removes a section of a trail. What is left above keeps the trail; what is left below becomes a new trail; both have
-    /// a loose end there (closed until reconnected). Remnants shorter than the minimum way length go too. Ways that joined
-    /// the removed section get a loose end.
+    /// Removes a section of a trail or gravel path. What is left above keeps the way; what is left below becomes a new
+    /// one (trails: "Part 1" / "Part 2"); both have a loose end there (a trail stays closed until reconnected). Ways that
+    /// joined the removed section get a loose end.
     /// </summary>
     public static void Renaturalize(SimContext ctx, Way way, long fromCm, long toCm)
     {
         var state = ctx.State;
         var geometry = ctx.Network.Geometry(way.Id);
         long length = geometry.LengthCm;
-        long min = MinPieceCm(state);
-        bool keepUpper = fromCm >= min, keepLower = toCm <= length - min;
+        bool keepUpper = fromCm >= MinPieceCm, keepLower = toCm <= length - MinPieceCm;
         int id = way.Id;
 
         if (!keepUpper && !keepLower)
@@ -105,7 +110,9 @@ public static class WayEditing
         Way? lower = null;
         if (keepUpper && keepLower)
         {
-            lower = NewPiece(state, way, Resample(state, geometry, toCm, length), NextName(state, way.Name));
+            var (upperName, lowerName) = way.Kind == WayKind.Trail ? PartNames(state, way) : (way.Name, "");
+            lower = NewPiece(state, way, Resample(state, geometry, toCm, length), lowerName);
+            way.Name = upperName;
             lower.EndJoin = way.EndJoin;
             lower.EndHubId = way.EndHubId;
             way.Points = Resample(state, geometry, 0, fromCm);
@@ -124,7 +131,7 @@ public static class WayEditing
         }
         else
         {
-            // Only the lower part is left: it keeps the trail, starting loose.
+            // Only the lower part is left: it keeps the way, starting loose.
             way.Points = Resample(state, geometry, toCm, length);
             way.StartJoin = null;
             way.StartHubId = 0;
@@ -134,6 +141,34 @@ public static class WayEditing
         }
         Finish(ctx, way, lower);
         ctx.Publish(new TrailRenaturalized(ctx.Tick, id, lower?.Id ?? 0, fromCm, toCm));
+    }
+
+    /// <summary>
+    /// Names for a trail cut in two: "Red Rocket" → "Red Rocket Part 1" + "Red Rocket Part 2"; a part keeps its name and
+    /// the new one gets the next free number ("Red Rocket Part 2" → itself + "Red Rocket Part 3").
+    /// </summary>
+    public static (string Upper, string Lower) PartNames(WorldState state, Way way)
+    {
+        var (stem, number) = PartOf(way.Name.Length > 0 ? way.Name : way.Label);
+        string upper = number > 0 ? way.Name : FreePart(state, stem, 1, way, null);
+        string lower = FreePart(state, stem, Math.Max(number, 1) + 1, way, upper);
+        return (upper, lower);
+    }
+
+    /// <summary>"Red Rocket Part 2" → ("Red Rocket", 2); any other name → (name, 0).</summary>
+    public static (string Stem, int Number) PartOf(string name)
+    {
+        int at = name.LastIndexOf(PartWord, StringComparison.Ordinal);
+        return at > 0 && int.TryParse(name[(at + PartWord.Length)..], out int n) && n > 0 ? (name[..at], n) : (name, 0);
+    }
+
+    private static string FreePart(WorldState state, string stem, int from, Way except, string? taken)
+    {
+        for (int n = from; ; n++)
+        {
+            string candidate = $"{stem}{PartWord}{n}";
+            if (candidate != taken && state.Ways.All(w => w == except || w.Name != candidate)) return candidate;
+        }
     }
 
     // ---------------------------------------------------------------- when a way is built
@@ -151,7 +186,7 @@ public static class WayEditing
             foreach (var join in new[] { way.StartJoin, way.EndJoin })
             {
                 if (join is null || state.Ways.FirstOrDefault(w => w.Id == join.WayId) is not { Kind: WayKind.Trail } trail) continue;
-                if (CannotSplit(state, ctx.Network, trail, join.DistanceCm) is null)
+                if (CanSplit(state, ctx.Network, trail, join.DistanceCm))
                     Split(ctx, trail, join.DistanceCm);
             }
             return;
@@ -168,6 +203,16 @@ public static class WayEditing
             && below != target && end.DistanceCm <= EndToleranceCm && IsLooseStart(state, below, target) && CannotEdit(state, below) is null)
             Absorb(ctx, target, below);
     }
+
+    /// <summary>
+    /// The planned trail continues an existing trail's end or leads into a trail's start: once built it becomes part of
+    /// that trail (if the end is loose), so it needs no name of its own.
+    /// </summary>
+    public static bool ContinuesTrail(WayNetwork network, WayPlan plan) =>
+        plan.Kind == WayKind.Trail
+        && (plan.StartJoin is { } s && network.FindWay(s.WayId) is { Kind: WayKind.Trail } && network.TryGetGeometry(s.WayId, out var a)
+            && s.DistanceCm >= a.LengthCm - EndToleranceCm
+            || plan.EndJoin is { } e && network.FindWay(e.WayId) is { Kind: WayKind.Trail } && e.DistanceCm <= EndToleranceCm);
 
     /// <summary>Nothing continues from the trail's end except <paramref name="except"/>.</summary>
     private static bool IsLooseEnd(SimContext ctx, Way trail, Way except)
@@ -203,6 +248,10 @@ public static class WayEditing
         trail.Features.Sort((a, b) => a.DistanceCm.CompareTo(b.DistanceCm));
         RemapJoins(state, next.Id, d => (trail.Id, d + offset));
         state.Ways.Remove(next);
+        // The last two parts of a trail joined again: it gets its old name back.
+        var (stem, number) = PartOf(trail.Name);
+        if (number > 0 && PartOf(next.Name).Stem == stem && !state.Ways.Any(w => w != trail && (PartOf(w.Name).Stem == stem && PartOf(w.Name).Number > 0 || w.Name == stem)))
+            trail.Name = stem;
         state.WaysRevision++;
         Systems.RiderSystem.ResetRidersUsing(ctx, trail.Id, next.Id);
         ctx.Publish(new TrailsJoined(ctx.Tick, trail.Id, next.Id));
@@ -210,8 +259,6 @@ public static class WayEditing
     }
 
     // ---------------------------------------------------------------- helpers
-
-    private static long MinPieceCm(WorldState state) => state.TrailRules.MinLengthMeters * 100L;
 
     /// <summary>A new trail piece next to <paramref name="original"/> (same kind, origin and closure; fresh stats).</summary>
     private static Way NewPiece(WorldState state, Way original, List<PointCm> points, string name)
@@ -297,17 +344,4 @@ public static class WayEditing
 
     private static long Measure(SimContext ctx, WayKind kind, List<PointCm> points) =>
         WayGeometry.Build(ctx.Terrain, kind, points, ctx.State.TrailRules.SegmentLengthMeters * 100, ctx.State.TrailRules.PathGradingMeters).LengthCm;
-
-    /// <summary>"Old Piste" → "Old Piste 2" (or the next free number).</summary>
-    private static string NextName(WorldState state, string name)
-    {
-        string stem = name;
-        int space = name.LastIndexOf(' ');
-        if (space > 0 && int.TryParse(name[(space + 1)..], out _)) stem = name[..space];
-        for (int n = 2; ; n++)
-        {
-            string candidate = $"{stem} {n}";
-            if (state.Ways.All(w => w.Name != candidate)) return candidate;
-        }
-    }
 }

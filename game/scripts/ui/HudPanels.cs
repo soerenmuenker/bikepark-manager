@@ -31,7 +31,7 @@ internal sealed class HudContext
     public required TerrainView Terrain { get; init; }
     public required RtsCamera Camera { get; init; }
 
-    /// <summary>Renaturalize / split trails (created by the HUD).</summary>
+    /// <summary>Renaturalize trails, paths and structures (created by the HUD).</summary>
     public TrailEditTool TrailEdit { get; set; } = null!;
 
     /// <summary>Closed days seen this session (from <see cref="DayEnded"/>), for the finance chart.</summary>
@@ -41,6 +41,17 @@ internal sealed class HudContext
 
     /// <summary>Opens the repair pop-up for a trail (set by the HUD).</summary>
     public Action<int> OpenRepair { get; set; } = _ => { };
+
+    /// <summary>The name pop-up (set by the HUD): title, hint, suggestion, validator, OK, cancel.</summary>
+    public Action<string, string, string, Func<string, string?>, Action<string>, Action?> AskName { get; set; } = (_, _, _, _, _, _) => { };
+
+    /// <summary>Asks for a trail's new name and renames it.</summary>
+    public void RenameTrail(int wayId)
+    {
+        if (Sim.State.Ways.FirstOrDefault(w => w.Id == wayId) is not { } way) return;
+        AskName("Rename trail", "", way.Name, name => RenameTrailCommand.CannotName(Sim.State, name, wayId),
+            name => Host.Enqueue(new RenameTrailCommand(wayId, name)), null);
+    }
 
     public KpiReport Kpi { get; set; } = null!;
 
@@ -186,7 +197,7 @@ public partial class ToolCard : PanelContainer
 
 public partial class BuildPanel : HudPanel
 {
-    private ToolCard _path = null!, _trail = null!, _parking = null!, _fell = null!, _platform = null!, _renaturalize = null!, _split = null!;
+    private ToolCard _path = null!, _trail = null!, _parking = null!, _fell = null!, _platform = null!, _renaturalize = null!;
     private readonly List<(LiftType Type, ToolCard Card)> _lifts = [];
     private readonly List<(string TypeId, ToolCard Card)> _features = [];
     private Label _demoStatus = null!;
@@ -214,12 +225,13 @@ public partial class BuildPanel : HudPanel
             });
         _platform = new ToolCard(UiIcon.Parking, "Gravel platform", "12 × 12 m", "A small gravel pad where paths and trails can start and end, to link them up (free); on your land",
             () => ToggleStructure(StructureTool.ToolMode.Platform));
-        _renaturalize = new ToolCard(UiIcon.Felling, "Renaturalize", "remove", "Give a section of a trail back to nature: click where it starts and where it ends. " +
-                                                                             "What is left keeps loose ends and stays closed until you connect it again (draw a trail from the loose end)",
+        _renaturalize = new ToolCard(UiIcon.Felling, "Renaturalize", "remove",
+            "Give something back to nature. Trails and gravel paths (free): click where a section starts and where it ends; what is " +
+            "left keeps loose ends, a trail cut in two becomes Part 1 and Part 2 and stays closed until connected (draw a trail from " +
+            "the loose end, or put a gravel path or platform in between). Lifts and parking lots: click them, a contractor tears " +
+            "them down at once for a fee. Platforms: free",
             () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize));
-        _split = new ToolCard(UiIcon.Trail, "Split trail", "cut", "Cut a trail into two trails at a point (each keeps its features)",
-            () => ToggleTrailEdit(TrailEditTool.ToolMode.Split));
-        foreach (var card in new[] { _path, _trail, _fell, _parking, _platform, _renaturalize, _split }) cards.AddChild(card);
+        foreach (var card in new[] { _path, _trail, _fell, _parking, _platform, _renaturalize }) cards.AddChild(card);
         if (Ctx.Sim.State.Parcels.Count == 0)
         {
             // Sandbox only: the demo content.
@@ -365,7 +377,6 @@ public partial class BuildPanel : HudPanel
         _parking.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Parking;
         _platform.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Platform;
         _renaturalize.Active = Ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Renaturalize;
-        _split.Active = Ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Split;
         _fell.Active = Ctx.Clearing.Active;
         foreach (var (id, card) in _features)
             card.Active = Ctx.Features.TypeId == id;
@@ -381,7 +392,7 @@ public partial class TrailsPanel : HudPanel
     private const int MaxListHeight = 420;
     private string _signature = "";
 
-    public override string Title => "Trails & paths";
+    public override string Title => "Trails";
 
     protected override void Build()
     {
@@ -394,7 +405,8 @@ public partial class TrailsPanel : HudPanel
 
     public override void Refresh()
     {
-        var ways = Ctx.Sim.State.Ways;
+        // Gravel paths are not listed (they have no names and nothing to manage).
+        var ways = Ctx.Sim.State.Ways.Where(w => w.Kind == WayKind.Trail).ToList();
         if (Signature(ways) != _signature) Rebuild(ways);
         var scroll = (ScrollContainer)_list.GetParent();
         scroll.CustomMinimumSize = new Vector2(560, Math.Min(MaxListHeight, Math.Max(40, _list.GetCombinedMinimumSize().Y)));
@@ -415,13 +427,6 @@ public partial class TrailsPanel : HudPanel
                 detail.Text = $"{(way.Kind == WayKind.Trail ? $"Trail · {g.Rating}" : "Gravel path")} · {g.LengthCm / 100} m{progress}\n" +
                               "The crew builds it (Crew menu); riders can't use it yet" +
                               (way.Kind == WayKind.Trail ? "\n" + FeatureSummary(network.FeaturesOn(id)) : "");
-                continue;
-            }
-            if (way.Kind == WayKind.AccessPath)
-            {
-                main.Text = $"{way.Name}";
-                detail.Text = $"Gravel path · {g.LengthCm / 100} m · +{(g.EndHeightCm - g.StartHeightCm) / 100} m" +
-                              (way.Origin == WayOrigin.Scenario ? " · existing hiking route" : "");
                 continue;
             }
             var s = way.Stats;
@@ -490,6 +495,7 @@ public partial class TrailsPanel : HudPanel
         Button Small(Button b) { b.AddThemeFontSizeOverride("font_size", 12); return b; }
 
         box.AddChild(Small(UiTheme.Button("Features…", () => Ctx.OpenRepair(id), "Feature condition and repairs (or click the trail)")));
+        box.AddChild(Small(UiTheme.Button("Rename", () => Ctx.RenameTrail(id), "Give the trail a new name")));
 
         box.AddChild(Small(UiTheme.Button(way.Closed ? "Open" : "Close", () => Ctx.Host.Enqueue(new SetTrailClosedCommand(id, !way.Closed)),
             way.Closed ? "Let riders on it again (a worn-out trail stays closed until repaired)" : "Close it to riders (those on it finish their run)")));
@@ -503,7 +509,7 @@ public partial class TrailsPanel : HudPanel
         _rows.Clear();
         if (ways.Count == 0)
         {
-            _list.AddChild(UiTheme.Label("Nothing built yet. Open Build and draw a trail down from the plateau.", 13, UiTheme.TextDim));
+            _list.AddChild(UiTheme.Label("No trails yet. Open Build and draw a trail down from the plateau.", 13, UiTheme.TextDim));
             return;
         }
         var network = Ctx.Sim.Network;

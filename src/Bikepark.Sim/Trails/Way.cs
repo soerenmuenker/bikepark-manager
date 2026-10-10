@@ -29,7 +29,13 @@ public sealed class Way
 {
     public int Id { get; set; }
     public WayKind Kind { get; set; }
+
+    /// <summary>The trail's name (gravel paths need none: theirs is usually empty).</summary>
     public string Name { get; set; } = "";
+
+    /// <summary>The name, or what to call an unnamed way in messages.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string Label => Name.Length > 0 ? Name : Kind == WayKind.AccessPath ? "a gravel path" : $"Trail #{Id}";
 
     /// <summary>Control points from start to end. Paths start at their low end, trails at their high end.</summary>
     public List<PointCm> Points { get; set; } = [];
@@ -98,7 +104,10 @@ public sealed class TrailRules
 {
     public int SegmentLengthMeters { get; set; } = 10;
     public int SnapRadiusMeters { get; set; } = 12;
-    public int MinLengthMeters { get; set; } = 30;
+
+    /// <summary>No longer used (ways have no minimum length); kept so older saves and scenarios still load.</summary>
+    public int MinLengthMeters { get; set; }
+
     public int MaxLengthMeters { get; set; } = 4_000;
     public int MaxControlPoints { get; set; } = 200;
 
@@ -161,7 +170,7 @@ public sealed class TrailRules
         var errors = new List<string>();
         if (SegmentLengthMeters is < 2 or > 100) errors.Add("trailRules.segmentLengthMeters must be within 2..100");
         if (SnapRadiusMeters is < 1 or > 100) errors.Add("trailRules.snapRadiusMeters must be within 1..100");
-        if (MinLengthMeters < 1 || MaxLengthMeters <= MinLengthMeters) errors.Add("trailRules min/max length are inconsistent");
+        if (MaxLengthMeters < 1) errors.Add("trailRules.maxLengthMeters must be >= 1");
         if (MaxControlPoints < 2) errors.Add("trailRules.maxControlPoints must be >= 2");
         if (PathGradingMeters is < 0 or > 200) errors.Add("trailRules.pathGradingMeters must be within 0..200");
         foreach (var (name, steep, max) in new[]

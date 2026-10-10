@@ -38,7 +38,7 @@ public static class Jobs
         switch (job.Kind)
         {
             case JobKind.BuildWay:
-                return way is null ? "Way" : $"{(way.Kind == WayKind.Trail ? "Trail" : "Path")} {way.Name}";
+                return way is null ? "Way" : way.Kind == WayKind.Trail ? $"Trail {way.Name}" : way.Name.Length > 0 ? $"Path {way.Name}" : "Gravel path";
             case JobKind.BuildFeature:
                 var feature = way?.Features.FirstOrDefault(f => f.Id == job.FeatureId);
                 var type = feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId);

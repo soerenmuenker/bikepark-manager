@@ -108,6 +108,8 @@ public partial class WayView : Node3D
         _subscriptions.Add(sim.Events.Subscribe<WayDeleted>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<TrailSplit>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<TrailRenaturalized>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<TrailRenamed>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<StructureRenaturalized>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<TrailsJoined>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<PlatformBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<PlatformDeleted>(_ => _dirty = true));
@@ -180,7 +182,7 @@ public partial class WayView : Node3D
             }
             if (way.Kind == WayKind.AccessPath)
             {
-                AddRibbon(WayMeshes.Ribbon(grid, g, 3.0f, 0.10f, followGround: false, _ => WayMeshes.Gravel), way.Name);
+                AddRibbon(WayMeshes.Ribbon(grid, g, 3.0f, 0.10f, followGround: false, _ => WayMeshes.Gravel), $"Path {way.Id}");
                 continue;
             }
 
@@ -226,12 +228,12 @@ public partial class WayView : Node3D
             : WayMeshes.Blueprint with { A = i / 3 % 2 == 0 ? 0.7f : 0.3f }; // ~3 m dashes
         var mesh = WayMeshes.Ribbon(sim.Terrain, g, path ? 3.0f : 1.4f, path ? 0.10f : 0.06f, followGround: !path, ColorAt);
         if (mesh is not null)
-            _content!.AddChild(new MeshInstance3D { Name = way.Name + " (planned)", Mesh = mesh, MaterialOverride = _blueprintMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+            _content!.AddChild(new MeshInstance3D { Name = $"Way {way.Id} (planned)", Mesh = mesh, MaterialOverride = _blueprintMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
 
         string progress = job is null ? "planned"
             : job.IsFelling ? $"planned · felling {job.TreesFelled}/{job.Trees.Count} trees"
             : $"planned · {WorkCosts.ProgressPermille(state.CrewRules, job) / 10} % built";
-        AddLabel($"{way.Name}\n{progress}", WayMeshes.ToWorld(g.PositionAt(0)) + Vector3.Up * 4f, WayMeshes.Blueprint);
+        AddLabel($"{(path ? "Gravel path" : way.Label)}\n{progress}", WayMeshes.ToWorld(g.PositionAt(0)) + Vector3.Up * 4f, WayMeshes.Blueprint);
         if (way.Kind == WayKind.Trail)
             AddFeatures(state, sim.Terrain, sim.Network, way, g);
     }

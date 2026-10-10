@@ -193,13 +193,34 @@ public partial class WayTool : Node3D
             Status = plan.FirstError ?? "Not valid.";
             return;
         }
-        _host.Enqueue(new BuildWayCommand(Kind, "", _points.ToList(), Instant: _host.InstantBuild));
-        string what = $"{plan.LengthCm / 100} m{(Kind == WayKind.Trail ? $", {plan.Geometry!.Rating}" : "")}";
-        Status = _host.InstantBuild
-            ? $"Built ({what}). Draw the next one or press Esc."
-            : $"Planned ({what}): the crew will build it (Crew menu). Draw the next one or press Esc.";
+        var points = _points.ToList();
+        var kind = Kind;
+        string what = $"{plan.LengthCm / 100} m{(kind == WayKind.Trail ? $", {plan.Geometry!.Rating}" : "")}";
         _points.Clear();
+        void Order(string name)
+        {
+            _host.Enqueue(new BuildWayCommand(kind, name, points, Instant: _host.InstantBuild));
+            Status = _host.InstantBuild
+                ? $"Built ({what}). Draw the next one or press Esc."
+                : $"Planned ({what}): the crew will build it (Crew menu). Draw the next one or press Esc.";
+        }
+        // A finished trail gets a name, unless it continues a trail (then it becomes part of that one); paths need none.
+        if (kind == WayKind.Trail && !WayEditing.ContinuesTrail(sim.Network, plan) && AskName is { } ask)
+        {
+            Status = "Name the trail (Enter), or Esc to keep drawing.";
+            ask(BuildWayCommand.DefaultTrailName(sim.State), Order, () =>
+            {
+                _points.Clear();
+                _points.AddRange(points);
+                Status = "Not planned yet: keep drawing, then Enter.";
+            });
+            return;
+        }
+        Order("");
     }
+
+    /// <summary>Asks for a finished trail's name (set by the HUD): suggestion, OK, cancel. Without it trails get default names.</summary>
+    public Action<string, Action<string>, Action>? AskName { get; set; }
 
     private PointCm? CursorPoint()
     {

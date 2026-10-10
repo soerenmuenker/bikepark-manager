@@ -69,7 +69,8 @@ public static class WayPlanner
         bool reversed = kind == WayKind.AccessPath ? first > last : first < last;
         if (reversed) points.Reverse();
 
-        // Snap endpoints onto the existing network: hubs (onto the edge of their flat area) win over ways.
+        // Snap endpoints onto the existing network: hubs (onto the edge of their flat area) win over ways; a trail snaps
+        // onto a loose trail end nearby (to continue it) before any other way.
         int snapRadius = rules.SnapRadiusMeters * 100;
         WayJoin? startJoin = null, endJoin = null;
         int startHub = 0, endHub = 0;
@@ -78,7 +79,8 @@ public static class WayPlanner
             startHub = sh.Id;
             points[0] = sh.Pad.ClosestEdgePoint(points[0].X, points[0].Z);
         }
-        else if (network.Nearest(points[0].X, points[0].Z, snapRadius) is { } s)
+        else if (((kind == WayKind.Trail ? network.LooseTrailEnd(points[0].X, points[0].Z, snapRadius, end: true) : null)
+                  ?? network.Nearest(points[0].X, points[0].Z, snapRadius)) is { } s)
         {
             startJoin = new WayJoin(s.WayId, s.DistanceCm);
             points[0] = s.Point;
@@ -88,7 +90,8 @@ public static class WayPlanner
             endHub = eh.Id;
             points[^1] = eh.Pad.ClosestEdgePoint(points[^1].X, points[^1].Z);
         }
-        else if (network.Nearest(points[^1].X, points[^1].Z, snapRadius) is { } e)
+        else if (((kind == WayKind.Trail ? network.LooseTrailEnd(points[^1].X, points[^1].Z, snapRadius, end: false) : null)
+                  ?? network.Nearest(points[^1].X, points[^1].Z, snapRadius)) is { } e)
         {
             endJoin = new WayJoin(e.WayId, e.DistanceCm);
             points[^1] = e.Point;
@@ -98,6 +101,9 @@ public static class WayPlanner
             return Fail(kind, points, "sameJunction", "Both ends attach to the same spot.");
         if (startHub != 0 && startHub == endHub)
             return Fail(kind, points, "sameJunction", "Both ends attach to the same plateau.");
+
+        if (kind == WayKind.Trail)
+            AlignWithTrailEnds(network, points, ref startJoin, ref endJoin);
 
         var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
 
@@ -110,8 +116,6 @@ public static class WayPlanner
                 }
 
         long length = geometry.LengthCm;
-        if (length < rules.MinLengthMeters * 100L)
-            issues.Add(Error("tooShort", $"Too short: at least {rules.MinLengthMeters} m."));
         if (length > rules.MaxLengthMeters * 100L)
             issues.Add(Error("tooLong", $"Too long: at most {rules.MaxLengthMeters} m."));
 
@@ -124,7 +128,7 @@ public static class WayPlanner
         foreach (var other in network.Ways)
             if (network.TryGetGeometry(other.Id, out var otherGeometry))
                 foreach (var (cm, _) in Crossings.Find(geometry, otherGeometry))
-                    issues.Add(new WayIssue(IssueSeverity.Warning, "crossing", $"Crosses {other.Name} at {cm / 100} m: riders can collide there.", cm, cm));
+                    issues.Add(new WayIssue(IssueSeverity.Warning, "crossing", $"Crosses {other.Label} at {cm / 100} m: riders can collide there.", cm, cm));
 
         foreach (var link in network.Links)
             if (link.Towed && network.FindHub(link.FromHubId)?.Pad is { } from && network.FindHub(link.ToHubId)?.Pad is { } to)
@@ -150,6 +154,50 @@ public static class WayPlanner
             RocksToClear = rocks,
             Issues = issues,
         };
+    }
+
+    /// <summary>How far the guide point added at a joined trail end lies along that trail's direction.</summary>
+    private const long GuideCm = 1_000;
+
+    /// <summary>
+    /// A trail that continues from another trail's end (or leads into another trail's start) joins it without a kink: the
+    /// end snaps exactly onto the other trail's end and a guide point is added along that trail's direction, so the
+    /// spline leaves (enters) in line with it. (Joined trails become one trail, see <see cref="WayEditing.OnBuilt"/>.)
+    /// </summary>
+    private static void AlignWithTrailEnds(WayNetwork network, List<PointCm> points, ref WayJoin? startJoin, ref WayJoin? endJoin)
+    {
+        if (startJoin is { } s && network.FindWay(s.WayId) is { Kind: WayKind.Trail } above && network.TryGetGeometry(above.Id, out var a)
+            && s.DistanceCm >= a.LengthCm - WayEditing.EndToleranceCm)
+        {
+            startJoin = new WayJoin(above.Id, a.LengthCm);
+            var end = a.PositionAt(a.LengthCm);
+            var back = a.PositionAt(Math.Max(0, a.LengthCm - GuideCm));
+            points[0] = new PointCm(end.X, end.Z);
+            points.InsertRange(1, Guides(points[0], end.X - back.X, end.Z - back.Z, points[1]));
+        }
+        if (endJoin is { } e && network.FindWay(e.WayId) is { Kind: WayKind.Trail } below && network.TryGetGeometry(below.Id, out var b)
+            && e.DistanceCm <= WayEditing.EndToleranceCm)
+        {
+            endJoin = new WayJoin(below.Id, 0);
+            var start = b.PositionAt(0);
+            var ahead = b.PositionAt(Math.Min(b.LengthCm, GuideCm));
+            points[^1] = new PointCm(start.X, start.Z);
+            var guides = Guides(points[^1], start.X - ahead.X, start.Z - ahead.Z, points[^2]);
+            guides.Reverse();
+            points.InsertRange(points.Count - 1, guides);
+        }
+
+        // Two points along the direction, at most GuideCm (and half the way to the neighbouring control point) from the
+        // joint, nearest first: the spline runs straight out of the joint before it turns.
+        static List<PointCm> Guides(PointCm joint, long dx, long dz, PointCm neighbour)
+        {
+            long dir = Terrain.FixedMath.ISqrt(dx * dx + dz * dz);
+            long nx = neighbour.X - joint.X, nz = neighbour.Z - joint.Z;
+            long reach = Math.Min(GuideCm, Terrain.FixedMath.ISqrt(nx * nx + nz * nz) / 2);
+            if (dir == 0 || reach < 200) return [];
+            return [At(reach / 2), At(reach)];
+            PointCm At(long d) => new((int)(joint.X + dx * d / dir), (int)(joint.Z + dz * d / dir));
+        }
     }
 
     /// <summary>

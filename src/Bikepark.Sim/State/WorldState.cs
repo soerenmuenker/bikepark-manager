@@ -257,6 +257,9 @@ public sealed class FinanceState
     public long TotalLandCents { get; set; }
     public long TotalLiftBuildCents { get; set; }
 
+    /// <summary>Lifts and parking lots torn down (renaturalized) by contractors (included in the expenses).</summary>
+    public long TotalRemovalCents { get; set; }
+
     /// <summary>Daily upkeep of the park's own lifts (included in the expenses).</summary>
     public long TotalLiftUpkeepCents { get; set; }
     public long LiftUpkeepTodayCents { get; set; }

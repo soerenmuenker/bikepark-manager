@@ -91,7 +91,7 @@ public static class StructurePlanner
         if (type.Kind == LiftKind.TBar)
             foreach (var way in network.Ways)
                 if (network.TryGetGeometry(way.Id, out var geometry) && Crossings.FindOnTrack(geometry, valleyPad, mountainPad).Count > 0)
-                    issues.Add(new WayIssue(IssueSeverity.Warning, "crossing", $"The track crosses {way.Name}: riders can collide there."));
+                    issues.Add(new WayIssue(IssueSeverity.Warning, "crossing", $"The track crosses {way.Label}: riders can collide there."));
 
         return new LiftPlan
         {
@@ -200,7 +200,7 @@ public static class StructurePlanner
             for (int i = 0; i < geometry.SampleCount; i++)
             {
                 if (pad.DistanceOutside(geometry.Xs[i], geometry.Zs[i]) > half) continue;
-                issues.Add(Error("overlapsWay", $"{what} overlaps '{way.Name}'."));
+                issues.Add(Error("overlapsWay", $"{what} overlaps {way.Label}."));
                 break;
             }
         }

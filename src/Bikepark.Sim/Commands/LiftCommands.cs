@@ -157,7 +157,7 @@ public sealed record DeleteLiftCommand(int LiftId) : ICommand
         if (lift is null) return "No such lift.";
         int[] hubs = [lift.Valley.Id, lift.Mountain.Id];
         var way = state.Ways.FirstOrDefault(w => hubs.Contains(w.StartHubId) || hubs.Contains(w.EndHubId));
-        if (way is not null) return $"'{way.Name}' is attached to it; remove that first.";
+        if (way is not null) return $"{way.Label} is attached to it; remove that first.";
         var lot = state.ParkingLots.FirstOrDefault(p => p.LiftId == LiftId);
         return lot is null ? null : $"'{lot.Name}' serves it; remove that first.";
     }
@@ -182,7 +182,7 @@ public sealed record DeleteParkingLotCommand(int ParkingLotId) : ICommand
         var state = ctx.State;
         if (state.ParkingLots.All(p => p.Id != ParkingLotId)) return "No such parking lot.";
         var way = state.Ways.FirstOrDefault(w => w.StartHubId == ParkingLotId || w.EndHubId == ParkingLotId);
-        return way is null ? null : $"'{way.Name}' is attached to it; remove that first.";
+        return way is null ? null : $"{way.Label} is attached to it; remove that first.";
     }
 
     public void Apply(SimContext ctx)
@@ -254,6 +254,17 @@ public static class LiftWorks
             || Land.LandMath.IsOwned(state, edit.Pad.CenterX, edit.Pad.CenterZ));
 }
 
+/// <summary>
+/// Renaturalizes a lift the park owns, a parking lot or a gravel platform (see <see cref="StructureRemoval"/>): removed
+/// at once, lifts and parking lots for a contractor's fee. Ways attached to it get a loose end.
+/// </summary>
+public sealed record RenaturalizeStructureCommand(int StructureId) : ICommand
+{
+    public string? Validate(SimContext ctx) => StructureRemoval.CannotRemove(ctx.State, StructureId);
+
+    public void Apply(SimContext ctx) => StructureRemoval.Remove(ctx, StructureId);
+}
+
 /// <summary>Builds a small square gravel platform (instant, free) where paths and trails can start and end.</summary>
 public sealed record BuildPlatformCommand(string Name, PointCm Center, PointCm Toward) : ICommand
 {
@@ -289,7 +300,7 @@ public sealed record DeletePlatformCommand(int PlatformId) : ICommand
         var state = ctx.State;
         if (state.Platforms.All(p => p.Id != PlatformId)) return "No such platform.";
         var way = state.Ways.FirstOrDefault(w => w.StartHubId == PlatformId || w.EndHubId == PlatformId);
-        return way is null ? null : $"'{way.Name}' is attached to it; remove that first.";
+        return way is null ? null : $"{way.Label} is attached to it; remove that first.";
     }
 
     public void Apply(SimContext ctx)

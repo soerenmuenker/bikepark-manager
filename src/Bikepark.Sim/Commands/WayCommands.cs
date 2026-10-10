@@ -19,6 +19,7 @@ public sealed record BuildWayCommand(
     {
         if (Points is null) return "No points given.";
         if (Name is { Length: > MaxNameLength }) return $"Name cannot exceed {MaxNameLength} characters.";
+        if (Kind == WayKind.Trail && !string.IsNullOrWhiteSpace(Name) && RenameTrailCommand.CannotName(ctx.State, Name) is { } taken) return taken;
         return Plan(ctx).FirstError;
     }
 
@@ -27,12 +28,11 @@ public sealed record BuildWayCommand(
         var plan = Plan(ctx);
         var state = ctx.State;
         int id = state.AllocateEntityId();
-        int number = state.Ways.Count(w => w.Kind == Kind) + 1;
         var way = new Way
         {
             Id = id,
             Kind = Kind,
-            Name = string.IsNullOrWhiteSpace(Name) ? (Kind == WayKind.AccessPath ? $"Path {number}" : $"Trail {number}") : Name.Trim(),
+            Name = !string.IsNullOrWhiteSpace(Name) ? Name.Trim() : Kind == WayKind.Trail ? DefaultTrailName(state) : "",
             Points = plan.Points,
             StartJoin = plan.StartJoin,
             EndJoin = plan.EndJoin,
@@ -47,6 +47,13 @@ public sealed record BuildWayCommand(
         state.WaysRevision++;
         ctx.Publish(new WayBuilt(ctx.Tick, id));
         if (way.Built) WayEditing.OnBuilt(ctx, way);
+    }
+
+    /// <summary>"Trail 1", "Trail 2", ...: the first number no way uses yet.</summary>
+    public static string DefaultTrailName(State.WorldState state)
+    {
+        for (int n = state.Ways.Count(w => w.Kind == WayKind.Trail) + 1; ; n++)
+            if (state.Ways.All(w => w.Name != $"Trail {n}")) return $"Trail {n}";
     }
 
     private WayPlan Plan(SimContext ctx) =>
@@ -73,7 +80,7 @@ public sealed record DeleteWayCommand(int WayId) : ICommand
         if (ways.All(w => w.Id != WayId)) return "No such path or trail.";
         if (ways.First(w => w.Id == WayId).Origin == WayOrigin.Scenario) return "This route belongs to the scenario and cannot be removed.";
         var dependent = ways.FirstOrDefault(w => w.StartJoin?.WayId == WayId || w.EndJoin?.WayId == WayId);
-        return dependent is null ? null : $"'{dependent.Name}' is attached to it; remove that first.";
+        return dependent is null ? null : $"{dependent.Label} is attached to it; remove that first.";
     }
 
     public void Apply(SimContext ctx)
@@ -88,17 +95,10 @@ public sealed record DeleteWayCommand(int WayId) : ICommand
     }
 }
 
-/// <summary>Splits a built trail into two trails at a distance along it (instant, free).</summary>
-public sealed record SplitTrailCommand(int WayId, long AtCm) : ICommand
-{
-    public string? Validate(SimContext ctx) => WayEditing.CannotSplit(ctx.State, ctx.Network, ctx.State.Ways.FirstOrDefault(w => w.Id == WayId), AtCm);
-
-    public void Apply(SimContext ctx) => WayEditing.Split(ctx, ctx.State.Ways.First(w => w.Id == WayId), AtCm);
-}
-
 /// <summary>
-/// Gives a section of a built trail back to nature (instant, free): the trail is gone there and trees grow back. What is
-/// left above and below has a loose end and stays closed until it is connected again.
+/// Gives a section of a built trail or gravel path back to nature (instant, free): the way is gone there and trees grow
+/// back. What is left above and below has a loose end (a trail stays closed until it is connected again); a trail cut in
+/// two becomes "Part 1" and "Part 2".
 /// </summary>
 public sealed record RenaturalizeTrailCommand(int WayId, long FromCm, long ToCm) : ICommand
 {
@@ -107,4 +107,33 @@ public sealed record RenaturalizeTrailCommand(int WayId, long FromCm, long ToCm)
 
     public void Apply(SimContext ctx) =>
         WayEditing.Renaturalize(ctx, ctx.State.Ways.First(w => w.Id == WayId), Math.Min(FromCm, ToCm), Math.Max(FromCm, ToCm));
+}
+
+/// <summary>Renames a trail (gravel paths have no names). Trail names are unique.</summary>
+public sealed record RenameTrailCommand(int WayId, string Name) : ICommand
+{
+    public string? Validate(SimContext ctx)
+    {
+        var way = ctx.State.Ways.FirstOrDefault(w => w.Id == WayId);
+        if (way is null) return "No such trail.";
+        if (way.Kind != WayKind.Trail) return "Gravel paths have no names.";
+        return CannotName(ctx.State, Name, WayId);
+    }
+
+    /// <summary>Why a trail can't be called this (empty, too long, taken by another way), or null.</summary>
+    public static string? CannotName(State.WorldState state, string? name, int wayId = 0)
+    {
+        name = name?.Trim() ?? "";
+        if (name.Length == 0) return "Enter a name.";
+        if (name.Length > BuildWayCommand.MaxNameLength) return $"Name cannot exceed {BuildWayCommand.MaxNameLength} characters.";
+        if (state.Ways.Any(w => w.Id != wayId && w.Name == name)) return $"There is already a trail called {name}.";
+        return null;
+    }
+
+    public void Apply(SimContext ctx)
+    {
+        var way = ctx.State.Ways.First(w => w.Id == WayId);
+        way.Name = Name.Trim();
+        ctx.Publish(new TrailRenamed(ctx.Tick, WayId, way.Name));
+    }
 }

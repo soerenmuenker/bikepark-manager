@@ -170,8 +170,8 @@ public class TrailGeometryAndPlannerTests
     {
         Assert.Equal("tooFewPoints", Code(WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 10)])));
         Assert.Equal("outsideMap", Code(WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(10, 10), new PointCm(-5, 10)])));
-        Assert.Contains(WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(50, 10), P(50, 20)]).Issues,
-            i => i.Code == "tooShort");
+        // Ways have no minimum length (short links between loose ends must be possible).
+        Assert.True(WayPlanner.Plan(Plane, WayNetwork.Empty, Rules, WayKind.AccessPath, [P(50, 10), P(50, 15)]).IsValid);
 
         static string Code(WayPlan plan) => plan.Issues[0].Code;
     }

@@ -78,6 +78,7 @@ public partial class LiftView : Node3D
         _subscriptions.Add(sim.Events.Subscribe<ParkingLotDeleted>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<PlatformBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<PlatformDeleted>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<StructureRenaturalized>(_ => _dirty = true));
         _dirty = true;
     }
 

@@ -71,6 +71,7 @@ public partial class Hud : CanvasLayer
     private bool _followOnStart;
     private VBoxContainer _toasts = null!;
     private RepairDialog _repairDialog = null!;
+    private NameDialog _nameDialog = null!;
 
     private LandView _land = null!;
     private StartScreen _startScreen = null!;
@@ -108,6 +109,7 @@ public partial class Hud : CanvasLayer
             else if (arg.StartsWith("--panel=", StringComparison.Ordinal) && Enum.TryParse<Menu>(arg[8..], true, out var menu)) Toggle(menu);
             else if (arg.StartsWith("--tool=", StringComparison.Ordinal)) StartTool(arg[7..]);
             else if (arg.StartsWith("--features=", StringComparison.Ordinal) && int.TryParse(arg[11..], out int wayId)) _repairDialog.Open(wayId);
+            else if (arg.StartsWith("--rename=", StringComparison.Ordinal) && int.TryParse(arg[9..], out int renameId)) _ctx.RenameTrail(renameId);
             else if (arg == "--follow") _followOnStart = true;
         }
     }
@@ -145,7 +147,7 @@ public partial class Hud : CanvasLayer
         foreach (var (menu, icon, caption, tooltip) in new[]
                  {
                      (Menu.Build, UiIcon.Build, "Build", "Plan paths, trails, features; fell trees; lifts, parking  [B]"),
-                     (Menu.Trails, UiIcon.Trails, "Trails", "Your trails and paths  [V]"),
+                     (Menu.Trails, UiIcon.Trails, "Trails", "Your trails  [V]"),
                      (Menu.Crew, UiIcon.Crew, "Crew", "Workers, jobs, wood and tools  [C]"),
                      (Menu.Riders, UiIcon.Riders, "Riders", "Guests, mood and fun  [R]"),
                      (Menu.Lifts, UiIcon.Lift, "Lifts", "Queues and bike access  [G]"),
@@ -217,6 +219,13 @@ public partial class Hud : CanvasLayer
         _repairDialog = new RepairDialog(_ctx);
         _ctx.OpenRepair = _repairDialog.Open;
         _root.AddChild(_repairDialog);
+
+        _nameDialog = new NameDialog();
+        _ctx.AskName = _nameDialog.Ask;
+        _ctx.Ways.AskName = (suggestion, ok, cancel) => _nameDialog.Ask("Name your trail",
+            "It's planned once named: the crew builds it (Crew menu). You can rename it later in the Trails menu.",
+            suggestion, name => Bikepark.Sim.Commands.RenameTrailCommand.CannotName(_ctx.Sim.State, name), ok, cancel);
+        _root.AddChild(_nameDialog);
 
         _toasts = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Alignment = BoxContainer.AlignmentMode.End };
         _toasts.AddThemeConstantOverride("separation", 6);
@@ -504,7 +513,6 @@ public partial class Hud : CanvasLayer
         if (!active) return;
 
         var (icon, name) = _ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Renaturalize ? (UiIcon.Felling, "Renaturalize")
-            : _ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Split ? (UiIcon.Trail, "Split trail")
             : _ctx.Structures.Mode == StructureTool.ToolMode.Platform ? (UiIcon.Parking, "Gravel platform")
             : _ctx.Clearing.Active ? (UiIcon.Felling, "Fell trees")
             : _ctx.Features.Active && TrailFeatures.FindType(_ctx.Sim.State.TrailFeatureTypes, _ctx.Features.TypeId!) is { } type
@@ -530,7 +538,6 @@ public partial class Hud : CanvasLayer
             case "parking": _ctx.Structures.SetMode(StructureTool.ToolMode.Parking); break;
             case "platform": _ctx.Structures.SetMode(StructureTool.ToolMode.Platform); break;
             case "renaturalize": _ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.Renaturalize); break;
-            case "split": _ctx.TrailEdit.SetMode(TrailEditTool.ToolMode.Split); break;
             default: _ctx.Features.SetType(tool); break;
         }
     }
@@ -556,7 +563,7 @@ public partial class Hud : CanvasLayer
         {
             lines.Add(_ctx.TrailEdit.Status);
             if (_ctx.TrailEdit.Problem is { } problem) lines.Add($"✗ {problem}");
-            else lines.Add(_ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Split ? "✓ Click to split · Esc to stop" : "Esc to start over or stop");
+            else lines.Add("Esc to start over or stop");
         }
         else if (clearing.Active)
         {
@@ -669,7 +676,7 @@ public partial class Hud : CanvasLayer
         ? $"{day.Kind} {day.RainStartMinute / 60:00}–{(day.RainEndMinute + 59) / 60:00} h"
         : day.Kind.ToString();
 
-    private string TrailName(int wayId) => _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == wayId)?.Name ?? "A trail";
+    private string TrailName(int wayId) => _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == wayId)?.Label ?? "A trail";
 
     // ---------------------------------------------------------------- events → toasts
 
@@ -695,14 +702,23 @@ public partial class Hud : CanvasLayer
             e.Post.EffectPermille > 0 ? UiTheme.Good : e.Post.EffectPermille < 0 ? UiTheme.Bad : UiTheme.TextDim)));
         _subscriptions.Add(events.Subscribe<LevelChanged>(e => Toast(e.NewLevel > e.OldLevel
             ? $"Park level {e.NewLevel} reached!" : $"The park dropped to level {e.NewLevel}", e.NewLevel > e.OldLevel ? UiTheme.Good : UiTheme.Warn)));
-        _subscriptions.Add(events.Subscribe<TrailSplit>(e => Toast($"Split into {TrailName(e.WayId)} and {TrailName(e.NewWayId)}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<TrailSplit>(e =>
+            Toast($"The gravel path divides the trail into {TrailName(e.WayId)} and {TrailName(e.NewWayId)}", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<TrailRenaturalized>(e =>
         {
-            Toast(e.WayId == 0 || _ctx.Sim.State.Ways.All(w => w.Id != e.WayId)
-                ? "Renaturalized the whole trail: nature takes it back"
-                : $"Renaturalized {(e.ToCm - e.FromCm) / 100} m of {TrailName(e.WayId)}", UiTheme.Accent);
+            var way = _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId);
+            Toast(way is null ? "Renaturalized: nature takes it back"
+                : e.NewWayId != 0 && way.Kind == WayKind.Trail ? $"Renaturalized {(e.ToCm - e.FromCm) / 100} m: {way.Name} and {TrailName(e.NewWayId)} are left"
+                : $"Renaturalized {(e.ToCm - e.FromCm) / 100} m of {way.Label}", UiTheme.Accent);
             WarnUnconnected();
         }));
+        _subscriptions.Add(events.Subscribe<StructureRenaturalized>(e =>
+        {
+            Toast(e.CostCents > 0 ? $"{e.Name} is torn down ({UiTheme.Money(e.CostCents)}): nature takes it back" : $"{e.Name} is gone: nature takes it back",
+                UiTheme.Accent);
+            WarnUnconnected();
+        }));
+        _subscriptions.Add(events.Subscribe<TrailRenamed>(e => Toast($"Renamed to {e.Name}", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<TrailsJoined>(e => Toast($"Joined into {TrailName(e.WayId)}", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<PlatformBuilt>(_ => Toast("Built a gravel platform", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<ParcelBought>(e => Toast(
@@ -748,7 +764,8 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<WayBuilt>(e =>
         {
             var way = _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId);
-            Toast(way is { Built: false } ? $"Planned {way.Name}: the crew will build it" : $"Built {way?.Name}", UiTheme.Accent);
+            if (way is null) return; // joined onto a trail at once (that has its own toast)
+            Toast(way is { Built: false } ? $"Planned {(way.Kind == WayKind.AccessPath ? "a gravel path" : way.Name)}: the crew will build it" : $"Built {way.Label}", UiTheme.Accent);
         }));
         _subscriptions.Add(events.Subscribe<TrailFeaturePlaced>(e => Toast(FeatureText(e.WayId, e.FeatureId), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<JobCompleted>(e => Toast(e.Kind switch

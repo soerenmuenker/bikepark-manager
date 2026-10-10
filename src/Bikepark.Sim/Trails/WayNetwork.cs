@@ -261,6 +261,28 @@ public sealed class WayNetwork
     public (int WayId, long DistanceCm, PointCm Point)? NearestTrail(int xCm, int zCm, int radiusCm) =>
         _centerlines.Nearest(xCm, zCm, radiusCm, id => FindWay(id)?.Kind == WayKind.Trail);
 
+    /// <summary>
+    /// The closest loose trail end (<paramref name="end"/>: a trail's end that leads nowhere; otherwise a trail's start that
+    /// nothing leads into) within the radius: the distance along that trail and its point. Ties: lower id.
+    /// </summary>
+    public (int WayId, long DistanceCm, PointCm Point)? LooseTrailEnd(int xCm, int zCm, int radiusCm, bool end)
+    {
+        (int, long, PointCm)? best = null;
+        long bestDistance = (long)radiusCm * radiusCm;
+        foreach (var way in Trails)
+        {
+            if (end ? way.EndJoin is not null || way.EndHubId != 0 : way.StartJoin is not null || way.StartHubId != 0) continue;
+            if (!_geometries.TryGetValue(way.Id, out var g)) continue;
+            long at = end ? g.LengthCm : 0;
+            var p = g.PositionAt(at);
+            long dx = p.X - xCm, dz = p.Z - zCm, d = dx * dx + dz * dz;
+            if (d > bestDistance || best is not null && d == bestDistance) continue;
+            best = (way.Id, at, new PointCm(p.X, p.Z));
+            bestDistance = d;
+        }
+        return best;
+    }
+
     /// <summary>The hub whose flat area is closest to (x, z), within the radius (0 = inside). Ties: lower id.</summary>
     public NetworkHub? HubAt(int xCm, int zCm, int radiusCm)
     {

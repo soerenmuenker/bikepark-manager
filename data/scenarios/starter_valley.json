@@ -40,7 +40,6 @@
   "trailRules": {
     "segmentLengthMeters": 10,
     "snapRadiusMeters": 12,
-    "minLengthMeters": 30,
     "maxLengthMeters": 4000,
     "pathGradingMeters": 25,
     "pathMaxGradient": 40,

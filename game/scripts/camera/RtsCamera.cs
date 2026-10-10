@@ -124,11 +124,13 @@ public partial class RtsCamera : Node3D
     {
         float dt = (float)delta;
 
+        // Typing in a text field (a trail's name) doesn't move the camera.
+        bool keys = GetViewport().GuiGetFocusOwner() is not LineEdit;
         var input = Vector2.Zero;
-        if (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up)) input.Y -= 1;
-        if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down)) input.Y += 1;
-        if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left)) input.X -= 1;
-        if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) input.X += 1;
+        if (keys && (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up))) input.Y -= 1;
+        if (keys && (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))) input.Y += 1;
+        if (keys && (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))) input.X -= 1;
+        if (keys && (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right))) input.X += 1;
         // No edge panning while the mouse is over the HUD (the bar sits at the bottom edge).
         if (GetViewport().GuiGetHoveredControl() is null)
             input += EdgePanInput();
@@ -143,8 +145,8 @@ public partial class RtsCamera : Node3D
                 Follow = null;
         }
 
-        if (Input.IsPhysicalKeyPressed(Key.Q)) _targetYaw += OrbitSpeed * dt;
-        if (Input.IsPhysicalKeyPressed(Key.E)) _targetYaw -= OrbitSpeed * dt;
+        if (keys && Input.IsPhysicalKeyPressed(Key.Q)) _targetYaw += OrbitSpeed * dt;
+        if (keys && Input.IsPhysicalKeyPressed(Key.E)) _targetYaw -= OrbitSpeed * dt;
 
         float t = 1f - MathF.Exp(-Smoothing * dt);
         _focus = _focus.Lerp(_targetFocus, t);

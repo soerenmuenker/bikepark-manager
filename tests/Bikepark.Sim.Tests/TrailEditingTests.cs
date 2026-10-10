@@ -33,32 +33,43 @@ public class TrailEditingTests
     private static long Length(Simulation sim, int id) => sim.Network.Geometry(id).LengthCm;
 
     [Fact]
-    public void Split_MakesTwoConnectedTrails_ThatRidersUse()
+    public void Renaturalize_IsRejected_ForUnknownOrPlannedWays_AndOffYourLand()
     {
         var sim = Valley();
-        long length = Length(sim, RedRocket);
-        Assert.Null(Reject(sim, new SplitTrailCommand(RedRocket, length / 2)));
-        var upper = Way(sim, RedRocket);
-        var lower = sim.State.Ways.Single(w => w.Name == "Red Rocket 2");
-        Assert.Equal(new WayJoin(RedRocket, Length(sim, RedRocket)), lower.StartJoin);
-        Assert.Null(upper.EndJoin);
-        Assert.InRange(Length(sim, RedRocket) + Length(sim, lower.Id), length * 97 / 100, length * 103 / 100);
-        Assert.True(sim.Network.IsConnected(upper));
-        Assert.True(sim.Network.IsConnected(lower));
+        Assert.Contains("No such", Reject(sim, new RenaturalizeTrailCommand(999, 0, 1_000)));
+        var plan = WayPlanner.Plan(sim.Terrain, sim.Network, sim.State.TrailRules, WayKind.Trail,
+            Sample(sim.Network.Geometry(RedRocket), 0, Length(sim, RedRocket) / 2));
+        Assert.Null(Reject(sim, new BuildWayCommand(WayKind.Trail, "Planned", plan.Points)));
+        int planned = sim.State.Ways.Single(w => w.Name == "Planned").Id;
+        Assert.Contains("only planned", Reject(sim, new RenaturalizeTrailCommand(planned, 0, 1_000)));
 
-        sim.RunDays(1);
-        Assert.True(upper.Stats.Runs > 0);
-        Assert.True(lower.Stats.Runs > 0);
+        var career = new Simulation(Bikepark.Sim.Scenarios.ScenarioLoader.CreateWorld(TestWorlds.CareerScenario()));
+        career.Step();
+        var hiking = career.State.Ways.Single(w => w.Name == "Old Hiking Route");
+        Assert.Contains("Not your land", Reject(career, new RenaturalizeTrailCommand(hiking.Id, 1_000, 5_000)));
     }
 
     [Fact]
-    public void Edits_AreRejected_OnPathsAndTooCloseToTheEnds()
+    public void Renaturalize_CutsGravelPathsToo_WithoutNamingThem()
     {
         var sim = Valley();
-        int hiking = sim.State.Ways.Single(w => w.Kind == WayKind.AccessPath).Id;
-        Assert.Contains("gravel path", Reject(sim, new SplitTrailCommand(hiking, 50_000)));
-        Assert.Contains("at least", Reject(sim, new SplitTrailCommand(RedRocket, 1_000)));
-        Assert.Contains("No such trail", Reject(sim, new RenaturalizeTrailCommand(999, 0, 1_000)));
+        var path = sim.State.Ways.Single(w => w.Kind == WayKind.AccessPath);
+        long length = Length(sim, path.Id);
+        Assert.Null(Reject(sim, new RenaturalizeTrailCommand(path.Id, length / 2, length / 2 + 2_000)));
+        var paths = sim.State.Ways.Where(w => w.Kind == WayKind.AccessPath).ToList();
+        Assert.Equal(2, paths.Count);
+        Assert.Equal("", paths[1].Name);
+        Assert.Equal("a gravel path", paths[1].Label);
+    }
+
+    [Fact]
+    public void Renaturalize_KeepsShortRemnants()
+    {
+        var sim = Valley();
+        long length = Length(sim, RedRocket);
+        Assert.Null(Reject(sim, new RenaturalizeTrailCommand(RedRocket, 500, length - 500)));
+        Assert.InRange(Length(sim, RedRocket), 300, 800);
+        Assert.InRange(Length(sim, sim.State.Ways.Single(w => w.Name == "Red Rocket Part 2").Id), 300, 800);
     }
 
     [Fact]
@@ -77,7 +88,8 @@ public class TrailEditingTests
 
         Assert.Null(Reject(sim, new RenaturalizeTrailCommand(RedRocket, from, to)));
         var upper = Way(sim, RedRocket);
-        var lower = sim.State.Ways.Single(w => w.Name == "Red Rocket 2");
+        var lower = sim.State.Ways.Single(w => w.Name == "Red Rocket Part 2");
+        Assert.Equal("Red Rocket Part 1", upper.Name);
         Assert.Null(upper.EndJoin);
         Assert.Null(lower.StartJoin);
         Assert.False(sim.Network.IsConnected(upper));
@@ -90,7 +102,7 @@ public class TrailEditingTests
         Assert.Equal(runsBefore, upper.Stats.Runs + lower.Stats.Runs);
         Assert.True(Way(sim, FlowCountry).Stats.Runs > 0);
 
-        // Drawing the gap again (built at once): it joins both pieces into one trail.
+        // Drawing the gap again (built at once): it joins both pieces into one trail, which gets its name back.
         var joined = new List<TrailsJoined>();
         sim.Events.Subscribe<TrailsJoined>(joined.Add);
         Assert.Null(Reject(sim, new BuildWayCommand(WayKind.Trail, "Gap", gap, Instant: true)));
@@ -126,7 +138,7 @@ public class TrailEditingTests
         Assert.Null(Reject(sim, new RenaturalizeTrailCommand(RedRocket, from, to)));
 
         var upper = Way(sim, RedRocket).Features.Select(f => (f.TypeId, f.DistanceCm)).ToList();
-        var lower = sim.State.Ways.Single(w => w.Name == "Red Rocket 2").Features.Select(f => (f.TypeId, f.DistanceCm)).ToList();
+        var lower = sim.State.Ways.Single(w => w.Name == "Red Rocket Part 2").Features.Select(f => (f.TypeId, f.DistanceCm)).ToList();
         Assert.Equal(before.Where(f => f.DistanceCm < from), upper);
         Assert.Equal(before.Where(f => f.DistanceCm >= to).Select(f => (f.TypeId, f.DistanceCm - to)), lower);
         Assert.True(upper.Count + lower.Count < before.Count);
@@ -155,7 +167,8 @@ public class TrailEditingTests
         }
         Assert.NotNull(points);
         Assert.Null(Reject(sim, new BuildWayCommand(WayKind.AccessPath, "Link", points!, Instant: true)));
-        Assert.Contains(sim.State.Ways, w => w.Name == "Flow Country 2");
+        Assert.Contains(sim.State.Ways, w => w.Name == "Flow Country Part 1" && w.Id == FlowCountry);
+        Assert.Contains(sim.State.Ways, w => w.Name == "Flow Country Part 2");
         Assert.True(sim.Network.IsConnected(Way(sim, FlowCountry)));
     }
 
@@ -180,9 +193,105 @@ public class TrailEditingTests
         Assert.Null(Reject(sim, new BuildPlatformCommand("Link", center!.Value, new PointCm(center.Value.X + 100, center.Value.Z))));
         var platform = Assert.Single(sim.State.Platforms);
         Assert.Contains(sim.Network.Hubs, h => h.Id == platform.Id && h.Kind == HubKind.Platform);
-        Assert.Null(Reject(sim, new DeletePlatformCommand(platform.Id)));
+        Assert.Null(Reject(sim, new RenaturalizeStructureCommand(platform.Id)));
         Assert.Empty(sim.State.Platforms);
         Assert.DoesNotContain(sim.State.TerrainEdits, e => e.OwnerId == platform.Id);
+    }
+
+    // ---------------------------------------------------------------- joins, names, structures
+
+    [Fact]
+    public void ATrailContinuingFromALooseEnd_LeavesInLine()
+    {
+        var sim = Valley();
+        long length = Length(sim, RedRocket);
+        Assert.Null(Reject(sim, new RenaturalizeTrailCommand(RedRocket, length / 2, length)));
+        var end = sim.Network.Geometry(RedRocket);
+        var joint = end.PositionAt(end.LengthCm);
+        var before = end.PositionAt(end.LengthCm - 500);
+        (long X, long Z) heading = (joint.X - before.X, joint.Z - before.Z);
+        // Drawn from the loose end, turning sharply (about 60°) to a point lower down.
+        int checkedTurns = 0;
+        foreach (int sign in new[] { 1, -1 })
+        {
+            double a = sign * Math.PI / 3, c = Math.Cos(a), s = Math.Sin(a);
+            long dx = (long)(heading.X * c - heading.Z * s), dz = (long)(heading.X * s + heading.Z * c);
+            var target = new PointCm((int)(joint.X + dx * 6), (int)(joint.Z + dz * 6));
+            if (sim.Terrain.HeightAt(target.X, target.Z) >= joint.Y) continue; // drawn uphill: the trail would run the other way
+            checkedTurns++;
+            var plan = WayPlanner.Plan(sim.Terrain, sim.Network, sim.State.TrailRules, WayKind.Trail, [new(joint.X + 300, joint.Z), target]);
+            Assert.Equal(new WayJoin(RedRocket, end.LengthCm), plan.StartJoin);
+            var g = plan.Geometry!;
+            var p = g.PositionAt(300);
+            (long X, long Z) leaving = (p.X - joint.X, p.Z - joint.Z);
+            double cos = (heading.X * leaving.X + heading.Z * leaving.Z)
+                         / Math.Sqrt((double)(heading.X * heading.X + heading.Z * heading.Z) * (leaving.X * leaving.X + leaving.Z * leaving.Z));
+            Assert.True(cos > 0.97, $"leaves at {Math.Acos(cos) * 180 / Math.PI:F0}°");
+        }
+        Assert.True(checkedTurns > 0);
+    }
+
+    [Fact]
+    public void Trails_CanBeRenamed_ButNotPaths_AndNamesAreUnique()
+    {
+        var sim = Valley();
+        Assert.Null(Reject(sim, new RenameTrailCommand(RedRocket, "  Rocket Science ")));
+        Assert.Equal("Rocket Science", Way(sim, RedRocket).Name);
+        Assert.Contains("already", Reject(sim, new RenameTrailCommand(FlowCountry, "Rocket Science")));
+        Assert.Contains("Enter", Reject(sim, new RenameTrailCommand(FlowCountry, " ")));
+        int path = sim.State.Ways.First(w => w.Kind == WayKind.AccessPath).Id;
+        Assert.Contains("Gravel paths", Reject(sim, new RenameTrailCommand(path, "Gravel")));
+    }
+
+    [Fact]
+    public void Trails_GetFreeDefaultNames_PathsNone()
+    {
+        var sim = Valley();
+        Assert.Equal("Trail 3", BuildWayCommand.DefaultTrailName(sim.State));
+        Assert.Equal(("Red Rocket Part 1", "Red Rocket Part 2"), WayEditing.PartNames(sim.State, Way(sim, RedRocket)));
+        Way(sim, RedRocket).Name = "Red Rocket Part 2";
+        Assert.Equal(("Red Rocket Part 2", "Red Rocket Part 3"), WayEditing.PartNames(sim.State, Way(sim, RedRocket)));
+    }
+
+    [Fact]
+    public void Structures_CanBeRenaturalized_LiftsAndParkingForMoney()
+    {
+        var sim = new Simulation(Bikepark.Sim.Scenarios.ScenarioLoader.CreateWorld(TestWorlds.CareerScenario()));
+        sim.Step();
+        var state = sim.State;
+        var gondola = state.Lifts.Single(l => l.OperatorId is not null);
+        var tbar = state.Lifts.Single(l => l.OperatorId is null);
+        var lot = state.ParkingLots.Single(p => p.LiftId == tbar.Id);
+        var track = state.Ways.Single(w => w.Name == "Ski Hill Track");
+        Assert.Contains("belongs to", Reject(sim, new RenaturalizeStructureCommand(gondola.Id)));
+        Assert.Contains("serves", Reject(sim, new RenaturalizeStructureCommand(tbar.Id)));
+
+        long money = state.Finance.MoneyCents;
+        Assert.Null(Reject(sim, new RenaturalizeStructureCommand(lot.Id)));
+        Assert.Equal(lot.Spaces * state.LiftRules.ParkingRemovalCentsPerSpace, money - state.Finance.MoneyCents);
+        long tbarCost = StructureRemoval.CostCents(state, tbar.Id);
+        Assert.True(tbarCost > 0);
+        money = state.Finance.MoneyCents;
+        Assert.Null(Reject(sim, new RenaturalizeStructureCommand(tbar.Id)));
+        Assert.Equal(tbarCost, money - state.Finance.MoneyCents);
+        Assert.DoesNotContain(state.Lifts, l => l.Id == tbar.Id);
+        Assert.DoesNotContain(state.TerrainEdits, e => e.OwnerId == tbar.Id || e.OwnerId == lot.Id);
+        int[] stations = [tbar.Valley.Id, tbar.Mountain.Id];
+        Assert.DoesNotContain(state.Ways, w => stations.Contains(w.StartHubId) || stations.Contains(w.EndHubId));
+        Assert.Contains(state.Ways, w => w.Id == track.Id);
+        Assert.Equal(state.Finance.TotalRemovalCents, tbarCost + lot.Spaces * state.LiftRules.ParkingRemovalCentsPerSpace);
+        sim.RunDays(1);
+    }
+
+    private static List<PointCm> Sample(WayGeometry g, long from, long to)
+    {
+        var points = new List<PointCm>();
+        for (int i = 0; i <= 6; i++)
+        {
+            var p = g.PositionAt(from + (to - from) * i / 6);
+            points.Add(new PointCm(p.X + 2_000, p.Z));
+        }
+        return points;
     }
 
     [Fact]

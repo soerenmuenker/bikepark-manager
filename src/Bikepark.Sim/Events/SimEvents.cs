@@ -201,7 +201,7 @@ public sealed record RiderEvacuated(long Tick, int GuestId, int WayId) : ISimEve
 public sealed record TrailSplit(long Tick, int WayId, int NewWayId) : ISimEvent;
 
 /// <summary>
-/// A section of a trail was renaturalized. <paramref name="WayId"/> keeps what is left (if anything), the lower rest is
+/// A section of a trail or gravel path was renaturalized. <paramref name="WayId"/> keeps what is left (if anything), the lower rest is
 /// <paramref name="NewWayId"/> (0: none).
 /// </summary>
 public sealed record TrailRenaturalized(long Tick, int WayId, int NewWayId, long FromCm, long ToCm) : ISimEvent;
@@ -212,3 +212,8 @@ public sealed record TrailsJoined(long Tick, int WayId, int AbsorbedWayId) : ISi
 public sealed record PlatformBuilt(long Tick, int PlatformId) : ISimEvent;
 
 public sealed record PlatformDeleted(long Tick, int PlatformId) : ISimEvent;
+
+/// <summary>A lift, parking lot or gravel platform was renaturalized (torn down for <paramref name="CostCents"/>).</summary>
+public sealed record StructureRenaturalized(long Tick, int StructureId, string Name, long CostCents) : ISimEvent;
+
+public sealed record TrailRenamed(long Tick, int WayId, string Name) : ISimEvent;
