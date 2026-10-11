@@ -262,28 +262,22 @@
   "parcels": [
     { "id": "ski_hill", "name": "Old ski hill", "requiredLevel": 0, "priceCents": 0, "ownedAtStart": true,
       "description": "The old beginner ski hill with its rusty T-bar and a gravel track: where it all starts.",
-      "outline": [{"x":68000, "z":64000}, {"x":83000, "z":64000}, {"x":84000, "z":96000}, {"x":67000, "z":96000}] },
-    { "id": "foot_forest", "name": "Foot forest", "requiredLevel": 2, "priceCents": 4000000, "ownedAtStart": false,
-      "description": "Dense forest east of the ski hill: room for wooded trails once the trees are cut.",
-      "outline": [{"x":83000, "z":64000}, {"x":100000, "z":62000}, {"x":100000, "z":100000}, {"x":67000, "z":100000}, {"x":67000, "z":96000}, {"x":84000, "z":96000}] },
-    { "id": "valley_meadows", "name": "Valley meadows", "requiredLevel": 4, "priceCents": 12000000, "ownedAtStart": false,
-      "description": "The open valley floor with the gondola's valley station and its parking.",
-      "outline": [{"x":0, "z":74000}, {"x":40000, "z":74000}, {"x":67000, "z":86000}, {"x":67000, "z":100000}, {"x":0, "z":100000}] },
-    { "id": "plateau", "name": "Plateau and mid slope", "requiredLevel": 6, "priceCents": 25000000, "ownedAtStart": false,
-      "description": "The gondola's top station and the slope below it: long runs down to the valley.",
-      "outline": [{"x":40000, "z":42000}, {"x":70000, "z":42000}, {"x":68000, "z":64000}, {"x":67000, "z":86000}, {"x":40000, "z":74000}] },
-    { "id": "east_slope", "name": "East slope", "requiredLevel": 8, "priceCents": 30000000, "ownedAtStart": false,
+      "outline": [{"x":68000, "z":64000}, {"x":100000, "z":63700}, {"x":100000, "z":100000}, {"x":68000, "z":100000}] },
+    { "id": "east_slope", "name": "East slope", "requiredLevel": 5, "priceCents": 20000000, "ownedAtStart": false,
       "description": "Open slopes east of the summit, above the forest.",
-      "outline": [{"x":70000, "z":42000}, {"x":100000, "z":38000}, {"x":100000, "z":62000}, {"x":83000, "z":64000}, {"x":68000, "z":64000}] },
-    { "id": "west_flank", "name": "West flank", "requiredLevel": 10, "priceCents": 40000000, "ownedAtStart": false,
-      "description": "The long western flank, meadows and woods.",
-      "outline": [{"x":0, "z":30000}, {"x":40000, "z":30000}, {"x":40000, "z":74000}, {"x":0, "z":74000}] },
-    { "id": "summit_ridge", "name": "Summit ridge", "requiredLevel": 12, "priceCents": 60000000, "ownedAtStart": false,
+      "outline": [{"x":68000, "z":42100}, {"x":100000, "z":41800}, {"x":100000, "z":63700}, {"x":100000, "z":63700}, {"x":68000, "z":64000}] },
+    { "id": "summit_ridge", "name": "Summit ridge", "requiredLevel": 15, "priceCents": 80000000, "ownedAtStart": false,
       "description": "Rock and steep lines around the summit: expert terrain.",
-      "outline": [{"x":40000, "z":15000}, {"x":100000, "z":15000}, {"x":100000, "z":38000}, {"x":70000, "z":42000}, {"x":40000, "z":42000}] },
-    { "id": "north_bowl", "name": "North bowl", "requiredLevel": 15, "priceCents": 90000000, "ownedAtStart": false,
-      "description": "The remote north side behind the summit.",
-      "outline": [{"x":0, "z":0}, {"x":100000, "z":0}, {"x":100000, "z":15000}, {"x":40000, "z":15000}, {"x":40000, "z":30000}, {"x":0, "z":30000}] }
+      "outline": [{"x":40200, "z":0}, {"x":100000, "z":0}, {"x":100000, "z":41800}, {"x":68000, "z":42100}, {"x":40000, "z":42000}] },
+    { "id": "parcel_5", "name": "South slope", "requiredLevel": 3, "priceCents": 20000000, "ownedAtStart": false,
+      "description": "the hilly extension, ideally for some red lines",
+      "outline": [{"x":68000, "z":100000}, {"x":68000, "z":64000}, {"x":56700, "z":64100}, {"x":37700, "z":83300}, {"x":37700, "z":100000}] },
+    { "id": "parcel_6", "name": "Hikers Paradise", "requiredLevel": 8, "priceCents": 50000000, "ownedAtStart": false,
+      "description": "with the only gondola already in town, the hikers paradise is the dream for every hiker. What hikers clearly don't like, are mountainbikers.",
+      "outline": [{"x":37700, "z":100000}, {"x":37700, "z":83300}, {"x":56700, "z":64100}, {"x":68000, "z":64000}, {"x":68000, "z":42100}, {"x":40000, "z":42000}, {"x":0, "z":42200}, {"x":0, "z":100000}] },
+    { "id": "parcel_7", "name": "North west end", "requiredLevel": 12, "priceCents": 60000000, "ownedAtStart": false,
+      "description": "It's just the north west end. Gives you lot's of room to develop yourself",
+      "outline": [{"x":40200, "z":0}, {"x":40000, "z":42000}, {"x":0, "z":42200}, {"x":0, "z":0}] }
   ],
   // What is already there when the career starts: on the old ski hill a rusty T-bar (derelict until you restore it),
   // its little parking lot (built first: guests arrive here) and a gravel track from bottom to top; in the valley the
@@ -294,36 +288,35 @@
       "tick": 0,
       "command": {
         "type": "buildLift", "typeId": "tbar", "name": "Old Ski Lift", "origin": "scenario", "derelict": true,
-        "valley": {"x": 74500, "z": 89500}, "mountain": {"x": 73500, "z": 69000}
+        "valley": {"x": 93200, "z": 94300}, "mountain": {"x": 73500, "z": 69000}
       }
     },
     {
       "tick": 0,
       "command": {
-        "type": "buildParkingLot", "name": "Ski Hill Parking", "origin": "scenario",
-        "center": {"x": 70500, "z": 93000}, "toward": {"x": 74500, "z": 89500}, "spaces": 30
+        "type": "buildParkingLot", "name": "Ski Hill Parking", "origin": "scenario", "spaces": 30,
+        "center": {"x": 94900, "z": 96000}, "toward": {"x": 94500, "z": 95500}
       }
     },
     {
       "tick": 0,
       "command": {
         "type": "buildWay", "kind": "accessPath", "name": "Ski Hill Track", "origin": "scenario",
-        "points": [{"x": 75500, "z": 89000}, {"x": 78500, "z": 85000}, {"x": 77500, "z": 80000}, {"x": 79500, "z": 75000}, {"x": 74500, "z": 69500}]
+        "points": [{"x": 94400, "z": 95000}, {"x": 95100, "z": 90600}, {"x": 94100, "z": 86700}, {"x": 91900, "z": 84400}, {"x": 88700, "z": 82800}, {"x": 85200, "z": 80500}, {"x": 84500, "z": 75000}, {"x": 85400, "z": 71800}, {"x": 84700, "z": 69400}, {"x": 81900, "z": 68400}, {"x": 78400, "z": 69200}, {"x": 74500, "z": 69500}]
       }
     },
     {
       "tick": 0,
       "command": {
-        "type": "buildLift", "typeId": "gondola_8", "name": "Valley Gondola", "origin": "scenario",
-        "valley": {"x": 20500, "z": 85000}, "mountain": {"x": 60500, "z": 50500},
-        "operatorId": "alpine_lifts", "initialTier": 0
+        "type": "buildLift", "typeId": "gondola_8", "name": "Valley Gondola", "origin": "scenario", "operatorId": "alpine_lifts", "initialTier": 0,
+        "valley": {"x": 20500, "z": 85000}, "mountain": {"x": 60500, "z": 50500}
       }
     },
     {
       "tick": 0,
       "command": {
-        "type": "buildParkingLot", "name": "Valley Parking", "origin": "scenario",
-        "center": {"x": 15000, "z": 89000}, "toward": {"x": 20500, "z": 85000}, "spaces": 80
+        "type": "buildParkingLot", "name": "Valley Parking", "origin": "scenario", "spaces": 80,
+        "center": {"x": 15000, "z": 89000}, "toward": {"x": 20500, "z": 85000}
       }
     },
     {

@@ -17,7 +17,8 @@ namespace Bikepark.SimRunner.Terrain;
 internal static class TerrainCommand
 {
     public const string Usage =
-        "usage: Bikepark.SimRunner terrain --scenario <path> [--out <file.png>] [--mode relief|slope|surface|all] [--seed S] [--scatter] [--commands <file>]";
+        "usage: Bikepark.SimRunner terrain --scenario <path> [--out <file.png>] [--mode relief|slope|surface|all] [--seed S] [--scatter] [--commands <file>] [--bare]";
+    // --bare: terrain only (no ways, structures or parcel borders), e.g. as the backdrop of tools/scenario-editor.
 
     public static void Run(string[] args)
     {
@@ -56,7 +57,9 @@ internal static class TerrainCommand
             foreach (var mode in modes)
             {
                 string path = modes.Length == 1 ? outPath : WithSuffix(outPath, mode.ToString().ToLowerInvariant());
-                byte[] pixels = TerrainMapRenderer.Render(grid, mode, options.Scatter ? scatter : null, network);
+                byte[] pixels = options.Bare
+                    ? TerrainMapRenderer.Render(grid, mode, options.Scatter ? scatter : null)
+                    : TerrainMapRenderer.Render(grid, mode, options.Scatter ? scatter : null, network, state);
                 PngWriter.WriteRgb(path, grid.Samples, grid.Samples, pixels);
                 images.Add(path);
             }
@@ -125,7 +128,7 @@ internal static class TerrainCommand
         return Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(path)}_{suffix}{Path.GetExtension(path)}");
     }
 
-    private sealed record Options(string ScenarioPath, string? OutPath, MapMode? Mode, ulong? Seed, bool Scatter, string? CommandsPath);
+    private sealed record Options(string ScenarioPath, string? OutPath, MapMode? Mode, ulong? Seed, bool Scatter, string? CommandsPath, bool Bare);
 
     private static Options Parse(string[] args)
     {
@@ -134,6 +137,7 @@ internal static class TerrainCommand
         ulong? seed = null;
         bool scatter = false;
         string? commands = null;
+        bool bare = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -154,6 +158,7 @@ internal static class TerrainCommand
                     break;
                 case "--scatter": scatter = true; break;
                 case "--commands": commands = Next(); break;
+                case "--bare": bare = true; break;
                 case "-h" or "--help": throw new ArgumentException("help requested");
                 default: throw new ArgumentException($"unknown argument '{args[i]}'");
             }
@@ -161,6 +166,6 @@ internal static class TerrainCommand
 
         if (scenario is null)
             throw new ArgumentException("--scenario is required");
-        return new Options(scenario, outPath, mode, seed, scatter, commands);
+        return new Options(scenario, outPath, mode, seed, scatter, commands, bare);
     }
 }

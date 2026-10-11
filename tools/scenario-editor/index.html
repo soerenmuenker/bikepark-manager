@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scenario Map Editor</title>
+<style>
+  :root { --bg:#1d2125; --panel:#262b30; --line:#3a4148; --text:#e6e8ea; --dim:#9aa3ab; --accent:#2ec4b6; --warn:#f2c94c; --bad:#eb5757; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:13px/1.4 system-ui, sans-serif; display:flex; height:100vh; overflow:hidden; }
+  #map { flex:1; position:relative; }
+  canvas { display:block; width:100%; height:100%; cursor:crosshair; }
+  #side { width:340px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; padding:10px 12px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:14px 0 6px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:4px 0; }
+  button, select, input, textarea { background:#30363c; color:var(--text); border:1px solid var(--line); border-radius:4px; font:inherit; padding:4px 8px; }
+  button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); color:#000; }
+  button.primary { background:var(--accent); color:#000; font-weight:600; }
+  label { color:var(--dim); }
+  input[type=text], input[type=number], textarea { width:100%; }
+  textarea { min-height:52px; resize:vertical; }
+  .field { margin:5px 0; }
+  .list div { padding:3px 6px; border-radius:4px; cursor:pointer; display:flex; justify-content:space-between; gap:6px; }
+  .list div:hover { background:#30363c; }
+  .list div.sel { background:#1f4b47; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; }
+  .small { color:var(--dim); font-size:12px; }
+  .msg { padding:6px 8px; border-radius:4px; margin:4px 0; background:#30363c; white-space:pre-wrap; }
+  .msg.bad { border-left:3px solid var(--bad); } .msg.warn { border-left:3px solid var(--warn); } .msg.ok { border-left:3px solid var(--accent); }
+  #status { position:absolute; left:8px; bottom:8px; background:#000a; padding:4px 8px; border-radius:4px; pointer-events:none; }
+  #hint { position:absolute; left:8px; top:8px; background:#000a; padding:4px 8px; border-radius:4px; pointer-events:none; max-width:70%; }
+  kbd { background:#30363c; border:1px solid var(--line); border-radius:3px; padding:0 4px; font-size:11px; }
+</style>
+</head>
+<body>
+<div id="map"><canvas id="cv"></canvas><div id="hint"></div><div id="status"></div></div>
+<div id="side">
+  <div class="row"><b id="title">Scenario</b></div>
+  <div class="row">
+    <select id="mode"><option>relief</option><option>slope</option><option>surface</option></select>
+    <button id="coverage" class="on" title="Gaps (magenta) and overlaps (red) between parcels">Gaps/overlaps</button>
+    <button id="snap10" title="Snap to 10 m instead of 1 m">10 m grid</button>
+  </div>
+  <div class="row">
+    <button id="tDraw" title="Click points, click the first point or Enter to close">New parcel</button>
+    <button id="tSplit" title="Select a parcel, click its border, optional points inside, then its border again">Split parcel</button>
+    <button id="undo" title="Ctrl/Cmd+Z">Undo</button>
+  </div>
+  <div class="row">
+    <button id="validate">Validate</button>
+    <button id="save" class="primary">Save to scenario</button>
+  </div>
+  <div id="result"></div>
+  <h2>Selection</h2>
+  <div id="detail" class="small">Click a parcel or structure.</div>
+  <h2>Parcels</h2>
+  <div id="parcels" class="list"></div>
+  <h2>Structures (scenario commands)</h2>
+  <div id="structures" class="list"></div>
+  <h2>Checks</h2>
+  <div id="checks"></div>
+  <h2>Controls</h2>
+  <div class="small">
+    Drag map: pan · wheel: zoom<br>
+    Drag a corner: move it (shared corners of neighbours move along; <kbd>Alt</kbd> at drag start moves only this one). Snaps to other corners/borders, else the grid.<br>
+    Double-click a border: add a corner (on shared borders in both parcels) · right-click a corner: remove it<br>
+    Structures: select, drag their points (lift stations, parking centre/direction, way points); double-click a way: add a point; right-click: remove<br>
+    <kbd>Esc</kbd> cancel tool · <kbd>Del</kbd> delete selected parcel
+  </div>
+</div>
+<script>
+'use strict';
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+let data = null, sizeCm = 100000, liftTypes = [], img = null;
+let scale = 0.008, ox = 0, oy = 0;          // screen = world * scale + offset
+let sel = null;                              // {kind:'parcel', pi} | {kind:'cmd', ci}
+let tool = null;                             // null | {name:'draw'|'split', pts:[]}
+let drag = null, hover = null, mouse = null, dirty = false;
+const undoStack = [];
+let coverage = null, coverageStats = null;
+const PALETTE = ['#f2c94c', '#f2994a', '#bb6bd9', '#56ccf2', '#eb5757', '#6fcf97', '#9b51e0', '#2d9cdb', '#f78fb3', '#c0a060'];
+
+// ------------------------------------------------------------ load
+async function load() {
+  const r = await (await fetch('/api/scenario')).json();
+  if (r.error) return alert(r.error);
+  data = { parcels: r.parcels, commands: r.commands };
+  sizeCm = r.sizeMeters * 100; liftTypes = r.liftTypes;
+  $('title').textContent = r.path;
+  await loadMap(false);
+  fit(); changed(false);
+}
+async function loadMap(fresh) {
+  hintText('Rendering map …');
+  const im = new Image();
+  im.src = `/api/map?mode=${$('mode').value}${fresh ? '&fresh=1' : ''}&t=${Date.now()}`;
+  await im.decode().catch(() => alert('map render failed'));
+  img = im; hintText(''); draw();
+}
+function fit() {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  scale = Math.min(w, h) / sizeCm * 0.96;
+  ox = (w - sizeCm * scale) / 2; oy = (h - sizeCm * scale) / 2;
+}
+
+// ------------------------------------------------------------ geometry helpers
+const w2s = p => ({ x: p.x * scale + ox, y: p.z * scale + oy });
+const s2w = (sx, sy) => ({ x: (sx - ox) / scale, z: (sy - oy) / scale });
+const eq = (a, b) => a.x === b.x && a.z === b.z;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function segProject(p, a, b) { // screen points; returns {t, d, q}
+  const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy;
+  let t = L ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L : 0; t = Math.max(0, Math.min(1, t));
+  const q = { x: a.x + dx * t, y: a.y + dy * t };
+  return { t, d: dist(p, q), q };
+}
+function contains(poly, x, z) { // same rule as LandMath.Contains (even-odd)
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, zi = poly[i].z, xj = poly[j].x, zj = poly[j].z;
+    if ((zi > z) === (zj > z)) continue;
+    const lhs = (x - xi) * (zj - zi), rhs = (z - zi) * (xj - xi);
+    if (zj - zi > 0 ? lhs < rhs : lhs > rhs) inside = !inside;
+  }
+  return inside;
+}
+function area(poly) { let s = 0; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) s += poly[j].x * poly[i].z - poly[i].x * poly[j].z; return Math.abs(s) / 2 / 10000; }
+function centroid(poly) {
+  let a = 0, cx = 0, cz = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const f = poly[j].x * poly[i].z - poly[i].x * poly[j].z; a += f;
+    cx += (poly[j].x + poly[i].x) * f; cz += (poly[j].z + poly[i].z) * f;
+  }
+  return a ? { x: cx / (3 * a), z: cz / (3 * a) } : poly[0];
+}
+const gridStep = () => $('snap10').classList.contains('on') ? 1000 : 100;
+const snapGrid = w => { const g = gridStep(); return { x: Math.round(w.x / g) * g, z: Math.round(w.z / g) * g }; };
+const clampW = w => ({ x: Math.max(0, Math.min(sizeCm, w.x)), z: Math.max(0, Math.min(sizeCm, w.z)) });
+const parcelAt = w => data.parcels.findIndex(p => contains(p.outline, w.x, w.z));
+const parcelName = w => { const i = parcelAt(w); return i < 0 ? 'no parcel' : data.parcels[i].name; };
+const ownedAtStart = w => data.parcels.length === 0 || data.parcels.some(p => p.ownedAtStart && contains(p.outline, w.x, w.z));
+const isPt = v => v && typeof v === 'object' && !Array.isArray(v) && 'x' in v && 'z' in v;
+const euro = c => (c / 100).toLocaleString('de-DE') + ' €';
+const fmtM = cm => (cm / 100).toFixed(0) + ' m';
+
+// Snap a world point for parcel editing: other corners, then borders, then the grid. `skip(pi, vi)` excludes the dragged corners.
+function snapLand(sp, skip = () => false) {
+  const R = 10; let best = null;
+  data.parcels.forEach((p, pi) => p.outline.forEach((v, vi) => {
+    if (skip(pi, vi)) return;
+    const d = dist(sp, w2s(v)); if (d < R && (!best || d < best.d)) best = { d, w: { ...v } };
+  }));
+  if (best) return { ...best.w, how: 'corner' };
+  data.parcels.forEach((p, pi) => p.outline.forEach((v, vi) => {
+    const j = (vi + 1) % p.outline.length;
+    if (skip(pi, vi) || skip(pi, j)) return;
+    const a = w2s(v), b = w2s(p.outline[j]), pr = segProject(sp, a, b);
+    if (pr.d < R && (!best || pr.d < best.d)) best = { d: pr.d, w: s2w(pr.q.x, pr.q.y) };
+  }));
+  if (best) return { x: Math.round(best.w.x), z: Math.round(best.w.z), how: 'border' };
+  return { ...snapGrid(clampW(s2w(sp.x, sp.y))), how: 'grid' };
+}
+
+// ------------------------------------------------------------ edits
+function snapshot() { undoStack.push(JSON.stringify(data)); if (undoStack.length > 200) undoStack.shift(); }
+function undo() { if (!undoStack.length) return; data = JSON.parse(undoStack.pop()); if (sel && !selected()) sel = null; changed(); }
+function changed(markDirty = true) { if (markDirty) dirty = true; computeCoverage(); renderSide(); draw(); }
+function selected() { return !sel ? null : sel.kind === 'parcel' ? data.parcels[sel.pi] : data.commands[sel.ci]; }
+
+// Insert a corner at w on edge (vi, vi+1) of parcel pi, and on every neighbour sharing that edge.
+function insertCorner(pi, vi, w) {
+  const p = data.parcels[pi], a = p.outline[vi], b = p.outline[(vi + 1) % p.outline.length];
+  data.parcels.forEach(q => {
+    for (let i = 0; i < q.outline.length; i++) {
+      const c = q.outline[i], d = q.outline[(i + 1) % q.outline.length];
+      if ((eq(c, a) && eq(d, b)) || (eq(c, b) && eq(d, a))) { q.outline.splice(i + 1, 0, { x: w.x, z: w.z }); break; }
+    }
+  });
+}
+// Make sure a point lying on parcel pi's border is a corner of it (and of neighbours on that edge); returns its index.
+function ensureCorner(pi, w) {
+  const o = data.parcels[pi].outline;
+  let i = o.findIndex(v => eq(v, w)); if (i >= 0) return i;
+  const sp = w2s(w); let best = null;
+  o.forEach((v, vi) => { const pr = segProject(sp, w2s(v), w2s(o[(vi + 1) % o.length])); if (!best || pr.d < best.d) best = { d: pr.d, vi }; });
+  insertCorner(pi, best.vi, w);
+  return data.parcels[pi].outline.findIndex(v => eq(v, w));
+}
+function removeCorner(pi, vi) {
+  const p = data.parcels[pi]; if (p.outline.length <= 3) return;
+  const n = p.outline.length, v = p.outline[vi], prev = p.outline[(vi + n - 1) % n], next = p.outline[(vi + 1) % n];
+  data.parcels.forEach((q, qi) => {
+    if (qi === pi) return;
+    const m = q.outline.length, k = q.outline.findIndex(c => eq(c, v)); if (k < 0 || m <= 3) return;
+    const a = q.outline[(k + m - 1) % m], b = q.outline[(k + 1) % m];
+    // only a corner in the middle of a shared border goes along
+    if ((eq(a, prev) && eq(b, next)) || (eq(a, next) && eq(b, prev))) q.outline.splice(k, 1);
+  });
+  p.outline.splice(vi, 1);
+}
+function splitParcel(pi, cut) {
+  const A = cut[0], B = cut[cut.length - 1], inner = cut.slice(1, -1);
+  ensureCorner(pi, A); ensureCorner(pi, B);
+  const o = data.parcels[pi].outline, n = o.length;
+  const ia = o.findIndex(v => eq(v, A)), ib = o.findIndex(v => eq(v, B));
+  if (ia === ib) return 'Start and end of the cut must differ.';
+  const walk = (from, to) => { const r = []; for (let i = from; ; i = (i + 1) % n) { r.push({ ...o[i] }); if (i === to) break; } return r; };
+  const p1 = [...walk(ia, ib), ...inner.slice().reverse()];
+  const p2 = [...walk(ib, ia), ...inner];
+  if (p1.length < 3 || p2.length < 3) return 'Cut leaves a piece with fewer than 3 corners.';
+  const orig = data.parcels[pi];
+  let id = orig.id + '_b', k = 2; while (data.parcels.some(p => p.id === id)) id = orig.id + '_b' + k++;
+  orig.outline = p1;
+  data.parcels.splice(pi + 1, 0, { ...orig, id, name: orig.name + ' B', ownedAtStart: false, outline: p2 });
+  sel = { kind: 'parcel', pi: pi + 1 };
+  return null;
+}
+
+// ------------------------------------------------------------ structures (scenario commands with points)
+function cmdHandles(ci) {
+  const c = data.commands[ci].command, hs = [];
+  for (const [k, v] of Object.entries(c)) {
+    if (isPt(v)) hs.push({ kind: 'cmd', ci, key: k, w: v });
+    else if (Array.isArray(v) && v.length && isPt(v[0])) v.forEach((p, idx) => hs.push({ kind: 'cmd', ci, key: k, idx, w: p }));
+  }
+  return hs;
+}
+const editableCmd = ci => cmdHandles(ci).length > 0;
+const cmdLabel = c => `${c.name || c.type}`;
+const liftType = c => liftTypes.find(t => t.id === c.typeId);
+function cmdLength(c) {
+  if (c.valley && c.mountain) return Math.hypot(c.mountain.x - c.valley.x, c.mountain.z - c.valley.z);
+  if (c.points) { let s = 0; for (let i = 1; i < c.points.length; i++) s += Math.hypot(c.points[i].x - c.points[i - 1].x, c.points[i].z - c.points[i - 1].z); return s; }
+  return null;
+}
+
+// ------------------------------------------------------------ coverage (gaps and overlaps, 5 m cells)
+function computeCoverage() {
+  const cell = 500, n = Math.ceil(sizeCm / cell);
+  const off = document.createElement('canvas'); off.width = off.height = n;
+  const c2 = off.getContext('2d'), im = c2.createImageData(n, n);
+  let gaps = 0, overlaps = 0;
+  for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
+    let k = 0; const wx = x * cell + cell / 2, wz = z * cell + cell / 2;
+    for (const p of data.parcels) if (contains(p.outline, wx, wz)) k++;
+    const i = (z * n + x) * 4;
+    if (k === 0) { gaps++; im.data.set([255, 0, 255, 90], i); }
+    else if (k > 1) { overlaps++; im.data.set([255, 0, 0, 150], i); }
+  }
+  c2.putImageData(im, 0, 0);
+  coverage = { canvas: off, cell };
+  coverageStats = { gapsM2: gaps * 25, overlapsM2: overlaps * 25 };
+}
+
+// ------------------------------------------------------------ drawing
+function parcelColor(p, i) { return p.ownedAtStart ? '#2ec4b6' : PALETTE[i % PALETTE.length]; }
+function draw() {
+  const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, w, h);
+  if (!data) return;
+  if (img) { ctx.imageSmoothingEnabled = scale * 100 < 2; ctx.drawImage(img, ox, oy, img.width * 100 * scale, img.height * 100 * scale); }
+  if (coverage && $('coverage').classList.contains('on')) {
+    ctx.imageSmoothingEnabled = false;
+    const s = coverage.canvas.width * coverage.cell * scale; ctx.drawImage(coverage.canvas, ox, oy, s, s);
+  }
+  // grid every 100 m
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+  for (let g = 0; g <= sizeCm; g += 10000) {
+    const a = w2s({ x: g, z: 0 }), b = w2s({ x: g, z: sizeCm }), c = w2s({ x: 0, z: g }), d = w2s({ x: sizeCm, z: g });
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
+  }
+  // parcels
+  data.parcels.forEach((p, i) => {
+    const col = parcelColor(p, i), isSel = sel?.kind === 'parcel' && sel.pi === i;
+    ctx.beginPath(); p.outline.forEach((v, k) => { const s = w2s(v); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.closePath();
+    ctx.fillStyle = col + (isSel ? '40' : '1c'); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = isSel ? 3 : 1.5; ctx.stroke();
+  });
+  data.parcels.forEach((p, i) => {
+    const c = w2s(centroid(p.outline));
+    ctx.font = '600 12px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#000c'; ctx.fillStyle = '#fff';
+    ctx.strokeText(p.name, c.x, c.y); ctx.fillText(p.name, c.x, c.y);
+    const sub = p.ownedAtStart ? 'owned at start' : `level ${p.requiredLevel} · ${euro(p.priceCents)}`;
+    ctx.font = '11px system-ui'; ctx.strokeText(sub, c.x, c.y + 14); ctx.fillText(sub, c.x, c.y + 14);
+  });
+  // structures
+  data.commands.forEach((t, ci) => {
+    const c = t.command, isSel = sel?.kind === 'cmd' && sel.ci === ci;
+    ctx.lineWidth = isSel ? 4 : 2.5;
+    if (c.valley && c.mountain) {
+      const a = w2s(c.valley), b = w2s(c.mountain);
+      ctx.strokeStyle = c.operatorId ? '#9b2226' : (c.derelict ? '#8d6e63' : '#d00000');
+      ctx.setLineDash(c.derelict ? [8, 5] : []); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
+      const lt = liftType(c), ang = Math.atan2(b.y - a.y, b.x - a.x);
+      for (const s of [a, b]) {
+        const L = (lt?.stationLengthMeters ?? 12) * 100 * scale, W = (lt?.stationWidthMeters ?? 8) * 100 * scale;
+        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(ang); ctx.fillStyle = '#d7ccc8'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+        ctx.fillRect(-L / 2, -W / 2, L, W); ctx.strokeRect(-L / 2, -W / 2, L, W); ctx.restore();
+      }
+      label(cmdLabel(c), b.x, b.y - 12);
+    } else if (c.center && c.toward) {
+      const a = w2s(c.center), b = w2s(c.toward), r = Math.sqrt((c.spaces ?? 30) * 30) * 100 * scale / 2;
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(ang); ctx.fillStyle = '#5f6368cc'; ctx.fillRect(-r, -r, 2 * r, 2 * r); ctx.restore();
+      ctx.strokeStyle = '#fff8'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
+      label(cmdLabel(c), a.x, a.y - r - 6);
+    } else if (c.points) {
+      ctx.strokeStyle = c.kind === 'accessPath' ? '#f4ede1' : '#1565c0';
+      ctx.beginPath(); c.points.forEach((p, k) => { const s = w2s(p); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.stroke();
+    } else if (c.center) {
+      const a = w2s(c.center); ctx.fillStyle = '#d7ccc8'; ctx.fillRect(a.x - 5, a.y - 5, 10, 10);
+    }
+  });
+  // handles
+  for (const hnd of allHandles()) {
+    const s = w2s(hnd.w), isHover = hover && sameHandle(hover, hnd);
+    const r = isHover ? 6 : hnd.kind === 'parcel' ? 3.5 : 4.5;
+    ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, 7);
+    ctx.fillStyle = hnd.kind === 'parcel' ? '#fff' : '#ffd166'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2; ctx.stroke();
+  }
+  // tool preview
+  if (tool && tool.pts.length) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.beginPath();
+    tool.pts.forEach((p, k) => { const s = w2s(p); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
+    if (mouse) { const m = toolPoint(mouse); const s = w2s(m); ctx.lineTo(s.x, s.y); }
+    ctx.stroke(); ctx.setLineDash([]);
+    tool.pts.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); });
+  }
+}
+function label(t, x, y) { ctx.font = '600 11px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#000c'; ctx.fillStyle = '#ffd166'; ctx.strokeText(t, x, y); ctx.fillText(t, x, y); }
+
+function allHandles() {
+  const hs = [];
+  data.parcels.forEach((p, pi) => p.outline.forEach((v, vi) => hs.push({ kind: 'parcel', pi, vi, w: v })));
+  data.commands.forEach((t, ci) => {
+    const c = t.command, isSel = sel?.kind === 'cmd' && sel.ci === ci;
+    // lift stations and parking always; way points only when the way is selected
+    for (const h of cmdHandles(ci)) if (isSel || h.idx === undefined) hs.push(h);
+  });
+  return hs;
+}
+const sameHandle = (a, b) => a.kind === b.kind && a.pi === b.pi && a.vi === b.vi && a.ci === b.ci && a.key === b.key && a.idx === b.idx;
+function handleAt(sp) {
+  let best = null;
+  for (const h of allHandles()) {
+    const d = dist(sp, w2s(h.w));
+    // structure handles win over parcel corners on ties
+    const score = d - (h.kind === 'cmd' ? 2 : 0) - (h.kind === 'cmd' && sel?.kind === 'cmd' && sel.ci === h.ci ? 2 : 0);
+    if (d < 9 && (!best || score < best.score)) best = { ...h, score };
+  }
+  return best;
+}
+function setHandle(h, w) {
+  if (h.kind === 'parcel') data.parcels[h.pi].outline[h.vi] = w;
+  else if (h.idx === undefined) data.commands[h.ci].command[h.key] = w;
+  else data.commands[h.ci].command[h.key][h.idx] = w;
+}
+
+// ------------------------------------------------------------ tools
+function setTool(name) {
+  tool = name && tool?.name !== name ? { name, pts: [] } : null;
+  if (tool?.name === 'split' && sel?.kind !== 'parcel') { tool = null; return hintText('Select the parcel to split first.'); }
+  $('tDraw').classList.toggle('on', tool?.name === 'draw');
+  $('tSplit').classList.toggle('on', tool?.name === 'split');
+  hintText(tool?.name === 'draw' ? 'New parcel: click corners (snapping to neighbours), click the first corner or Enter to finish, Esc to cancel.'
+    : tool?.name === 'split' ? `Split ${selected().name}: click its border, optionally points inside, then its border again. Esc cancels.` : '');
+  draw();
+}
+function toolPoint(sp) { return snapLand(sp); }
+function onBorder(pi, w) {
+  const o = data.parcels[pi].outline, sp = w2s(w);
+  return o.some((v, vi) => segProject(sp, w2s(v), w2s(o[(vi + 1) % o.length])).d < 1.5);
+}
+function toolClick(sp) {
+  const w = toolPoint(sp);
+  if (tool.name === 'draw') {
+    if (tool.pts.length >= 3 && dist(sp, w2s(tool.pts[0])) < 10) return finishDraw();
+    tool.pts.push({ x: w.x, z: w.z });
+  } else {
+    const pi = sel.pi;
+    if (!tool.pts.length) {
+      if (!onBorder(pi, w)) return hintText('Start the cut on the border of the selected parcel.');
+      tool.pts.push({ x: w.x, z: w.z }); hintText('Now points inside (optional) and the border again.');
+    } else if (onBorder(pi, w)) {
+      snapshot(); tool.pts.push({ x: w.x, z: w.z });
+      const err = splitParcel(pi, tool.pts);
+      if (err) { undoStack.pop(); hintText(err); tool.pts = []; return draw(); }
+      setTool(null); changed();
+    } else if (contains(data.parcels[pi].outline, w.x, w.z)) tool.pts.push({ x: w.x, z: w.z });
+    else hintText('Points of the cut must lie inside the parcel.');
+  }
+  draw();
+}
+function finishDraw() {
+  if (tool.pts.length < 3) return;
+  snapshot();
+  let k = data.parcels.length + 1; while (data.parcels.some(p => p.id === 'parcel_' + k)) k++;
+  data.parcels.push({ id: 'parcel_' + k, name: 'Parcel ' + k, requiredLevel: 1, priceCents: 0, ownedAtStart: false, description: '', outline: tool.pts });
+  sel = { kind: 'parcel', pi: data.parcels.length - 1 };
+  setTool(null); changed();
+}
+
+// ------------------------------------------------------------ mouse
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('mousedown', e => {
+  const sp = { x: e.offsetX, y: e.offsetY };
+  if (e.button === 2) {
+    const h = handleAt(sp); if (!h) return;
+    if (h.kind === 'parcel') { if (data.parcels[h.pi].outline.length > 3) { snapshot(); removeCorner(h.pi, h.vi); changed(); } }
+    else if (h.idx !== undefined && data.commands[h.ci].command[h.key].length > 2) { snapshot(); data.commands[h.ci].command[h.key].splice(h.idx, 1); changed(); }
+    return;
+  }
+  if (e.button === 1 || (e.button === 0 && tool == null && !handleAt(sp))) {
+    drag = { pan: true, sx: e.offsetX, sy: e.offsetY, ox, oy, moved: false }; return;
+  }
+  if (tool) return toolClick(sp);
+  const h = handleAt(sp);
+  snapshot();
+  let group = [h];
+  if (h.kind === 'parcel' && !e.altKey)
+    data.parcels.forEach((p, pi) => p.outline.forEach((v, vi) => { if (pi !== h.pi && eq(v, h.w)) group.push({ kind: 'parcel', pi, vi, w: v }); }));
+  drag = { handle: h, group, moved: false };
+  sel = h.kind === 'parcel' ? (sel?.kind === 'parcel' && group.some(g => g.pi === sel.pi) ? sel : { kind: 'parcel', pi: h.pi }) : { kind: 'cmd', ci: h.ci };
+  renderSide();
+});
+window.addEventListener('mousemove', e => {
+  const r = cv.getBoundingClientRect(), sp = { x: e.clientX - r.left, y: e.clientY - r.top };
+  mouse = sp;
+  if (drag?.pan) { ox = drag.ox + e.clientX - r.left - drag.sx; oy = drag.oy + e.clientY - r.top - drag.sy; drag.moved ||= Math.abs(sp.x - drag.sx) + Math.abs(sp.y - drag.sy) > 3; }
+  else if (drag) {
+    drag.moved = true;
+    let w;
+    if (drag.handle.kind === 'parcel') {
+      const inGroup = (pi, vi) => drag.group.some(g => g.pi === pi && g.vi === vi);
+      w = snapLand(sp, inGroup); drag.how = w.how; w = { x: w.x, z: w.z };
+    } else w = snapGrid(clampW(s2w(sp.x, sp.y)));
+    for (const g of drag.group) setHandle(g, w);
+    renderDetail();
+  } else hover = handleAt(sp);
+  const wp = s2w(sp.x, sp.y);
+  if (data && wp.x >= 0 && wp.z >= 0 && wp.x <= sizeCm && wp.z <= sizeCm)
+    $('status').textContent = `x ${Math.round(wp.x)} · z ${Math.round(wp.z)} cm  (${(wp.x / 100).toFixed(0)}, ${(wp.z / 100).toFixed(0)} m) · ${parcelName(wp)}${drag?.how ? ' · snap: ' + drag.how : ''}`;
+  draw();
+});
+window.addEventListener('mouseup', e => {
+  if (!drag) return;
+  if (drag.pan) {
+    if (!drag.moved && e.target === cv) { // click on the map: select
+      const w = s2w(drag.sx, drag.sy), sp = { x: drag.sx, y: drag.sy };
+      const ci = cmdNear(sp);
+      if (ci >= 0) sel = { kind: 'cmd', ci };
+      else { const pi = parcelAt(w); sel = pi >= 0 ? { kind: 'parcel', pi } : null; }
+      renderSide();
+    }
+  } else if (drag.moved) changed(); else undoStack.pop();
+  drag = null; draw();
+});
+function cmdNear(sp) {
+  let best = -1, bd = 8;
+  data.commands.forEach((t, ci) => {
+    const c = t.command, lines = [];
+    if (c.valley && c.mountain) lines.push([c.valley, c.mountain]);
+    if (c.points) for (let i = 1; i < c.points.length; i++) lines.push([c.points[i - 1], c.points[i]]);
+    if (c.center) lines.push([c.center, c.toward ?? c.center]);
+    for (const [a, b] of lines) { const d = segProject(sp, w2s(a), w2s(b)).d; if (d < bd) { bd = d; best = ci; } }
+  });
+  return best;
+}
+cv.addEventListener('dblclick', e => {
+  if (tool) { if (tool.name === 'draw') finishDraw(); return; }
+  const sp = { x: e.offsetX, y: e.offsetY };
+  // a selected way first
+  if (sel?.kind === 'cmd' && data.commands[sel.ci].command.points) {
+    const pts = data.commands[sel.ci].command.points;
+    for (let i = 1; i < pts.length; i++) {
+      const pr = segProject(sp, w2s(pts[i - 1]), w2s(pts[i]));
+      if (pr.d < 8) { snapshot(); const w = snapGrid(s2w(pr.q.x, pr.q.y)); pts.splice(i, 0, w); return changed(); }
+    }
+  }
+  let best = null;
+  data.parcels.forEach((p, pi) => p.outline.forEach((v, vi) => {
+    const pr = segProject(sp, w2s(v), w2s(p.outline[(vi + 1) % p.outline.length]));
+    const score = pr.d - (sel?.kind === 'parcel' && sel.pi === pi ? 3 : 0);
+    if (pr.d < 8 && (!best || score < best.score)) best = { score, pi, vi, q: pr.q };
+  }));
+  if (!best) return;
+  snapshot();
+  const w = s2w(best.q.x, best.q.y);
+  insertCorner(best.pi, best.vi, { x: Math.round(w.x), z: Math.round(w.z) });
+  changed();
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = Math.exp(-e.deltaY * 0.0015), w = s2w(e.offsetX, e.offsetY);
+  scale = Math.max(0.0005, Math.min(0.5, scale * f));
+  ox = e.offsetX - w.x * scale; oy = e.offsetY - w.z * scale; draw();
+}, { passive: false });
+window.addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea')) return;
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
+  else if (e.key === 'Escape') setTool(null);
+  else if (e.key === 'Enter' && tool?.name === 'draw') finishDraw();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel?.kind === 'parcel' && !tool) deleteParcel();
+});
+window.addEventListener('resize', draw);
+window.addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
+function deleteParcel() {
+  if (!confirm(`Delete parcel ${selected().name}?`)) return;
+  snapshot(); data.parcels.splice(sel.pi, 1); sel = null; changed();
+}
+
+// ------------------------------------------------------------ side panel
+function hintText(t) { $('hint').textContent = t; $('hint').style.display = t ? '' : 'none'; }
+function renderSide() {
+  $('parcels').innerHTML = '';
+  data.parcels.forEach((p, i) => {
+    const d = document.createElement('div'); d.className = sel?.kind === 'parcel' && sel.pi === i ? 'sel' : '';
+    d.innerHTML = `<span><span class="sw" style="background:${parcelColor(p, i)}"></span>${esc(p.name)}</span><span class="small">${p.ownedAtStart ? 'start' : 'L' + p.requiredLevel + ' · ' + euro(p.priceCents)}</span>`;
+    d.onclick = () => { sel = { kind: 'parcel', pi: i }; renderSide(); draw(); };
+    $('parcels').append(d);
+  });
+  $('structures').innerHTML = '';
+  data.commands.forEach((t, ci) => {
+    if (!editableCmd(ci)) return;
+    const c = t.command, d = document.createElement('div'); d.className = sel?.kind === 'cmd' && sel.ci === ci ? 'sel' : '';
+    const len = cmdLength(c);
+    d.innerHTML = `<span>${esc(cmdLabel(c))}</span><span class="small">${c.type}${len ? ' · ' + fmtM(len) : ''}</span>`;
+    d.onclick = () => { sel = { kind: 'cmd', ci }; renderSide(); draw(); };
+    $('structures').append(d);
+  });
+  renderDetail(); renderChecks();
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function renderDetail() {
+  const el = $('detail'), it = selected();
+  if (document.activeElement && el.contains(document.activeElement)) return; // don't clobber typing
+  if (!it) { el.innerHTML = '<span class="small">Click a parcel or structure.</span>'; return; }
+  if (sel.kind === 'parcel') {
+    const a = area(it.outline);
+    el.innerHTML = `
+      <div class="field"><label>id</label><input type="text" data-k="id" value="${esc(it.id)}"></div>
+      <div class="field"><label>name</label><input type="text" data-k="name" value="${esc(it.name)}"></div>
+      <div class="row"><div style="flex:1"><label>required level</label><input type="number" min="0" max="20" data-k="requiredLevel" value="${it.requiredLevel}"></div>
+        <div style="flex:1"><label>price (€)</label><input type="number" min="0" step="1000" data-k="priceEuro" value="${it.priceCents / 100}"></div></div>
+      <div class="row"><label><input type="checkbox" data-k="ownedAtStart" ${it.ownedAtStart ? 'checked' : ''}> owned at start</label></div>
+      <div class="field"><label>description</label><textarea data-k="description">${esc(it.description)}</textarea></div>
+      <div class="small">${it.outline.length} corners · ${(a / 10000).toFixed(2)} ha${it.priceCents ? ` · ${euro(Math.round(it.priceCents / (a / 10000)))}/ha` : ''}</div>
+      <div class="row"><button id="del">Delete parcel</button></div>`;
+    el.querySelectorAll('[data-k]').forEach(inp => inp.addEventListener('change', () => {
+      snapshot(); const k = inp.dataset.k;
+      if (k === 'ownedAtStart') it.ownedAtStart = inp.checked;
+      else if (k === 'requiredLevel') it.requiredLevel = parseInt(inp.value || '0', 10);
+      else if (k === 'priceEuro') it.priceCents = Math.round(parseFloat(inp.value || '0') * 100);
+      else it[k] = inp.value;
+      inp.blur(); changed();
+    }));
+    $('del').onclick = deleteParcel;
+  } else {
+    const c = it.command, len = cmdLength(c), lt = liftType(c);
+    let html = `<div class="small">${c.type}${c.typeId ? ' · ' + c.typeId : ''}${c.operatorId ? ' · company: ' + c.operatorId : ''}${c.derelict ? ' · derelict' : ''}</div>`;
+    if (len) html += `<div class="small">length ${fmtM(len)}${lt ? ` (allowed ${lt.minLengthMeters}–${lt.maxLengthMeters} m)` : ''}</div>`;
+    for (const h of cmdHandles(sel.ci)) if (h.idx === undefined)
+      html += `<div class="small">${h.key}: ${h.w.x}, ${h.w.z} cm · ${esc(parcelName(h.w))}</div>`;
+    if (c.points) html += `<div class="small">${c.points.length} points (double-click the way to add, right-click to remove)</div>`;
+    for (const [k, v] of Object.entries(c)) if (['name', 'spaces'].includes(k))
+      html += `<div class="field"><label>${k}</label><input type="${typeof v === 'number' ? 'number' : 'text'}" data-k="${k}" value="${esc(v)}"></div>`;
+    el.innerHTML = html;
+    el.querySelectorAll('[data-k]').forEach(inp => inp.addEventListener('change', () => {
+      snapshot(); c[inp.dataset.k] = inp.type === 'number' ? parseInt(inp.value, 10) : inp.value; inp.blur(); changed();
+    }));
+  }
+}
+function renderChecks() {
+  const msgs = [];
+  if (coverageStats.gapsM2) msgs.push(['warn', `Land in no parcel: ~${(coverageStats.gapsM2 / 10000).toFixed(2)} ha (magenta). Nobody can ever build there.`]);
+  if (coverageStats.overlapsM2) msgs.push(['bad', `Overlapping parcels: ~${(coverageStats.overlapsM2 / 10000).toFixed(2)} ha (red). The first parcel in the list wins in the Land menu.`]);
+  const ids = data.parcels.map(p => p.id); ids.filter((v, i) => ids.indexOf(v) !== i).forEach(id => msgs.push(['bad', `Duplicate parcel id "${id}".`]));
+  if (data.parcels.length && !data.parcels.some(p => p.ownedAtStart)) msgs.push(['bad', 'No parcel is owned at start.']);
+  data.commands.forEach(t => {
+    const c = t.command, lt = liftType(c), len = cmdLength(c);
+    if (lt && len && (len < lt.minLengthMeters * 100 || len > lt.maxLengthMeters * 100))
+      msgs.push(['bad', `${cmdLabel(c)}: ${fmtM(len)}, a ${lt.name} must be ${lt.minLengthMeters}–${lt.maxLengthMeters} m.`]);
+    // Structures of the park (partly on the start land, not a rented company lift) should lie fully on it.
+    if (c.operatorId || !data.parcels.length) return;
+    const pts = cmdHandles(data.commands.indexOf(t)).filter(h => h.key !== 'toward').map(h => h.w);
+    const on = pts.filter(ownedAtStart).length;
+    if (on > 0 && on < pts.length) msgs.push(['warn', `${cmdLabel(c)}: partly outside the land owned at start.`]);
+  });
+  if (!msgs.length) msgs.push(['ok', 'No problems found. Use Validate to run the scenario commands in the sim.']);
+  $('checks').innerHTML = msgs.map(([k, t]) => `<div class="msg ${k}">${esc(t)}</div>`).join('');
+}
+
+// ------------------------------------------------------------ server
+async function post(path) {
+  $('result').innerHTML = '<div class="msg">Running the sim …</div>';
+  const r = await (await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json();
+  if (r.error) { $('result').innerHTML = `<div class="msg bad">${esc(r.error)}</div>`; return; }
+  const lines = [];
+  if (r.saved) { dirty = false; lines.push(['ok', `Saved ${r.saved}.`]); }
+  if (r.rejectedCommands.length) r.rejectedCommands.forEach(t => lines.push(['bad', 'Rejected: ' + t]));
+  else lines.push(['ok', 'All scenario commands accepted.']);
+  r.lifts.forEach(l => lines.push(['', `Lift ${l.id}: ${l.lengthMeters} m, stations at ${l.valley.targetHeightCm ?? '?'} / ${l.mountain.targetHeightCm ?? '?'} cm`]));
+  $('result').innerHTML = lines.map(([k, t]) => `<div class="msg ${k}">${esc(t)}</div>`).join('') +
+    `<div class="row"><a href="${r.preview}?t=${Date.now()}" target="_blank" style="color:var(--accent)">Open the sim's map (parcels + structures)</a></div>`;
+}
+$('validate').onclick = () => post('/api/validate');
+$('save').onclick = () => post('/api/save');
+$('undo').onclick = undo;
+$('tDraw').onclick = () => setTool('draw');
+$('tSplit').onclick = () => setTool('split');
+$('mode').onchange = () => loadMap(false);
+$('coverage').onclick = () => { $('coverage').classList.toggle('on'); draw(); };
+$('snap10').onclick = () => $('snap10').classList.toggle('on');
+hintText('');
+load();
+</script>
+</body>
+</html>

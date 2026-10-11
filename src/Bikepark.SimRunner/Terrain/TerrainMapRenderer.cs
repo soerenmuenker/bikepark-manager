@@ -1,3 +1,5 @@
+using Bikepark.Sim.Land;
+using Bikepark.Sim.State;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
 
@@ -45,7 +47,7 @@ internal static class TerrainMapRenderer
         new(0.08, 0.08, 0.08), // Black
     ];
 
-    public static byte[] Render(TerrainGrid grid, MapMode mode, IReadOnlyList<ScatterInstance>? scatter, WayNetwork? network = null)
+    public static byte[] Render(TerrainGrid grid, MapMode mode, IReadOnlyList<ScatterInstance>? scatter, WayNetwork? network = null, WorldState? state = null)
     {
         int n = grid.Samples;
         var heights = grid.Heights;
@@ -85,6 +87,8 @@ internal static class TerrainMapRenderer
             }
         }
 
+        if (state is not null)
+            DrawParcels(rgb, n, state);
         if (network is not null)
             DrawNetwork(rgb, n, network);
 
@@ -153,6 +157,25 @@ internal static class TerrainMapRenderer
             var b = network.Geometry(baseWay.Id).PositionAt(0);
             Disc(rgb, n, b.X / 100, b.Z / 100, 6, new Rgb(1, 1, 1));
             Disc(rgb, n, b.X / 100, b.Z / 100, 4, new Rgb(0.95, 0.55, 0.1));
+        }
+    }
+
+    /// <summary>Parcel borders: owned at start teal, for sale yellow (like the game's Land menu).</summary>
+    private static void DrawParcels(byte[] rgb, int n, WorldState state)
+    {
+        // Owned ones last, so shared borders show teal.
+        foreach (var parcel in state.Parcels.OrderBy(p => LandMath.IsOwned(state, p)))
+        {
+            var color = LandMath.IsOwned(state, parcel) ? new Rgb(0.10, 0.75, 0.70) : new Rgb(0.95, 0.85, 0.15);
+            var outline = parcel.Outline;
+            for (int i = 0, j = outline.Count - 1; i < outline.Count; j = i++)
+            {
+                var a = outline[j];
+                var b = outline[i];
+                long steps = Math.Max(1, Math.Max(Math.Abs(b.X - a.X), Math.Abs(b.Z - a.Z)) / 50);
+                for (long k = 0; k <= steps; k++)
+                    Disc(rgb, n, (int)((a.X + (b.X - a.X) * k / steps) / 100), (int)((a.Z + (b.Z - a.Z) * k / steps) / 100), 0, color);
+            }
         }
     }
 
