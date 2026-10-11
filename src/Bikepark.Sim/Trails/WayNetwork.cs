@@ -67,6 +67,7 @@ public sealed class WayNetwork
     private readonly List<WayCrossing> _crossings = [];
     private readonly Dictionary<int, List<(long Cm, int OtherWay, long OtherCm)>> _crossingsByWay = [];
     private readonly Dictionary<int, List<(long Cm, int LiftId, long LiftCm)>> _towCrossingsByWay = [];
+    private readonly Dictionary<int, List<(long LiftCm, int WayId, long WayCm)>> _towCrossingsByLift = [];
     private readonly Dictionary<int, List<PlacedFeature>> _features;
 
     private readonly record struct Edge(int To, LegKind Kind, int Id, long FromCm, long ToCm, long Cost);
@@ -141,6 +142,10 @@ public sealed class WayNetwork
     /// </summary>
     public IReadOnlyList<(long Cm, int LiftId, long LiftCm)> TowCrossingsOn(int wayId) =>
         _towCrossingsByWay.TryGetValue(wayId, out var list) ? list : [];
+
+    /// <summary>The same crossings seen from the lift, in order up its track: (distance along the lift leg, the way, distance along it).</summary>
+    public IReadOnlyList<(long LiftCm, int WayId, long WayCm)> TowCrossingsOnLift(int liftId) =>
+        _towCrossingsByLift.TryGetValue(liftId, out var list) ? list : [];
 
     /// <summary>Hubs in id order.</summary>
     public IReadOnlyList<NetworkHub> Hubs => _hubs;
@@ -490,11 +495,17 @@ public sealed class WayNetwork
                 {
                     if (!_towCrossingsByWay.TryGetValue(way.Id, out var list))
                         _towCrossingsByWay[way.Id] = list = [];
-                    list.Add((cm, link.Id, link.LengthCm * fractionPpm / 1_000_000));
+                    long liftCm = link.LengthCm * fractionPpm / 1_000_000;
+                    list.Add((cm, link.Id, liftCm));
+                    if (!_towCrossingsByLift.TryGetValue(link.Id, out var onLift))
+                        _towCrossingsByLift[link.Id] = onLift = [];
+                    onLift.Add((liftCm, way.Id, cm));
                 }
         }
         foreach (var list in _towCrossingsByWay.Values)
             list.Sort((p, q) => p.Cm.CompareTo(q.Cm));
+        foreach (var list in _towCrossingsByLift.Values)
+            list.Sort((p, q) => p.LiftCm.CompareTo(q.LiftCm) is var c && c != 0 ? c : p.WayId.CompareTo(q.WayId));
     }
 
     private static long DistanceToSegment(long px, long pz, long ax, long az, long bx, long bz)

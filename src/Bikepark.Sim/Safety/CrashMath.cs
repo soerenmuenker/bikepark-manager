@@ -28,8 +28,18 @@ public static class CrashMath
         return Clamp(ppb * WetFactor(rules, wetnessPermille) / 1000 * FatigueFactor(rules, guest.Energy) / 1000);
     }
 
-    /// <summary>Chance of colliding at a crossing while someone on the other way is close to it.</summary>
-    public static long CollisionChancePpb(CrashRules rules) => Clamp(rules.CollisionPpm * 1000L);
+    /// <summary>
+    /// Two passages of a crossing collide: each rider is within <see cref="CrashRules.CollisionDistanceCm"/> of the point
+    /// for a moment around their passage (shorter the faster they are), the two moments overlap, and at least one of them
+    /// rides at <see cref="CrashRules.CollisionMinSpeedCmPerS"/> or faster.
+    /// </summary>
+    public static bool Collide(CrashRules rules, CrossingPassage a, CrossingPassage b)
+    {
+        if (rules.CollisionDistanceCm <= 0 || Math.Max(a.SpeedCmPerS, b.SpeedCmPerS) < rules.CollisionMinSpeedCmPerS) return false;
+        long apart = Math.Abs(a.TimeMs - b.TimeMs);
+        long reach = rules.CollisionDistanceCm * 1000L / Math.Max(1, a.SpeedCmPerS) + rules.CollisionDistanceCm * 1000L / Math.Max(1, b.SpeedCmPerS);
+        return apart <= reach;
+    }
 
     /// <summary>
     /// Difficulty against skill: 1000 at a match, rising by <see cref="CrashRules.OverSkillPer100Permille"/> per 100

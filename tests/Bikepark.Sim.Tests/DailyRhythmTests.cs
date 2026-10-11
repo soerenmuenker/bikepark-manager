@@ -84,6 +84,7 @@ public class DailyRhythmTests
     {
         var sim = TestWorlds.RunLift(1337, 0, TestWorlds.DemoLiftNetwork());
         sim.State.ReputationRules.Enabled = false; // full demand, as in an established park
+        sim.State.CrashRules.CollisionDistanceCm = 0; // the demo trails cross: nobody goes home hurt before lunch
         sim.Events.Clear();
         var lunches = new List<GuestAteLunch>();
         sim.Events.Subscribe<GuestAteLunch>(lunches.Add);
@@ -112,7 +113,10 @@ public class DailyRhythmTests
     public void Eating_RestoresEnergy_AndEndsAfterTheBreak()
     {
         var sim = TestWorlds.RunLift(1337, 11 * 60, TestWorlds.DemoLiftNetwork());
-        var guest = sim.State.Guests.First(g => g.Activity == RiderActivity.Idle || g.Activity == RiderActivity.Queuing);
+        // Riders come in waves (nobody overtakes): wait for one between laps or in the queue.
+        while (!sim.State.Guests.Any(Waiting) && GameTime.MinuteOfDay(sim.State.Tick) < 12 * 60)
+            sim.Step();
+        var guest = sim.State.Guests.First(Waiting);
         guest.CashCents = 5_000;
         LiftSystem.LeaveQueue(sim.State, guest);
         RiderSystem.PlaceAtBase(sim.State, guest, sim.Network);
@@ -130,12 +134,15 @@ public class DailyRhythmTests
         sim.RunTicks(guest.BusyUntilTick - sim.State.Tick + 1);
         Assert.NotEqual(RiderActivity.Eating, guest.Activity);
         Assert.Contains(sim.State.Guests, g => g.Id == guest.Id);
+
+        static bool Waiting(Guest g) => g.Injury == Bikepark.Sim.Safety.InjurySeverity.None && g.Activity is RiderActivity.Idle or RiderActivity.Queuing;
     }
 
     [Fact]
     public void AtClosing_RidersFinishTheirLap_ThenTheParkIsEmptyAndQuiet()
     {
-        var sim = TestWorlds.RunLift(1337, Close, TestWorlds.DemoLiftNetwork());
+        // Without collisions on the crossing demo trails: a full park at closing.
+        var sim = TestWorlds.RunLift(1337, Close, TestWorlds.DemoLiftNetwork(), s => s.CrashRules.CollisionDistanceCm = 0);
         Assert.Contains(sim.State.Guests, g => g.Activity is RiderActivity.Descending or RiderActivity.OnLift or RiderActivity.Queuing);
         sim.Events.Clear();
         var runs = new List<RunFinished>();

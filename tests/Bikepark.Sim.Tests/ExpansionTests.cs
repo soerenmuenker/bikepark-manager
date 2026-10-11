@@ -216,8 +216,11 @@ public class ExpansionTests
     [Fact]
     public void RidersBoardedInTheSameMinute_AreSpreadAlongTheLine()
     {
-        var sim = Career(OpeningBuiltAtOnce());
+        var sim = Career(OpeningBuiltAtOnce(), s => s.CrashRules.CollisionDistanceCm = 0); // nobody hit on the track
         sim.RunTicks(3 * GameTime.MinutesPerDay + 11 * 60);
+        // Riders come in waves (nobody overtakes on the trails): wait for a busy lift.
+        for (int i = 0; i < 60 && sim.State.Guests.Count(g => g.Activity == RiderActivity.OnLift) < 5; i++)
+            sim.Step();
         var type = LiftNetwork.FindType(sim.State, "tbar")!;
         // Where each rider is along the lift leg (progress counts the whole route, e.g. the walk from the parking lot).
         var onLift = sim.State.Guests.Where(g => g.Activity == RiderActivity.OnLift)
@@ -230,25 +233,32 @@ public class ExpansionTests
     [Fact]
     public void TrailRiders_CanCollideWithRidersOnTheTBar()
     {
+        // The career's own rules: the Old Piste crosses the T-bar track five times, riders meeting there collide.
         var sim = Career(OpeningBuiltAtOnce(), s =>
         {
             s.CrashRules.FeatureBasePpm = 0;
             s.CrashRules.TerrainBasePpm = 0;
-            s.CrashRules.CollisionPpm = 1_000_000;
-            s.CrashRules.CrossingWindowCm = 3_000;
         });
         var crashes = new List<RiderCrashed>();
         sim.Events.Subscribe<RiderCrashed>(crashes.Add);
         var towedVictims = new List<int>();
+        var hitAt = new Dictionary<int, long>(); // where on the T-bar each towed rider was hit
         for (int i = 0; i < 4 * GameTime.MinutesPerDay && towedVictims.Count == 0; i++)
         {
-            var onLift = sim.State.Guests.Where(g => g.Activity == RiderActivity.OnLift).Select(g => g.Id).ToHashSet();
             sim.Step();
             sim.Events.Dispatch();
-            towedVictims.AddRange(crashes.Where(c => c.Tick == sim.State.Tick - 1 && onLift.Contains(c.GuestId)).Select(c => c.GuestId));
+            foreach (var c in crashes.Where(c => c.Tick == sim.State.Tick - 1 && c.LiftId == SkiLift))
+            {
+                towedVictims.Add(c.GuestId);
+                if (sim.State.Guests.FirstOrDefault(g => g.Id == c.GuestId) is { Route.Count: > 0 } g)
+                    hitAt[g.Id] = g.RouteProgressCm - g.Route.Take(g.LegIndex).Sum(l => l.LengthCm);
+            }
         }
         var victim = Assert.Single(towedVictims.Take(1));
         var crash = crashes.First(c => c.GuestId == victim);
+        // Hit near a crossing of the track, where they were at that moment of the minute (a serious crash keeps them there).
+        if (hitAt.TryGetValue(victim, out long liftCm))
+            Assert.Contains(sim.Network.TowCrossingsOn(crash.WayId), x => x.LiftId == SkiLift && x.LiftCm == liftCm);
         Assert.Equal(CrashCause.Collision, crash.Cause);
         Assert.Contains(crashes, c => c.Tick == crash.Tick && c.GuestId != victim && c.WayId == crash.WayId); // the trail rider too
 

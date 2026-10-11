@@ -39,6 +39,31 @@ internal sealed class HudContext
 
     public Simulation Sim => Host.Sim;
 
+    private readonly List<object> _pausedBy = [];
+
+    /// <summary>
+    /// A warning pop-up pauses the game (unless the player already has). The game goes on at 1x once the last pop-up that
+    /// paused it is closed (<see cref="ResumeAfterWarning"/>).
+    /// </summary>
+    public void PauseForWarning(object popup)
+    {
+        if (_pausedBy.Contains(popup)) return;
+        if (_pausedBy.Count == 0)
+        {
+            if (Host.Speed == 0) return;
+            Host.SetSpeedIndex(0);
+        }
+        _pausedBy.Add(popup);
+    }
+
+    public void ResumeAfterWarning(object popup)
+    {
+        if (_pausedBy.Remove(popup) && _pausedBy.Count == 0) Host.SetSpeedIndex(1);
+    }
+
+    /// <summary>Forgets who paused the game (a new world).</summary>
+    public void ClearWarningPauses() => _pausedBy.Clear();
+
     /// <summary>Opens the repair pop-up for a trail (set by the HUD).</summary>
     public Action<int> OpenRepair { get; set; } = _ => { };
 

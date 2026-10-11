@@ -169,7 +169,8 @@
   // Crashes: every feature ridden and every 10 m of trail is a small chance to crash (parts per million), scaled by
   // factors in permille: difficulty above the rider's skill (+overSkillPer100Permille per 100 points, lower for easy
   // stuff), jumps, worn features (below the rough level, up to 1 + wornFactor at 0 %), wet ground and tired riders.
-  // Passing a crossing while someone on the other way is close is a collision chance. A crash is serious with
+  // Collisions are no chance: two riders passing a crossing of their ways (or of a way and the T-bar track) who are both
+  // within collisionDistanceCm of it at the same moment crash, if at least one rides collisionMinSpeedCmPerS or faster. A crash is serious with
   // seriousBase + extras (jumps, collisions, over skill): the rider lies on the trail, blocking it, until the rescue
   // helicopter (public service) has flown them out; otherwise they ride down slowly and go home. A rider hurt while
   // being pulled up a T-bar stops the whole lift: for towStopMinutes (minor: they get off the track and go home) or
@@ -186,8 +187,8 @@
     "wetFactorPermille": 1000,
     "fatigueBelowEnergy": 350,
     "fatigueFactorPermille": 1000,
-    "collisionPpm": 500,
-    "crossingWindowCm": 1000,
+    "collisionDistanceCm": 100,
+    "collisionMinSpeedCmPerS": 350,
     "seriousBasePermille": 50,
     "seriousJumpPermille": 50,
     "seriousCollisionPermille": 150,

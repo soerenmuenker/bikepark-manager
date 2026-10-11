@@ -91,9 +91,11 @@ internal static class TestWorlds
         new(2500, new SetLiftBikeAccessCommand(1, 0)), // no bikes from day 2: riders pedal up
     ];
 
-    public static Simulation RunLift(ulong seed, long ticks, IEnumerable<TimedCommand>? commands = null)
+    public static Simulation RunLift(ulong seed, long ticks, IEnumerable<TimedCommand>? commands = null, Action<ScenarioDefinition>? tweak = null)
     {
-        var sim = new Simulation(ScenarioLoader.CreateWorld(LiftScenario(seed)));
+        var scenario = LiftScenario(seed);
+        tweak?.Invoke(scenario);
+        var sim = new Simulation(ScenarioLoader.CreateWorld(scenario));
         foreach (var c in commands ?? [])
             sim.Commands.Enqueue(c.Command, c.Tick);
         sim.RunTicks(ticks);

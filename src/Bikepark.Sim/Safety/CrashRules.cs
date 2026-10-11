@@ -60,9 +60,15 @@ public sealed class CrashRules
     public int FatigueBelowEnergy { get; set; } = 350;
     public int FatigueFactorPermille { get; set; } = 1000;
 
-    /// <summary>Chance of a collision when passing a crossing while a rider on the other way is within <see cref="CrossingWindowCm"/> of it.</summary>
-    public int CollisionPpm { get; set; } = 60_000;
-    public int CrossingWindowCm { get; set; } = 1_500;
+    /// <summary>
+    /// Two riders passing a crossing of their ways (or of a way and a T-bar track) who are both within this distance of the
+    /// crossing point at the same moment collide, when at least one of them is as fast as <see cref="CollisionMinSpeedCmPerS"/>.
+    /// No dice: close contact is a crash. 0 turns collisions off.
+    /// </summary>
+    public int CollisionDistanceCm { get; set; } = 100;
+
+    /// <summary>Riders slower than this (climbing, towed, hurt) only collide with someone at least this fast.</summary>
+    public int CollisionMinSpeedCmPerS { get; set; } = 350;
 
     // ---- Severity ----
 
@@ -104,13 +110,14 @@ public sealed class CrashRules
     {
         var errors = new List<string>();
         const string p = "crashRules";
-        if (FeatureBasePpm is < 0 or > 1_000_000 || TerrainBasePpm is < 0 or > 1_000_000 || CollisionPpm is < 0 or > 1_000_000)
+        if (FeatureBasePpm is < 0 or > 1_000_000 || TerrainBasePpm is < 0 or > 1_000_000)
             errors.Add($"{p}: chances (ppm) must be within 0..1000000");
         if (new[] { JumpFactorPermille, OverSkillPer100Permille, WornFactorPermille, WetFactorPermille, FatigueFactorPermille }.Any(f => f is < 0 or > 100_000))
             errors.Add($"{p}: factors must be within 0..100000");
         if (MinSkillFactorPermille is < 0 or > 1000) errors.Add($"{p}.minSkillFactorPermille must be within 0..1000");
         if (FatigueBelowEnergy is < 1 or > 1000) errors.Add($"{p}.fatigueBelowEnergy must be within 1..1000");
-        if (CrossingWindowCm is < 0 or > 100_000) errors.Add($"{p}.crossingWindowCm must be within 0..100000");
+        if (CollisionDistanceCm is < 0 or > 10_000) errors.Add($"{p}.collisionDistanceCm must be within 0..10000");
+        if (CollisionMinSpeedCmPerS is < 0 or > 10_000) errors.Add($"{p}.collisionMinSpeedCmPerS must be within 0..10000");
         if (new[] { SeriousBasePermille, SeriousJumpPermille, SeriousCollisionPermille, SeriousPer100OverSkillPermille }.Any(s => s is < 0 or > 1000))
             errors.Add($"{p}: serious shares must be within 0..1000");
         if (MinorMoodLoss is < 0 or > 1000 || SeriousMoodLoss is < 0 or > 1000) errors.Add($"{p}: mood losses must be within 0..1000");

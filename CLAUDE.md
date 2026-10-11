@@ -145,8 +145,12 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     (`ParkProgress`, never saved; `Reputation.Level` only remembers the last announced level). `ReputationSystem` runs
     before `FinanceSystem` (it reads today's visitors before the books close).
 18. **Crashes** (`CrashRules.Enabled`, off by default; Starter Valley turns it on): rolled only in `RiderSystem`, only
-    on a rider's run leg and only while uninjured: per built feature passed, per finished 10 m segment (terrain) and per
-    crossing passed while someone on the other way is within the window (a collision downs both). Chances are pure
+    on a rider's run leg and only while uninjured: per built feature passed and per finished 10 m segment (terrain).
+    Collisions are no roll: every uninjured rider passing a crossing (any way, run or not, and towed riders on a T-bar
+    track) records a `CrossingPassage` (game time in ms, speed) in `SafetyState.Passages` (this minute and the one
+    before, saved); two passages of the two sides collide when both riders are within `CollisionDistanceCm` (1 m) of the
+    crossing at the same moment and one rides `CollisionMinSpeedCmPerS` or faster (`CrashMath.Collide`). Both crash at
+    the crossing (`RiderSystem.PassCrossing`; the earlier one is moved back there, but stays ahead of riders behind them). Chances are pure
     (`CrashMath`: difficulty vs skill, feature condition, wetness, fatigue). A minor crash: the rider rides down at
     `MinorSpeedCmPerS` and leaves (`GuestLeaveReason.Injured`). A serious one: `RiderActivity.Injured`, the rider stays
     where they fell and `TrailTraffic` tracks them, so nobody passes, until `RescueAtTick` (public-service helicopter,
@@ -187,11 +191,12 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     (riders check it, never `Way.IsRideable` alone). Gravel platforms (`Platform`, `HubKind.Platform`, 12 × 12 m pad,
     free) are hubs ways can start and end on.
     A T-bar (`NetworkLink.Towed`) pulls riders up a straight gravel track on the ground between its stations; the track
-    is derived (never a `Way`, nobody walks it): ways crossing it are found in `WayNetwork.TowCrossingsOn` (warned
-    about in `WayPlanner` and in `StructurePlanner.PlanLift`), and a trail rider passing such a crossing while a towed
-    rider is within the crossing window rolls the usual collision. A towed rider hurt there stops the whole lift
+    is derived (never a `Way`, nobody walks it): ways crossing it are found in `WayNetwork.TowCrossingsOn` /
+    `TowCrossingsOnLift` (warned about in `WayPlanner` and in `StructurePlanner.PlanLift`); trail riders and towed riders
+    passing such a crossing collide like at any crossing (riders on a lift move last each minute). A towed rider hurt there stops the whole lift
     (`Lift.StoppedUntilTick`: no boarding, nobody on it moves, `LiftRunning` false): minor for `TowStopMinutes` (the
-    rider gets off the track and goes home), serious until the helicopter (`RescueAtTick`); other crashes don't stop it. Boarded riders start with the head start of their
+    rider gets off the track and goes home), serious until the helicopter (`RescueAtTick`); other crashes don't stop it.
+    The HUD raises a pausing pop-up for every stop (`LiftStopDialog`). Boarded riders start with the head start of their
     carrier's departure within the minute (`LiftSystem.Dispatch`), so riders boarded together are spaced like carriers.
 
 ## Game controls (debug build)

@@ -72,6 +72,10 @@ public partial class Hud : CanvasLayer
     private bool _followOnStart;
     private VBoxContainer _toasts = null!;
     private RepairDialog _repairDialog = null!;
+    private LiftStopDialog _liftStopDialog = null!;
+
+    /// <summary>Where the last rider on a T-bar was hit (trail and cm), for the lift-stop pop-up that follows.</summary>
+    private (int WayId, long Cm) _lastTowedCrash;
     private NameDialog _nameDialog = null!;
     private WorldPicker _picker = null!;
 
@@ -235,6 +239,8 @@ public partial class Hud : CanvasLayer
         _repairDialog = new RepairDialog(_ctx);
         _ctx.OpenRepair = _repairDialog.Open;
         _root.AddChild(_repairDialog);
+        _liftStopDialog = new LiftStopDialog(_ctx);
+        _root.AddChild(_liftStopDialog);
 
         _nameDialog = new NameDialog();
         _ctx.AskName = _nameDialog.Ask;
@@ -394,6 +400,15 @@ public partial class Hud : CanvasLayer
             _repairDialog.Position = new Vector2(MathF.Round((view.X - size.X) / 2), MathF.Round((view.Y - size.Y) / 3));
         }
 
+        if (_liftStopDialog.Visible)
+        {
+            var size = _liftStopDialog.GetCombinedMinimumSize();
+            _liftStopDialog.Size = size;
+            // Below the repair pop-up when both are open.
+            float y = _repairDialog.Visible ? _repairDialog.Position.Y + _repairDialog.Size.Y + 12 : MathF.Round((view.Y - size.Y) / 3);
+            _liftStopDialog.Position = new Vector2(MathF.Round((view.X - size.X) / 2), y);
+        }
+
         float top = 14;
         if (_toolPanel.Visible)
         {
@@ -427,6 +442,7 @@ public partial class Hud : CanvasLayer
             UpdateBar();
             if (_open != Menu.None) _panels[_open].Refresh();
             _repairDialog.Refresh();
+            _liftStopDialog.Refresh();
         }
         _land.ShowLabels = _open == Menu.Land;
         if (_startScreen.Visible != _ctx.Host.ShowStartScreen)
@@ -713,6 +729,8 @@ public partial class Hud : CanvasLayer
         _ctx.Days.Clear();
         _ctx.Days.AddRange(sim.State.DayHistory); // charts continue after loading a career
         _repairDialog.Clear();
+        _liftStopDialog.Clear();
+        _ctx.ClearWarningPauses();
         var events = sim.Events;
         _subscriptions.Add(events.Subscribe<DayEnded>(e =>
         {
@@ -751,12 +769,13 @@ public partial class Hud : CanvasLayer
             $"Bought {_ctx.Sim.State.Parcels.FirstOrDefault(p => p.Id == e.ParcelId)?.Name} for {UiTheme.Money(e.PriceCents)}: you can build there now", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<LiftConstructionStarted>(e => Toast(
             $"{(e.Restoration ? "Restoring" : "Building")} {LiftName(e.LiftId)} for {UiTheme.Money(e.CostCents)}: running from day {GameTime.Day(e.ReadyTick) + 1}", UiTheme.Accent)));
-        _subscriptions.Add(events.Subscribe<LiftStopped>(e => Toast(
-            $"{LiftName(e.LiftId)} stopped: a rider crashed on its track. It runs again at {GameTime.Format(e.UntilTick)[^5..]}", UiTheme.Bad)));
+        _subscriptions.Add(events.Subscribe<LiftStopped>(e =>
+            _liftStopDialog.Request(new LiftStopDialog.Stop(e.LiftId, e.UntilTick, e.GuestId, _lastTowedCrash.WayId, _lastTowedCrash.Cm))));
         _subscriptions.Add(events.Subscribe<LiftReady>(e => Toast($"{LiftName(e.LiftId)} is ready and running", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<RiderCrashed>(e =>
         {
             string where = e.FeatureId != 0 ? $" at the {FeatureTypeName(e.WayId, e.FeatureId)}" : e.Cause == Bikepark.Sim.Safety.CrashCause.Collision ? " (collision at a crossing)" : "";
+            if (e.LiftId != 0) _lastTowedCrash = (e.WayId, e.Cm);
             if (e.LiftId != 0)
                 Toast(e.Severity == Bikepark.Sim.Safety.InjurySeverity.Serious
                     ? $"Serious crash on the {LiftName(e.LiftId)} track (hit by a rider on {TrailName(e.WayId)}): rescue helicopter called"

@@ -39,7 +39,7 @@ public class SafetyTests
     {
         Enabled = true,
         FeatureBasePpm = 0,
-        CollisionPpm = 0,
+        CollisionDistanceCm = 0,
         TerrainBasePpm = 1_000_000,
         MinSkillFactorPermille = 1000,
         OverSkillPer100Permille = 0,
@@ -240,7 +240,7 @@ public class SafetyTests
         var rules = ValleyRules();
         rules.FeatureBasePpm *= 20; // more crashes, steadier statistics
         rules.TerrainBasePpm = 0;
-        rules.CollisionPpm = 0;
+        rules.CollisionDistanceCm = 0;
         var features = JsonSerializer.Deserialize<List<TimedCommand>>(
                 File.ReadAllText(Path.Combine(TestWorlds.RepoRoot(), "data", "scripts", "demo_features.json")), SimJson.Indented)!
             .Select(c => c with { Command = ((PlaceTrailFeatureCommand)c.Command) with { Instant = true } });
@@ -293,6 +293,68 @@ public class SafetyTests
         Assert.All(days, d => Assert.True(d.InsuranceCents >= rules.InsuranceBaseCents));
         Assert.Equal(sim.State.Safety.TotalCrashes, days.Sum(d => (long)d.Crashes) + sim.State.Safety.MinorToday + sim.State.Safety.SeriousToday);
         Assert.True(sim.State.Safety.TotalCrashes > 0);
+    }
+
+    // ---------------------------------------------------------------- collisions: certain on close contact
+
+    private static CrossingPassage Pass(long timeMs, int speed, int guest = 1) => new(timeMs, guest, 1, 0, speed);
+
+    [Fact]
+    public void Collide_WhenBothAreWithinTheDistanceAtTheSameMoment_AndOneIsFast()
+    {
+        var rules = new CrashRules { Enabled = true, CollisionDistanceCm = 100, CollisionMinSpeedCmPerS = 350 };
+        // 1 m at 5 m/s is 200 ms, at 2.5 m/s 400 ms: they meet if their passages are at most 600 ms apart.
+        Assert.True(CrashMath.Collide(rules, Pass(10_000, 500), Pass(10_600, 250, 2)));
+        Assert.False(CrashMath.Collide(rules, Pass(10_000, 500), Pass(10_601, 250, 2)));
+        // Either order, and across a minute's start (absolute game time).
+        Assert.True(CrashMath.Collide(rules, Pass(10_600, 250, 2), Pass(10_000, 500)));
+        Assert.True(CrashMath.Collide(rules, Pass(59_900, 600), Pass(60_100, 600, 2)));
+        // Two slow riders (climbing, towed) pass each other.
+        Assert.False(CrashMath.Collide(rules, Pass(10_000, 300), Pass(10_000, 250, 2)));
+        // Distance 0: no collisions at all.
+        Assert.False(CrashMath.Collide(new CrashRules { Enabled = true, CollisionDistanceCm = 0 }, Pass(10_000, 500), Pass(10_000, 500, 2)));
+    }
+
+    [Fact]
+    public void Collisions_HappenAtCrossings_BothRidersWhereTheirWaysCross()
+    {
+        var rules = ValleyRules();
+        rules.Enabled = true;
+        rules.FeatureBasePpm = 0;
+        rules.TerrainBasePpm = 0;
+        var sim = Valley(rules);
+        var crashes = new List<RiderCrashed>();
+        sim.Events.Subscribe<RiderCrashed>(crashes.Add);
+        List<RiderCrashed> pair = [];
+        for (int i = 0; i < 3 * GameTime.MinutesPerDay && pair.Count < 2; i++)
+        {
+            sim.Step();
+            sim.Events.Dispatch();
+            // Passages are kept for this minute and the one before only.
+            Assert.All(sim.State.Safety.Passages, p => Assert.True(p.TimeMs >= (sim.State.Tick - 2) * 60_000L));
+            pair = crashes.Where(c => c.Tick == sim.State.Tick - 1).ToList();
+        }
+        Assert.All(crashes, c => Assert.Equal(CrashCause.Collision, c.Cause));
+        // Both riders crash, each on their own way: the mover at the crossing, the other one there too (or just ahead of
+        // whoever has ridden up behind them since).
+        Assert.Equal(2, pair.Count);
+        Assert.NotEqual(pair[0].WayId, pair[1].WayId);
+        Assert.Contains(sim.Network.Crossings, x => x.WayA == pair[0].WayId && x.WayB == pair[1].WayId || x.WayA == pair[1].WayId && x.WayB == pair[0].WayId);
+        Assert.Contains(pair, c => sim.Network.CrossingsOn(c.WayId).Any(x => x.Cm == c.Cm));
+    }
+
+    [Fact]
+    public void SaveAndResume_WithCrossingPassages_IsDeterministic()
+    {
+        var rules = ValleyRules();
+        rules.Enabled = true;
+        var sim = Valley(rules);
+        while (sim.State.Safety.Passages.Count == 0 || sim.State.Safety.TotalCollisions == 0)
+            sim.Step();
+        var loaded = new Simulation(SaveGame.Clone(sim.State));
+        sim.RunTicks(240);
+        loaded.RunTicks(240);
+        Assert.Equal(StateHash.Compute(sim.State), StateHash.Compute(loaded.State));
     }
 
     [Fact]

@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -88,6 +88,21 @@ public static class SaveGame
                         crewRules.Remove(old);
             }
             version = 4;
+        }
+
+        if (version == 4)
+        {
+            // v5: collisions are certain on close contact (collisionDistanceCm, collisionMinSpeedCmPerS) instead of a
+            // chance within a window; existing parks get the new defaults.
+            if (root["world"]?["crashRules"] is JsonObject crash)
+            {
+                crash.Remove("collisionPpm");
+                crash.Remove("crossingWindowCm");
+                var defaults = new Safety.CrashRules();
+                crash["collisionDistanceCm"] = defaults.CollisionDistanceCm;
+                crash["collisionMinSpeedCmPerS"] = defaults.CollisionMinSpeedCmPerS;
+            }
+            version = 5;
         }
 
         root["version"] = version;

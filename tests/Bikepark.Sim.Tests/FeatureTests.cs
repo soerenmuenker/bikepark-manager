@@ -135,12 +135,13 @@ public class FeatureTests
         sim.Step();
         Assert.DoesNotContain(sim.Events.Pending, e => e is CommandRejected);
 
-        // Riders still on their run were not sent back to the base: same route, further along it.
+        // Riders still on their run were not sent back to the base: same route, further along it (unless they crashed
+        // at a crossing this minute, or finished and went home).
         int stillRiding = 0;
         foreach (var (id, trail, progress, legs) in before)
         {
-            var guest = sim.State.Guests.Single(g => g.Id == id);
-            if (guest.Activity != RiderActivity.Descending || guest.TrailId != trail) continue;
+            var guest = sim.State.Guests.SingleOrDefault(g => g.Id == id);
+            if (guest is null || guest.Activity != RiderActivity.Descending || guest.TrailId != trail || guest.CrashTick == sim.State.Tick - 1) continue;
             stillRiding++;
             Assert.Equal(legs, guest.Route.Count);
             Assert.True(guest.RouteProgressCm > progress);

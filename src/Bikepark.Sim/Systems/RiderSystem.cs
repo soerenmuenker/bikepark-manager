@@ -25,6 +25,8 @@ internal sealed class RiderSystem : ISimSystem
     public void Update(SimContext ctx)
     {
         var state = ctx.State;
+        // Crossing passages are kept for this minute and the one before (collisions across the minute's start).
+        state.Safety.Passages.RemoveAll(p => p.TimeMs < (ctx.Tick - 1) * TickMilliseconds);
         if (state.Guests.Count == 0) return;
 
         var network = ctx.Network;
@@ -314,8 +316,22 @@ internal sealed class RiderSystem : ISimSystem
                 }
                 long linkMove = Math.Min((long)linkSpeed * budgetMs / 1000, leg.LengthCm - offset);
                 if (linkMove <= 0) break;
+                int linkStartedMs = TickMilliseconds - budgetMs;
                 budgetMs -= (int)Math.Min(budgetMs, Math.Max(1, (linkMove * 1000 + linkSpeed - 1) / linkSpeed));
                 guest.RouteProgressCm += linkMove;
+                // Pulled up a T-bar across a way: a crossing passage like any other.
+                if (leg.Kind == LegKind.Lift && guest.Injury == InjurySeverity.None && ctx.State.CrashRules.Enabled)
+                {
+                    long from = leg.FromCm + offset;
+                    foreach (var (liftCm, wayId, wayCm) in network.TowCrossingsOnLift(leg.WayId))
+                    {
+                        if (liftCm <= from) continue;
+                        if (liftCm > from + linkMove) break;
+                        int atMs = linkStartedMs + (int)((liftCm - from) * 1000 / linkSpeed);
+                        if (PassCrossing(ctx, network, traffic, guest, leg.WayId, liftCm, wayId, wayCm, atMs, linkSpeed, from + linkMove - liftCm, 0))
+                            return;
+                    }
+                }
                 continue;
             }
 
@@ -354,6 +370,7 @@ internal sealed class RiderSystem : ISimSystem
                 move = Math.Max(0, room);
                 heldUp = true;
             }
+            int startedMs = TickMilliseconds - budgetMs; // when in this minute the move starts
             if (move > 0 || !heldUp)
                 budgetMs -= (int)Math.Min(budgetMs, Math.Max(1, (move * 1000 + speed - 1) / speed));
             guest.RouteProgressCm += move;
@@ -395,34 +412,6 @@ internal sealed class RiderSystem : ISimSystem
                         return;
                     }
                 }
-                // Crossings passed while someone on the other way is close to them: they may collide.
-                if (rolls)
-                    foreach (var (cm, otherWay, otherCm) in network.CrossingsOn(leg.WayId))
-                    {
-                        if (cm <= position) continue;
-                        if (cm > position + move) break;
-                        if (RiderNear(ctx.State, guest, otherWay, otherCm, crashRules.CrossingWindowCm) is not { } other) continue;
-                        if (!CrashMath.Roll(ctx.Rng, CrashMath.CollisionChancePpb(crashRules))) continue;
-                        guest.RouteProgressCm -= position + move - cm;
-                        Crash(ctx, network, traffic, guest, leg.WayId, cm, CrashCause.Collision, null, segment.Difficulty);
-                        if (other.Injury == InjurySeverity.None && PositionOnWay(other, out int way, out long at))
-                            Crash(ctx, network, traffic, other, way, at, CrashCause.Collision, null, segment.Difficulty);
-                        return;
-                    }
-                // T-bar tracks crossed while a rider is being pulled up close to the crossing: the same collision risk.
-                if (rolls)
-                    foreach (var (cm, liftId, liftCm) in network.TowCrossingsOn(leg.WayId))
-                    {
-                        if (cm <= position) continue;
-                        if (cm > position + move) break;
-                        if (RiderTowedNear(ctx.State, liftId, liftCm, crashRules.CrossingWindowCm) is not { } towed) continue;
-                        if (!CrashMath.Roll(ctx.Rng, CrashMath.CollisionChancePpb(crashRules))) continue;
-                        guest.RouteProgressCm -= position + move - cm;
-                        Crash(ctx, network, traffic, guest, leg.WayId, cm, CrashCause.Collision, null, segment.Difficulty);
-                        if (towed.Injury == InjurySeverity.None)
-                            Crash(ctx, network, traffic, towed, leg.WayId, cm, CrashCause.Collision, null, segment.Difficulty);
-                        return;
-                    }
                 if (move == toBoundary)
                 {
                     guest.RunFun += SegmentFun(guest, rules, segment, gradeAlong, speed);
@@ -434,6 +423,16 @@ internal sealed class RiderSystem : ISimSystem
                     }
                 }
             }
+
+            // Crossings passed in this move (of another way or a T-bar track), in riding order: riders meeting there collide.
+            if (move > 0 && guest.Injury == InjurySeverity.None && crashRules.Enabled)
+                foreach (var (cm, otherId, otherCm) in CrossingsPassed(network, leg.WayId, position, dir * move))
+                {
+                    long into = Math.Abs(cm - position);
+                    int atMs = startedMs + (int)(into * 1000 / speed);
+                    if (PassCrossing(ctx, network, traffic, guest, leg.WayId, cm, otherId, otherCm, atMs, speed, move - into, segment.Difficulty))
+                        return;
+                }
 
             if (heldUp)
             {
@@ -447,6 +446,78 @@ internal sealed class RiderSystem : ISimSystem
 
         if (heldUpMs > 0)
             guest.Happiness = Math.Max(0, guest.Happiness - (int)((long)rules.HeldUpMoodPerMinute * heldUpMs / TickMilliseconds));
+    }
+
+    /// <summary>
+    /// Crossings of a way (with other ways and T-bar tracks) strictly after <paramref name="position"/> and up to
+    /// <paramref name="delta"/> further along it (negative: riding it backwards), in the order they are reached:
+    /// (distance along the way, the other way or lift, distance along that).
+    /// </summary>
+    private static List<(long Cm, int OtherId, long OtherCm)> CrossingsPassed(WayNetwork network, int wayId, long position, long delta)
+    {
+        var passed = new List<(long Cm, int OtherId, long OtherCm)>();
+        long lo = Math.Min(position, position + delta), hi = Math.Max(position, position + delta);
+        bool Passed(long cm) => delta > 0 ? cm > lo && cm <= hi : cm >= lo && cm < hi;
+        foreach (var c in network.CrossingsOn(wayId))
+            if (Passed(c.Cm)) passed.Add(c);
+        foreach (var c in network.TowCrossingsOn(wayId))
+            if (Passed(c.Cm)) passed.Add(c);
+        if (passed.Count > 1)
+            passed.Sort((a, b) => Math.Abs(a.Cm - position).CompareTo(Math.Abs(b.Cm - position)) is var c && c != 0 ? c : a.OtherId.CompareTo(b.OtherId));
+        return passed;
+    }
+
+    /// <summary>
+    /// A rider passes a crossing point (on <paramref name="ownId"/>, a way or a towed lift, at <paramref name="ownCm"/>)
+    /// <paramref name="atMs"/> into this minute: a rider of the other side who passed it at about the same moment
+    /// (<see cref="CrashMath.Collide"/>, this minute or the one before) collides with them. Both crash where the crossing
+    /// is: the mover goes back <paramref name="overshootCm"/>, the other rider back to the crossing too if they are still
+    /// on that way or lift (otherwise only the mover crashes). True if the mover crashed.
+    /// </summary>
+    private static bool PassCrossing(SimContext ctx, WayNetwork network, TrailTraffic traffic, Guest guest, int ownId, long ownCm,
+        int otherId, long otherCm, int atMs, int speed, long overshootCm, int difficulty)
+    {
+        var state = ctx.State;
+        var passages = state.Safety.Passages;
+        var mine = new CrossingPassage(ctx.Tick * TickMilliseconds + atMs, guest.Id, ownId, ownCm, speed);
+        CrossingPassage? hit = null;
+        foreach (var p in passages)
+            if (p.WayId == otherId && p.Cm == otherCm && p.GuestId != guest.Id && CrashMath.Collide(state.CrashRules, mine, p))
+            {
+                hit = p;
+                break;
+            }
+        passages.Add(mine);
+        if (hit is null) return false;
+
+        // The trail (or path) the collision happened on, for stats and messages; a towed rider's is the crossing way.
+        bool ownIsLift = state.Lifts.Any(l => l.Id == ownId);
+        int wayId = ownIsLift ? otherId : ownId;
+        long wayCm = ownIsLift ? otherCm : ownCm;
+        guest.RouteProgressCm -= Math.Max(0, overshootCm);
+        Crash(ctx, network, traffic, guest, wayId, wayCm, CrashCause.Collision, null, difficulty);
+
+        var other = state.Guests.FirstOrDefault(g => g.Id == hit.GuestId);
+        if (other is null || other.Injury != InjurySeverity.None || other.Route.Count == 0) return true;
+        var (legIndex, offset) = LocateOnRoute(other);
+        var leg = other.Route[legIndex];
+        if (other.Activity == RiderActivity.OnLift && leg.Kind == LegKind.Lift && leg.WayId == otherId)
+        {
+            other.RouteProgressCm -= Math.Max(0, leg.FromCm + offset - otherCm); // pulled on past it: back to where they were hit
+            Crash(ctx, network, traffic, other, wayId, wayCm, CrashCause.Collision, null, difficulty);
+        }
+        else if (PositionOnWay(other, out int way, out long at) && way == otherId)
+        {
+            // Back to the crossing, but still ahead of whoever rode up behind them since (nobody overtakes on a trail).
+            long dir = Math.Sign(at - otherCm), back = otherCm;
+            foreach (var behind in state.Guests)
+                if (behind != other && PositionOnWay(behind, out int w, out long p) && w == otherId && (p - back) * dir >= 0 && (at - p) * dir > 0)
+                    back = p + dir;
+            other.RouteProgressCm -= Math.Abs(at - back);
+            Crash(ctx, network, traffic, other, otherId, back, CrashCause.Collision, null, difficulty);
+        }
+        // else: they have already gone on from there
+        return true;
     }
 
     /// <summary>
@@ -510,29 +581,6 @@ internal sealed class RiderSystem : ISimSystem
             towedOn.StoppedUntilTick = until;
             ctx.Publish(new LiftStopped(ctx.Tick, towedOn.Id, until, guest.Id));
         }
-    }
-
-    /// <summary>The first rider (in list order) riding on <paramref name="wayId"/> within <paramref name="windowCm"/> of <paramref name="cm"/>.</summary>
-    private static Guest? RiderNear(WorldState state, Guest self, int wayId, long cm, int windowCm)
-    {
-        foreach (var other in state.Guests)
-            if (other != self && PositionOnWay(other, out int way, out long at) && way == wayId && Math.Abs(at - cm) <= windowCm)
-                return other;
-        return null;
-    }
-
-    /// <summary>The first rider (in list order) being pulled up the towed lift within <paramref name="windowCm"/> of <paramref name="liftCm"/>.</summary>
-    private static Guest? RiderTowedNear(WorldState state, int liftId, long liftCm, int windowCm)
-    {
-        foreach (var other in state.Guests)
-        {
-            if (other.Activity != RiderActivity.OnLift || other.Route.Count == 0) continue;
-            var (legIndex, offset) = LocateOnRoute(other);
-            var leg = other.Route[legIndex];
-            if (leg.Kind == LegKind.Lift && leg.WayId == liftId && Math.Abs(leg.FromCm + offset - liftCm) <= windowCm)
-                return other;
-        }
-        return null;
     }
 
     /// <summary>Where a rider riding a way (dropped in, on a trail or path) is on it.</summary>
@@ -790,11 +838,11 @@ internal sealed class TrailTraffic
     /// <summary>
     /// Riders on a trail (dropped in) first, by trail and front to back; then riders waiting at a trail entrance, fastest
     /// first (so a faster rider drops in first and the slower ones can follow in the same minute); then everybody else in
-    /// list order.
+    /// list order, riders on a lift last (they reach the top after the trail riders of this minute have moved).
     /// </summary>
     public IEnumerable<Guest> MovingOrder(List<Guest> movers) =>
         movers.Select((g, i) => (Guest: g, Index: i, Trail: OnTrail(g, out long position) ? Leg(g).WayId : 0, Position: position))
-            .OrderBy(x => x.Trail != 0 ? 0 : x.Guest.EntryWaitMs >= 0 ? 1 : 2)
+            .OrderBy(x => x.Trail != 0 ? 0 : x.Guest.EntryWaitMs >= 0 ? 1 : x.Guest.Activity == RiderActivity.OnLift ? 3 : 2)
             .ThenBy(x => x.Trail)
             .ThenByDescending(x => x.Position)
             .ThenByDescending(x => x.Trail == 0 && x.Guest.EntryWaitMs >= 0 ? x.Guest.Skill : 0)

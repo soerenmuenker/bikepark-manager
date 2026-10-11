@@ -323,8 +323,10 @@ public class LiftTests
     [Fact]
     public void SaveLoad_WithBusyQueues_ContinuesIdentically()
     {
-        var uninterrupted = TestWorlds.RunLift(3, Opening + 6 * 60, TestWorlds.LiftScript());
-        var first = TestWorlds.RunLift(3, Opening + 3 * 60, TestWorlds.LiftScript());
+        // Without collisions on the crossing demo trails, so the queues stay busy (SafetyTests resumes with collisions).
+        static void Busy(ScenarioDefinition s) => s.CrashRules.CollisionDistanceCm = 0;
+        var uninterrupted = TestWorlds.RunLift(3, Opening + 6 * 60, TestWorlds.LiftScript(), Busy);
+        var first = TestWorlds.RunLift(3, Opening + 3 * 60, TestWorlds.LiftScript(), Busy);
         Assert.NotEmpty(first.State.Lifts[0].Queue);
         Assert.Contains(first.State.Guests, g => g.Activity == RiderActivity.OnLift || g.Activity == RiderActivity.Queuing);
 

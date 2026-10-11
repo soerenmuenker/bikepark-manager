@@ -16,7 +16,6 @@ internal sealed partial class RepairDialog : PanelContainer
     private readonly HudContext _ctx;
     private readonly Queue<int> _waiting = new();
     private readonly HashSet<int> _dismissed = [];
-    private bool _pausedByWarning;
 
     /// <summary>Opened from the Trails menu: shows every built feature (status overview), doesn't pause, stays open.</summary>
     private bool _overview;
@@ -86,7 +85,7 @@ internal sealed partial class RepairDialog : PanelContainer
         if (Visible && _wayId == wayId && _overview)
         {
             _overview = false; // a warning for the trail being looked at: now it counts
-            PauseForWarning();
+            _ctx.PauseForWarning(this);
             _signature = "";
             return true;
         }
@@ -105,23 +104,15 @@ internal sealed partial class RepairDialog : PanelContainer
         _workers = Math.Clamp(_ctx.Sim.State.Crew.Count, 1, Math.Max(1, _ctx.Sim.State.CrewRules.MaxWorkersPerJob));
         _signature = "";
         _overview = !fromWarning;
-        if (fromWarning) PauseForWarning();
+        if (fromWarning) _ctx.PauseForWarning(this);
         Visible = true;
         Refresh();
-    }
-
-    private void PauseForWarning()
-    {
-        if (_pausedByWarning || _ctx.Host.Speed == 0) return;
-        _ctx.Host.SetSpeedIndex(0);
-        _pausedByWarning = true;
     }
 
     public void Clear()
     {
         _waiting.Clear();
         _dismissed.Clear();
-        _pausedByWarning = false;
         Visible = false;
     }
 
@@ -140,11 +131,7 @@ internal sealed partial class RepairDialog : PanelContainer
                 return;
             }
         }
-        if (_pausedByWarning)
-        {
-            _pausedByWarning = false;
-            _ctx.Host.SetSpeedIndex(1);
-        }
+        _ctx.ResumeAfterWarning(this);
     }
 
     private void RepairAll()

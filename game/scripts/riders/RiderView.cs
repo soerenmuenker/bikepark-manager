@@ -238,20 +238,48 @@ public partial class RiderView : Node3D
     }
 
     /// <summary>
-    /// Route progress drawn this frame: between the last two steps. On a lift, riders move with their carrier: a rider who
-    /// boarded in the last step waits at the station until it leaves (the sim gives them its head start at once).
+    /// Route progress drawn this frame: between the last two steps. Riders on a lift move with the rope (all at its speed,
+    /// spaced like their carriers): a rider who boarded in the last step stays at the station until their carrier leaves
+    /// (the sim gives them its head start at once), one who got off in it rides at rope speed until the top.
     /// </summary>
     private long Progress(Simulation sim, Guest guest, float alpha)
     {
         long current = guest.RouteProgressCm;
-        if (!_previous.TryGetValue(guest.Id, out var prev)) return current;
-        if (prev.Route is null)
+        bool known = _previous.TryGetValue(guest.Id, out var prev);
+        if (known && prev.Route is null)
             return (long)(current * alpha); // a new lap from where the last one ended (or lunch was)
-        if (!ReferenceEquals(prev.Route, guest.Route)) return current;
-        if (guest.Activity == RiderActivity.OnLift && guest.Route[Math.Clamp(guest.LegIndex, 0, guest.Route.Count - 1)] is { Kind: LegKind.Lift } leg
-            && sim.State.Lifts.FirstOrDefault(l => l.Id == leg.WayId) is { } lift && LiftNetwork.FindType(sim.State, lift.TypeId) is { } type)
-            return Math.Max(prev.Progress, current - (long)((1f - alpha) * type.SpeedCmPerS * 60));
-        return prev.Progress + (long)((current - prev.Progress) * alpha);
+        bool sameRoute = known && ReferenceEquals(prev.Route, guest.Route);
+        long linear = sameRoute ? prev.Progress + (long)((current - prev.Progress) * alpha) : current;
+
+        if (guest.Activity == RiderActivity.OnLift && LiftLeg(sim, guest.Route, current) is var (start, _, ropeCmPerMinute))
+        {
+            if (sameRoute && prev.Progress == current) return current; // the lift stood still
+            long onRope = current - (long)((1f - alpha) * ropeCmPerMinute);
+            return Math.Max(Math.Min(linear, start), onRope); // walking up to the station first, if they were
+        }
+        if (sameRoute && prev.Activity == RiderActivity.OnLift && LiftLeg(sim, guest.Route, prev.Progress) is var (_, end, rope)
+            && current > prev.Progress)
+            return Math.Min(current, Math.Min(end, prev.Progress + (long)(alpha * rope)) + Math.Max(0, (long)((current - end) * alpha)));
+        return linear;
+    }
+
+    /// <summary>The lift leg of a route at a progress: where it starts and ends (route progress) and the rope's cm per minute.</summary>
+    private static (long Start, long End, long RopeCmPerMinute)? LiftLeg(Simulation sim, List<RouteLeg> route, long progress)
+    {
+        long start = 0;
+        foreach (var leg in route)
+        {
+            long end = start + leg.LengthCm;
+            if (progress <= end)
+            {
+                if (leg.Kind != LegKind.Lift || sim.State.Lifts.FirstOrDefault(l => l.Id == leg.WayId) is not { } lift
+                    || LiftNetwork.FindType(sim.State, lift.TypeId) is not { } type)
+                    return null;
+                return (start, end, type.SpeedCmPerS * 60L);
+            }
+            start = end;
+        }
+        return null;
     }
 
     /// <summary>The rider (null: gone home) finished their run in the last step, at the end of their lap.</summary>
