@@ -34,7 +34,7 @@ public partial class RiderView : Node3D
     /// </summary>
     private readonly Dictionary<int, Previous> _previous = [];
 
-    private readonly record struct Previous(List<RouteLeg>? Route, long Progress, RiderActivity Activity, Color Color);
+    private readonly record struct Previous(List<RouteLeg>? Route, long Progress, RiderActivity Activity, Color Color, int QueueIndex = -1);
     private readonly Dictionary<int, Vector3> _positions = [];
     private int _followId;
     private Vector3 _followPosition;
@@ -146,13 +146,25 @@ public partial class RiderView : Node3D
     private void Snapshot()
     {
         _previous.Clear();
+        var queueIndex = QueueIndex(_host.Sim.State);
         foreach (var g in _host.Sim.State.Guests)
         {
             if (IsOnNetwork(g))
-                _previous[g.Id] = new(g.Route, g.RouteProgressCm, g.Activity, Jersey(g));
+                _previous[g.Id] = new(g.Route, g.RouteProgressCm, g.Activity, Jersey(g),
+                    queueIndex.TryGetValue(g.Id, out var q) ? q.Index : -1);
             else if (g.Activity is RiderActivity.Idle or RiderActivity.Eating)
                 _previous[g.Id] = new(null, 0, g.Activity, Jersey(g));
         }
+    }
+
+    /// <summary>Each queuing rider's lift and place in its queue (0 = next to board).</summary>
+    private static Dictionary<int, (Lift Lift, int Index)> QueueIndex(WorldState state)
+    {
+        var index = new Dictionary<int, (Lift Lift, int Index)>();
+        foreach (var lift in state.Lifts)
+            for (int i = 0; i < lift.Queue.Count; i++)
+                index[lift.Queue[i]] = (lift, i);
+        return index;
     }
 
     public override void _Process(double delta)
@@ -163,10 +175,7 @@ public partial class RiderView : Node3D
         var mm = _instances.Multimesh;
         _positions.Clear();
 
-        var queueIndex = new Dictionary<int, (Lift Lift, int Index)>();
-        foreach (var lift in sim.State.Lifts)
-            for (int i = 0; i < lift.Queue.Count; i++)
-                queueIndex[lift.Queue[i]] = (lift, i);
+        var queueIndex = QueueIndex(sim.State);
 
         int count = 0;
         foreach (var guest in sim.State.Guests)
@@ -180,7 +189,10 @@ public partial class RiderView : Node3D
             else if (guest.Activity == RiderActivity.Queuing)
             {
                 if (!queueIndex.TryGetValue(guest.Id, out var q) || LiftNetwork.Pad(sim.State, q.Lift.Valley.TerrainEditId) is not { } pad) continue;
-                position = LiftShapes.QueueSlot(pad, q.Index);
+                // Step up one place at a time as the riders in front board (the queue moves up during the step).
+                float place = _previous.TryGetValue(guest.Id, out var was) && was.QueueIndex > q.Index
+                    ? Mathf.Lerp(was.QueueIndex, q.Index, alpha) : q.Index;
+                position = LiftShapes.QueueSlot(pad, place);
                 position.Y = sim.Terrain.HeightAt((long)(position.X * 100), (long)(position.Z * 100)) / 100f; // long queues reach past the pad
                 forward = LiftShapes.Forward(pad);
             }

@@ -189,6 +189,42 @@ public class LiftTests
     }
 
     [Fact]
+    public void RidersReachingTheStation_OnlyBoardCarriersLeavingAfterThem_InTheOrderTheyArrived()
+    {
+        static void Busy(ScenarioDefinition s) => s.CrashRules.CollisionDistanceCm = 0;
+        var sim = TestWorlds.RunLift(3, Opening, TestWorlds.LiftScript(), Busy);
+        var lift = sim.State.Lifts[0];
+        var type = LiftNetwork.FindType(sim.State, lift.TypeId)!;
+        var boarded = new List<RiderBoarded>();
+        sim.Events.Subscribe<RiderBoarded>(boarded.Add);
+
+        int walkedUp = 0, queuedThisMinute = 0;
+        for (int t = 0; t < 3 * 60; t++)
+        {
+            boarded.Clear();
+            sim.Step();
+            sim.Events.Dispatch();
+            foreach (var b in boarded.Where(b => b.WaitMinutes == 0 && b.LiftId == lift.Id))
+            {
+                // Boarded the minute they arrived: their head start is at most the rest of the minute after their arrival.
+                var guest = sim.State.Guests.Single(g => g.Id == b.GuestId);
+                long liftStart = guest.Route.Take(guest.LegIndex).Sum(l => l.LengthCm);
+                long headStart = guest.RouteProgressCm - liftStart;
+                Assert.True(headStart <= (60_000L - guest.QueuedAtMs) * type.SpeedCmPerS / 1000,
+                    $"tick {sim.State.Tick}: arrived at {guest.QueuedAtMs} ms, head start {headStart} cm");
+                if (guest.QueuedAtMs > 0) walkedUp++;
+            }
+            // Newcomers wait in the order they got there.
+            var newcomers = lift.Queue.Select(id => sim.State.Guests.Single(g => g.Id == id))
+                .Where(g => g.QueueSinceTick == sim.State.Tick - 1).Select(g => g.QueuedAtMs).ToList();
+            queuedThisMinute += newcomers.Count;
+            Assert.Equal(newcomers.Order(), newcomers);
+        }
+        Assert.True(walkedUp > 0, "nobody walked up and boarded at once");
+        Assert.True(queuedThisMinute > 0, "nobody had to wait");
+    }
+
+    [Fact]
     public void LongQueues_ShowUp_AndRidersInLineLoseMood()
     {
         var sim = LiftWorld(out _, withTrails: true);

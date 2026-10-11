@@ -11,7 +11,7 @@ namespace Bikepark.Sim.Systems;
 /// carrier every <see cref="LiftType.IntervalSeconds"/>; bike-equipped carriers (<see cref="LiftMath.IsBikeCarrier"/>)
 /// take up to <see cref="LiftType.BikesPerCarrier"/> riders from the front of the queue, who then ride up
 /// (<see cref="RiderSystem"/> moves them). Runs after <see cref="RiderSystem"/>, so riders reaching the station board in
-/// the same tick if there is room.
+/// the same tick if there is room on a carrier that leaves after they got there (<see cref="Guest.QueuedAtMs"/>).
 /// </summary>
 internal sealed class LiftSystem : ISimSystem
 {
@@ -49,6 +49,7 @@ internal sealed class LiftSystem : ISimSystem
     {
         guest.Activity = RiderActivity.Queuing;
         guest.QueueSinceTick = ctx.Tick;
+        guest.QueuedAtMs = 0; // RiderSystem.Advance sets it for riders who walk up during the minute
         lift.Queue.Add(guest.Id);
         ctx.Publish(new RiderQueued(ctx.Tick, guest.Id, lift.Id, lift.Queue.Count));
     }
@@ -84,6 +85,7 @@ internal sealed class LiftSystem : ISimSystem
         lift.DispatchRemainderMs = budget % intervalMs;
 
         bool open = ParkSchedule.IsOpen(state, ctx.Tick); // after closing nobody boards any more
+        SortNewcomers(state, lift, ctx.Tick);
         for (int c = 0; c < carriers; c++)
         {
             // This carrier leaves (c + 1) intervals after the previous minute's last one: its riders have the rest of the
@@ -95,8 +97,12 @@ internal sealed class LiftSystem : ISimSystem
             for (int seat = 0; seat < type.BikesPerCarrier && lift.Queue.Count > 0 && open; seat++)
             {
                 int guestId = lift.Queue[0];
-                lift.Queue.RemoveAt(0);
                 var guest = state.Guests.FirstOrDefault(g => g.Id == guestId);
+                // Riders who reach the station later in this minute can't take a carrier that has already left; nor can
+                // anybody behind them (newcomers are in arrival order).
+                if (guest is { Activity: RiderActivity.Queuing } && guest.QueueSinceTick == ctx.Tick && guest.QueuedAtMs > leftAtMs)
+                    break;
+                lift.Queue.RemoveAt(0);
                 if (guest is null || guest.Activity != RiderActivity.Queuing) continue;
                 int wait = (int)(ctx.Tick - guest.QueueSinceTick);
                 guest.Activity = RiderActivity.OnLift;
@@ -108,6 +114,27 @@ internal sealed class LiftSystem : ISimSystem
                 ctx.Publish(new RiderBoarded(ctx.Tick, guest.Id, lift.Id, wait));
             }
         }
+    }
+
+    /// <summary>
+    /// Riders who joined the queue this minute were added in the order <see cref="RiderSystem"/> moved them; puts them
+    /// in the order they reached the station (stable, so ties keep that order).
+    /// </summary>
+    private static void SortNewcomers(WorldState state, Lift lift, long tick)
+    {
+        int first = lift.Queue.Count;
+        var arrived = new List<(int Id, int AtMs)>();
+        for (int i = lift.Queue.Count - 1; i >= 0; i--)
+        {
+            var guest = state.Guests.FirstOrDefault(g => g.Id == lift.Queue[i]);
+            if (guest is null || guest.QueueSinceTick != tick) break;
+            first = i;
+            arrived.Insert(0, (guest.Id, guest.QueuedAtMs));
+        }
+        if (arrived.Count < 2) return;
+        var ordered = arrived.OrderBy(a => a.AtMs).ToList(); // LINQ OrderBy is stable
+        for (int i = 0; i < ordered.Count; i++)
+            lift.Queue[first + i] = ordered[i].Id;
     }
 
     /// <summary>No carrier takes bikes any more: riders in the queue go back to the valley station and choose again.</summary>

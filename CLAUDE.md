@@ -197,7 +197,9 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     (`Lift.StoppedUntilTick`: no boarding, nobody on it moves, `LiftRunning` false): minor for `TowStopMinutes` (the
     rider gets off the track and goes home), serious until the helicopter (`RescueAtTick`); other crashes don't stop it.
     The HUD raises a pausing pop-up for every stop (`LiftStopDialog`). Boarded riders start with the head start of their
-    carrier's departure within the minute (`LiftSystem.Dispatch`), so riders boarded together are spaced like carriers.
+    carrier's departure within the minute (`LiftSystem.Dispatch`), so riders boarded together are spaced like carriers;
+    a rider reaching the queue during a minute (`Guest.QueuedAtMs`) only takes carriers leaving after that, and that
+    minute's newcomers line up in the order they arrived. The view draws the queue as one line behind the station.
 
 ## Game controls (debug build)
 

@@ -354,6 +354,9 @@ public sealed class Guest
     /// <summary>When the rider joined the current lift queue.</summary>
     public long QueueSinceTick { get; set; }
 
+    /// <summary>When in that minute (ms) the rider reached the queue: only carriers leaving after it can take them.</summary>
+    public int QueuedAtMs { get; set; }
+
     /// <summary>Current lap: legs (walks, lifts, paths) to the chosen trail's start, then the trail itself (last leg).</summary>
     public List<RouteLeg> Route { get; set; } = [];
 

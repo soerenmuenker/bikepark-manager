@@ -300,6 +300,8 @@ internal sealed class RiderSystem : ISimSystem
             if (offset == leg.LengthCm)
             {
                 FinishLeg(ctx, network, guest, legIndex);
+                if (guest.Activity == RiderActivity.Queuing)
+                    guest.QueuedAtMs = TickMilliseconds - budgetMs; // reached the station now: later carriers only
                 continue;
             }
 

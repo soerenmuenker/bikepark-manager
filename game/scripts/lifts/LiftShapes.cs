@@ -23,6 +23,9 @@ internal static class LiftShapes
 
     public static Vector3 Forward(TerrainPad pad) => new Vector3(pad.DirX, 0, pad.DirZ).Normalized();
 
+    /// <summary>Metres between two riders in a lift queue (a bike and a little room).</summary>
+    public const float QueueSpacing = 1.9f;
+
     /// <summary>A point on the up (t = 0 valley .. 1 top) or down rope, at rope height.</summary>
     public static Vector3 OnRope(TerrainPad valley, TerrainPad mountain, float t, bool up)
     {
@@ -31,16 +34,16 @@ internal static class LiftShapes
     }
 
     /// <summary>
-    /// Where the <paramref name="index"/>-th rider in the queue stands: rows of four in the up rope's lane, starting just
-    /// behind the boarding point (the station centre) and growing away from the line (past the pad for long queues), so
-    /// carriers and towed riders never pass through it. The height is the platform's.
+    /// Where the <paramref name="index"/>-th rider in the queue stands: one line in the up rope's lane, starting just
+    /// behind the boarding point (the station centre) and growing away from the line (past the pad for long queues), one
+    /// bike length apart, so the queue's length shows how long the wait is and carriers and towed riders never pass through it.
     /// </summary>
-    public static Vector3 QueueSlot(TerrainPad valley, int index)
+    public static Vector3 QueueSlot(TerrainPad valley, float index)
     {
         var back = -Forward(valley);
         var right = Right(valley);
-        float along = 2f + index / 4 * 1.3f;
-        float across = (index % 4 - 1.5f) * 1.2f + RopeOffset;
+        float along = 1.5f + index * QueueSpacing;
+        float across = RopeOffset;
         return Center(valley, 0.05f) + back * along + right * across;
     }
 }

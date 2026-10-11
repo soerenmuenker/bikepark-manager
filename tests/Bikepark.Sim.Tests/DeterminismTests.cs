@@ -90,9 +90,10 @@ public class DeterminismTests
     public void SaveLoadMidDay_InStarterValley_ContinuesIdentically(long saveAtTick)
     {
         const long totalTicks = 1440 + 600;
-        var uninterrupted = TestWorlds.RunLift(5, totalTicks, TestWorlds.DemoLiftNetwork());
+        // Seed 4 still has riders out on the trails at each save point (incl. a seriously hurt one after closing).
+        var uninterrupted = TestWorlds.RunLift(4, totalTicks, TestWorlds.DemoLiftNetwork());
 
-        var first = TestWorlds.RunLift(5, saveAtTick, TestWorlds.DemoLiftNetwork());
+        var first = TestWorlds.RunLift(4, saveAtTick, TestWorlds.DemoLiftNetwork());
         Assert.NotEmpty(first.State.Guests);
         var resumed = new Simulation(SaveGame.Deserialize(SaveGame.Serialize(first.State)));
         resumed.RunTicks(totalTicks - saveAtTick);
