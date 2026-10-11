@@ -201,7 +201,11 @@ career, or play the Demo (sandbox, demo trails built, never saved). Careers are 
 (`SimHost._ExitTree`, WM close) and on System menu → Save & back to menu; there is no manual save. Saves are written
 atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · U rating
 (reputation: stars per skill group and what they value, demand, park level, FakeSocial posts) · N land (parcels: buy,
-level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (click to open their menu) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
+level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (click to open their menu) · click on things in the world (no build tool active;
+`scripts/ui/WorldPicker.cs`, hover: hand cursor + a tip naming it): a rider → follow, a worker → Crew menu at their job,
+a lift station / line or parking lot → Lifts menu at that lift (stats, bike access, lift pass, parking), a trail or
+feature → its feature overview, a planned way → Crew menu at its job, land for sale → Land menu at the parcel; menus
+scroll to and highlight the item (`HudPanel.Focus`) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter finishes it: a trail asks for its name
 in a pop-up (not when it continues a trail), then it is planned for the crew; Esc cancel; preview colored by gradient, tool
@@ -215,7 +219,7 @@ their stats; ✕ or panning stops following; influencers wear pink; injured ride
 block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--new-career=<park name>` / `--career=<id>` (start or continue a career, saved on quit), `--list-careers`, `--scenario=<demo|starter|file>` (default the Demo; skips the start screen like `--demo`, `--script=`, `--advance=`), `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
-`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|platform|renaturalize|featureId>`, `--rename=<wayId>` (opens the rename pop-up), `--look=<x>,<z>,<distance>` (camera focus, meters),
+`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|platform|renaturalize|featureId>`, `--rename=<wayId>` (opens the rename pop-up), `--pick=<x>,<z>` (after 2 s points the mouse at that spot, meters, and clicks it), `--look=<x>,<z>,<distance>` (camera focus, meters),
 `--features=<wayId>` (open the feature overview), `--follow` (follow the first rider, shows the rider card), `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
 (queue a command script, before `--advance`), `--no-night-skip`
 (turn off the automatic night skip, e.g. for screenshots at night with `--speed=0`).

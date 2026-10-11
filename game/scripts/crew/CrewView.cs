@@ -24,6 +24,9 @@ public partial class CrewView : Node3D
     private SimHost _host = null!;
     private MultiMeshInstance3D _instances = null!;
     private readonly Dictionary<int, Vector3> _positions = [];
+
+    /// <summary>Where each worker was drawn this frame (on the ground), for clicking them.</summary>
+    private readonly List<(int Id, Vector3 At)> _drawn = [];
     private float _time;
 
     public override void _Ready()
@@ -48,6 +51,7 @@ public partial class CrewView : Node3D
 
         // Idle workers wait at the base during their shift; in overtime only those still on a job are out.
         bool workHours = Bikepark.Sim.Systems.ParkSchedule.IsCrewShift(state, state.Tick);
+        _drawn.Clear();
         var slots = new Dictionary<int, int>(); // job id → workers placed so far
         int count = 0;
         foreach (var member in state.Crew)
@@ -87,8 +91,28 @@ public partial class CrewView : Node3D
             if (working && position.DistanceTo(t) < 0.5f)
                 basis = basis.Rotated(basis.X, 0.25f * MathF.Sin(_time * 5f + member.Id));
             mm.SetInstanceTransform(count++, new Transform3D(basis.Scaled(Vector3.One * ModelScale), ground));
+            _drawn.Add((member.Id, ground));
         }
         mm.VisibleInstanceCount = count;
+    }
+
+    /// <summary>The worker drawn nearest to a screen position (within <paramref name="radiusPx"/>), if any.</summary>
+    public int? Pick(Camera3D camera, Vector2 screen, float radiusPx = 18f)
+    {
+        int? best = null;
+        float bestDistance = radiusPx;
+        foreach (var (id, at) in _drawn)
+        {
+            var body = at + Vector3.Up * ModelScale * 0.5f;
+            if (camera.IsPositionBehind(body)) continue;
+            float d = camera.UnprojectPosition(body).DistanceTo(screen);
+            if (d < bestDistance)
+            {
+                best = id;
+                bestDistance = d;
+            }
+        }
+        return best;
     }
 
     /// <summary>Where the job's work happens now (meters), or null if it has nothing to show.</summary>

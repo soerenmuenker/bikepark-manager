@@ -123,6 +123,40 @@ public abstract partial class HudPanel : PanelContainer
     /// <summary>Called a few times per second while open.</summary>
     public abstract void Refresh();
 
+    /// <summary>
+    /// Shows one item of the menu (clicked in the world): scrolls to it and highlights it. The key is the item's id
+    /// (lift, way, job, parcel); menus without items ignore it.
+    /// </summary>
+    public virtual void Focus(string key) { }
+
+    private PanelContainer? _highlighted;
+    private StyleBox? _highlightedStyle;
+
+    /// <summary>Highlights a row (accent border) and scrolls it into view; the previous one goes back to normal.</summary>
+    protected void Highlight(PanelContainer row)
+    {
+        if (_highlighted is not null && IsInstanceValid(_highlighted) && _highlightedStyle is not null)
+            _highlighted.AddThemeStyleboxOverride("panel", _highlightedStyle);
+        _highlightedStyle = row.GetThemeStylebox("panel");
+        _highlighted = row;
+        var box = _highlightedStyle.Duplicate() as StyleBoxFlat ?? UiTheme.Box(UiTheme.Card, 8, 10, 6);
+        box.BorderColor = UiTheme.Accent;
+        box.SetBorderWidthAll(2);
+        box.BgColor = box.BgColor.Lerp(UiTheme.AccentDark, 0.35f);
+        row.AddThemeStyleboxOverride("panel", box);
+        // After the layout has settled (the menu may just have opened).
+        GetTree().CreateTimer(0.05).Timeout += () =>
+        {
+            if (!IsInstanceValid(row)) return;
+            for (Node? n = row.GetParent(); n is not null; n = n.GetParent())
+                if (n is ScrollContainer scroll)
+                {
+                    scroll.EnsureControlVisible(row);
+                    break;
+                }
+        };
+    }
+
     protected static HBoxContainer Row(int separation = 18)
     {
         var row = new HBoxContainer();
@@ -389,6 +423,7 @@ public partial class TrailsPanel : HudPanel
 {
     private VBoxContainer _list = null!;
     private readonly List<(int Id, Label Main, Label Detail)> _rows = [];
+    private readonly Dictionary<int, PanelContainer> _cards = [];
     private const int MaxListHeight = 420;
     private string _signature = "";
 
@@ -443,6 +478,12 @@ public partial class TrailsPanel : HudPanel
                           ConditionSummary(state, way, g) + "\n" +
                           FeatureSummary(network.FeaturesOn(id));
         }
+    }
+
+    public override void Focus(string key)
+    {
+        Refresh();
+        if (int.TryParse(key, out int id) && _cards.TryGetValue(id, out var row)) Highlight(row);
     }
 
     /// <summary>The worst feature and what happens next: "Worst feature: Berm 40 m 63 %", closed, or repairing.</summary>
@@ -507,6 +548,7 @@ public partial class TrailsPanel : HudPanel
         _signature = Signature(ways);
         foreach (var child in _list.GetChildren()) child.QueueFree();
         _rows.Clear();
+        _cards.Clear();
         if (ways.Count == 0)
         {
             _list.AddChild(UiTheme.Label("No trails yet. Open Build and draw a trail down from the plateau.", 13, UiTheme.TextDim));
@@ -581,6 +623,7 @@ public partial class TrailsPanel : HudPanel
             }
             _list.AddChild(row);
             _rows.Add((id, main, detail));
+            _cards[id] = row;
         }
     }
 }
@@ -596,6 +639,7 @@ public partial class CrewPanel : HudPanel
     private Button _buy10 = null!, _buy50 = null!;
     private string _toolSignature = "", _jobSignature = "";
     private readonly List<(int JobId, Label Title, Label State, ProgressBar Bar)> _rows = [];
+    private readonly Dictionary<int, PanelContainer> _cards = [];
     private const int MaxListHeight = 300;
 
     public override string Title => "Crew & jobs";
@@ -675,6 +719,13 @@ public partial class CrewPanel : HudPanel
         scroll.CustomMinimumSize = new Vector2(600, Math.Min(MaxListHeight, Math.Max(30, _list.GetCombinedMinimumSize().Y)));
     }
 
+    /// <summary>Key: a job id.</summary>
+    public override void Focus(string key)
+    {
+        Refresh();
+        if (int.TryParse(key, out int id) && _cards.TryGetValue(id, out var row)) Highlight(row);
+    }
+
     private static string JobState(WorldState state, Job job)
     {
         int workers = state.Crew.Count(m => m.JobId == job.Id);
@@ -737,6 +788,7 @@ public partial class CrewPanel : HudPanel
         _jobSignature = string.Join(',', state.Jobs.Select(j => j.Id));
         foreach (var child in _list.GetChildren()) child.QueueFree();
         _rows.Clear();
+        _cards.Clear();
         if (state.Jobs.Count == 0)
         {
             _list.AddChild(UiTheme.Label("No jobs. Plan a trail, a feature or a felling area in Build.", 13, UiTheme.TextDim));
@@ -747,6 +799,7 @@ public partial class CrewPanel : HudPanel
             var job = state.Jobs[i];
             int jobId = job.Id;
             var row = new PanelContainer();
+            _cards[jobId] = row;
             var box = UiTheme.Box(UiTheme.Card, 8, 10, 6);
             box.ShadowSize = 0;
             row.AddThemeStyleboxOverride("panel", box);
@@ -879,14 +932,41 @@ public partial class LiftsPanel : HudPanel
     private VBoxContainer _list = null!;
     private string _signature = "";
     private readonly List<Action> _updates = [];
+    private readonly Dictionary<int, PanelContainer> _cards = [];
+    private Label _pass = null!, _passSales = null!;
+    private const int MaxListHeight = 460;
 
     public override string Title => "Lifts";
 
     protected override void Build()
     {
-        _list = new VBoxContainer();
-        _list.AddThemeConstantOverride("separation", 12);
-        Body.AddChild(_list);
+        // The lift day pass (one price for all lifts, bought once per visit).
+        var pass = Row(8);
+        pass.AddChild(UiTheme.Label("LIFT PASS", 11, UiTheme.TextDim, bold: true));
+        pass.AddChild(UiTheme.Button("−", () => Ctx.ChangeLiftTicket(-HudContext.FeeStepCents), "Lower the lift day pass"));
+        _pass = UiTheme.Label("", 18, bold: true);
+        _pass.CustomMinimumSize = new Vector2(80, 0);
+        _pass.HorizontalAlignment = HorizontalAlignment.Center;
+        pass.AddChild(_pass);
+        pass.AddChild(UiTheme.Button("+", () => Ctx.ChangeLiftTicket(HudContext.FeeStepCents),
+            "Raise the lift day pass (paid once per visit by guests who use a lift; too dear and they pedal instead)"));
+        _passSales = UiTheme.Label("", 12, UiTheme.TextDim);
+        _passSales.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        pass.AddChild(_passSales);
+        Body.AddChild(pass);
+
+        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(700, 0), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        _list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _list.AddThemeConstantOverride("separation", 10);
+        scroll.AddChild(_list);
+        Body.AddChild(scroll);
+    }
+
+    /// <summary>Key: a lift id.</summary>
+    public override void Focus(string key)
+    {
+        Refresh();
+        if (int.TryParse(key, out int id) && _cards.TryGetValue(id, out var card)) Highlight(card);
     }
 
     public override void Refresh()
@@ -900,12 +980,22 @@ public partial class LiftsPanel : HudPanel
             Rebuild();
         }
         foreach (var update in _updates) update();
+
+        var park = state.Park;
+        var finance = state.Finance;
+        _pass.Text = park.LiftTicketCents == 0 ? "free" : UiTheme.MoneyExact(park.LiftTicketCents);
+        _passSales.Text = park.LiftTicketCents == 0 ? "Lifts are free to use"
+            : $"sold today: {finance.LiftTicketsTodayCents / park.LiftTicketCents} ({UiTheme.Money(finance.LiftTicketsTodayCents)}) · " +
+              $"in total {UiTheme.Money(finance.TotalLiftTicketsCents)}";
+        var scroll = (ScrollContainer)_list.GetParent();
+        scroll.CustomMinimumSize = new Vector2(700, Math.Min(MaxListHeight, Math.Max(40, _list.GetCombinedMinimumSize().Y)));
     }
 
     private void Rebuild()
     {
         foreach (var child in _list.GetChildren()) child.QueueFree();
         _updates.Clear();
+        _cards.Clear();
         var state = Ctx.Sim.State;
         if (state.Lifts.Count == 0)
         {
@@ -920,6 +1010,16 @@ public partial class LiftsPanel : HudPanel
             var op = LiftNetwork.FindOperator(state, lift.OperatorId);
             if (type is null) continue;
 
+            var card = new PanelContainer();
+            var cardStyle = UiTheme.Box(UiTheme.Card, 8, 12, 10);
+            cardStyle.ShadowSize = 0;
+            card.AddThemeStyleboxOverride("panel", cardStyle);
+            var body = new VBoxContainer();
+            body.AddThemeConstantOverride("separation", 8);
+            card.AddChild(body);
+            _list.AddChild(card);
+            _cards[liftId] = card;
+
             var header = Row(10);
             header.AddChild(new IconView(UiIcon.Lift, 30, UiTheme.Accent));
             var names = new VBoxContainer();
@@ -928,13 +1028,16 @@ public partial class LiftsPanel : HudPanel
             names.AddChild(UiTheme.Label($"{type.Name} · run by {op?.Name ?? "the park"}" +
                                          (op is null ? $" · upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day" : ""), 12, UiTheme.TextDim));
             header.AddChild(names);
-            _list.AddChild(header);
+            body.AddChild(header);
+            foreach (var lot in state.ParkingLots.Where(p => p.LiftId == liftId))
+                body.AddChild(UiTheme.Label($"Parking: {lot.Name} · {lot.Spaces} spaces (≈ {lot.Spaces * state.LiftRules.GuestsPerCarPermille / 1000} guests)",
+                    12, UiTheme.TextDim));
 
             // Out of service: rusty (restore it) or with the contractor.
             if (lift.ReadyTick > 0)
             {
                 long ready = lift.ReadyTick;
-                _list.AddChild(UiTheme.Label(
+                body.AddChild(UiTheme.Label(
                     $"{(lift.Derelict ? "Being restored" : "Under construction")}: running from day {GameTime.Day(ready) + 1}, " +
                     $"{GameTime.Format(ready)[^5..]}", 13, UiTheme.Warn, bold: true));
             }
@@ -949,13 +1052,13 @@ public partial class LiftsPanel : HudPanel
                     why ?? $"A contractor fixes it for half the price of a new {type.Name}; it runs from the next opening after the work");
                 restore.Disabled = why is not null;
                 rusty.AddChild(restore);
-                _list.AddChild(rusty);
+                body.AddChild(rusty);
                 continue;
             }
 
             var stoppedLabel = UiTheme.Label("", 13, UiTheme.Bad, bold: true);
             stoppedLabel.Visible = false;
-            _list.AddChild(stoppedLabel);
+            body.AddChild(stoppedLabel);
             var tiles = Row();
             tiles.AddChild(UiTheme.StatTile("Queue", out var queue, 24));
             tiles.AddChild(UiTheme.StatTile("Wait now", out var wait, 24));
@@ -963,9 +1066,9 @@ public partial class LiftsPanel : HudPanel
             tiles.AddChild(UiTheme.StatTile("Rides today", out var today));
             tiles.AddChild(UiTheme.StatTile("Avg wait", out var avg));
             tiles.AddChild(UiTheme.StatTile("Longest queue today", out var longest));
-            _list.AddChild(tiles);
+            body.AddChild(tiles);
             var bar = new ProgressBar { MinValue = 0, MaxValue = 100, ShowPercentage = false, CustomMinimumSize = new Vector2(0, 8) };
-            _list.AddChild(bar);
+            body.AddChild(bar);
 
             _updates.Add(() =>
             {
@@ -991,10 +1094,10 @@ public partial class LiftsPanel : HudPanel
 
             if (op is not null && lift.BikeAccess is { } access)
             {
-                _list.AddChild(UiTheme.Label($"BIKE ACCESS — rented from {op.Name}, changes start at the next opening   [ / ]", 11, UiTheme.TextDim, bold: true));
+                body.AddChild(UiTheme.Label($"BIKE ACCESS — rented from {op.Name}, changes start at the next opening   [ / ]", 11, UiTheme.TextDim, bold: true));
                 bool owned = LiftWorks.StationsOwned(state, lift);
                 if (!owned)
-                    _list.AddChild(UiTheme.Label($"{op.Name} only rents you bike access once you own the land at both stations (Land menu).", 12, UiTheme.Warn));
+                    body.AddChild(UiTheme.Label($"{op.Name} only rents you bike access once you own the land at both stations (Land menu).", 12, UiTheme.Warn));
                 var tiers = Row(8);
                 for (int i = 0; i < op.BikeAccessTiers.Count; i++)
                 {
@@ -1015,7 +1118,7 @@ public partial class LiftsPanel : HudPanel
                     button.Disabled = !owned && i > 0;
                     tiers.AddChild(button);
                 }
-                _list.AddChild(tiers);
+                body.AddChild(tiers);
             }
         }
     }

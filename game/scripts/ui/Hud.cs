@@ -33,7 +33,7 @@ namespace Bikepark.Game.Ui;
 /// </summary>
 public partial class Hud : CanvasLayer
 {
-    private enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Reputation, Land, Map, System }
+    internal enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Reputation, Land, Map, System }
 
     private const int MaxToasts = 4;
 
@@ -45,6 +45,7 @@ public partial class Hud : CanvasLayer
     [Export] public NodePath StructureToolPath { get; set; } = "../StructureTool";
     [Export] public NodePath FeatureToolPath { get; set; } = "../FeatureTool";
     [Export] public NodePath ClearingToolPath { get; set; } = "../ClearingTool";
+    [Export] public NodePath CrewViewPath { get; set; } = "../CrewView";
 
     private HudContext _ctx = null!;
     private Control _root = null!;
@@ -72,6 +73,7 @@ public partial class Hud : CanvasLayer
     private VBoxContainer _toasts = null!;
     private RepairDialog _repairDialog = null!;
     private NameDialog _nameDialog = null!;
+    private WorldPicker _picker = null!;
 
     private LandView _land = null!;
     private StartScreen _startScreen = null!;
@@ -110,6 +112,20 @@ public partial class Hud : CanvasLayer
             else if (arg.StartsWith("--tool=", StringComparison.Ordinal)) StartTool(arg[7..]);
             else if (arg.StartsWith("--features=", StringComparison.Ordinal) && int.TryParse(arg[11..], out int wayId)) _repairDialog.Open(wayId);
             else if (arg.StartsWith("--rename=", StringComparison.Ordinal) && int.TryParse(arg[9..], out int renameId)) _ctx.RenameTrail(renameId);
+            else if (arg.StartsWith("--pick=", StringComparison.Ordinal) && arg[7..].Split(',') is [var px, var pz]
+                     && float.TryParse(px, System.Globalization.CultureInfo.InvariantCulture, out float pickX)
+                     && float.TryParse(pz, System.Globalization.CultureInfo.InvariantCulture, out float pickZ))
+            {
+                // Debug: after the camera settled, point at that spot (meters) and click it.
+                GetTree().CreateTimer(2.0).Timeout += () =>
+                {
+                    var grid = _ctx.Sim.Terrain;
+                    var world = new Vector3(pickX, grid.HeightAt((long)(pickX * 100), (long)(pickZ * 100)) / 100f, pickZ);
+                    var screen = _ctx.Camera.Camera.UnprojectPosition(world);
+                    GetViewport().WarpMouse(screen);
+                    _picker.Click(screen);
+                };
+            }
             else if (arg == "--follow") _followOnStart = true;
         }
     }
@@ -227,6 +243,10 @@ public partial class Hud : CanvasLayer
             suggestion, name => Bikepark.Sim.Commands.RenameTrailCommand.CannotName(_ctx.Sim.State, name), ok, cancel);
         _root.AddChild(_nameDialog);
 
+        // Click on things in the world to open their menu.
+        AddChild(_picker = new WorldPicker(_ctx, GetNodeOrNull<Bikepark.Game.Crew.CrewView>(CrewViewPath), () => !ToolActive && !_nameDialog.Visible,
+            ShowMenu, text => Toast(text, UiTheme.Accent), _root));
+
         _toasts = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Alignment = BoxContainer.AlignmentMode.End };
         _toasts.AddThemeConstantOverride("separation", 6);
         _root.AddChild(_toasts);
@@ -316,6 +336,13 @@ public partial class Hud : CanvasLayer
         panel.CloseRequested += () => Toggle(Menu.None);
         _root.AddChild(panel);
         _panels[menu] = panel;
+    }
+
+    /// <summary>Opens a menu (if it isn't open) and shows one of its items (<see cref="HudPanel.Focus"/>).</summary>
+    private void ShowMenu(Menu menu, string? focus)
+    {
+        if (_open != menu) Toggle(menu);
+        if (focus is not null) _panels[menu].Focus(focus);
     }
 
     private void Toggle(Menu menu)

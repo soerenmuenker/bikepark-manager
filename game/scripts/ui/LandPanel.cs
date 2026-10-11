@@ -15,6 +15,7 @@ public partial class LandPanel : HudPanel
     private VBoxContainer _list = null!;
     private Label _summary = null!;
     private readonly List<(Parcel Parcel, Label Status, Button Buy)> _rows = [];
+    private readonly Dictionary<string, PanelContainer> _cards = [];
     private int _parcelCount = -1;
 
     public override string Title => "Land";
@@ -36,6 +37,7 @@ public partial class LandPanel : HudPanel
     {
         foreach (var child in _list.GetChildren()) child.QueueFree();
         _rows.Clear();
+        _cards.Clear();
         _parcelCount = state.Parcels.Count;
         if (state.Parcels.Count == 0)
         {
@@ -71,7 +73,15 @@ public partial class LandPanel : HudPanel
             h.AddChild(buy);
             _list.AddChild(row);
             _rows.Add((parcel, status, buy));
+            _cards[parcel.Id] = row;
         }
+    }
+
+    /// <summary>Key: a parcel id.</summary>
+    public override void Focus(string key)
+    {
+        Refresh();
+        if (_cards.TryGetValue(key, out var row)) Highlight(row);
     }
 
     public override void Refresh()
