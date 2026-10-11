@@ -5,7 +5,7 @@ using Bikepark.Sim.State;
 namespace Bikepark.Sim.Systems;
 
 /// <summary>
-/// The crew at work. During work hours, every minute:
+/// The crew at work. During opening hours, every minute:
 /// <list type="number">
 ///   <item>workers whose job can't go on are freed; free workers (in hiring order) take the first workable job in the
 ///   queue that has room (<see cref="CrewRules.MaxWorkersPerJob"/>); a job needing wood takes it from the stock when
@@ -14,8 +14,7 @@ namespace Bikepark.Sim.Systems;
 ///   first its trees are felled one by one (each adds wood), then the main work is done; a finished job builds its
 ///   way or feature.</item>
 /// </list>
-/// After the shift, workers stay on for up to <see cref="CrewRules.OvertimeMinutes"/> if their job can be finished in
-/// the overtime left; nobody starts new work. Outside work hours everyone goes home. No randomness.
+/// Work hours are the park's opening hours; outside them everyone goes home. No randomness.
 /// </summary>
 public sealed class JobSystem : ISimSystem
 {
@@ -25,19 +24,14 @@ public sealed class JobSystem : ISimSystem
         if (state.Crew.Count == 0)
             return;
 
-        bool shift = ParkSchedule.IsCrewShift(state, ctx.Tick);
-        bool overtime = ParkSchedule.IsCrewOvertime(state, ctx.Tick);
-        if (!shift && !overtime || state.Jobs.Count == 0)
+        if (!ParkSchedule.IsOpen(state, ctx.Tick) || state.Jobs.Count == 0)
         {
             foreach (var member in state.Crew)
                 member.JobId = 0;
             return;
         }
 
-        if (shift)
-            Assign(state);
-        else
-            KeepFinishableJobs(state, ParkSchedule.OvertimeLeft(state, ctx.Tick));
+        Assign(state);
 
         // A trail closes as soon as the crew is assigned to work on it, so no new riders enter it.
         foreach (var job in state.Jobs)
@@ -103,21 +97,6 @@ public sealed class JobSystem : ISimSystem
                 member.JobId = job.Id;
                 break;
             }
-        }
-    }
-
-    /// <summary>Overtime: workers stay only on workable jobs their crew can finish in the minutes left.</summary>
-    private static void KeepFinishableJobs(WorldState state, int minutesLeft)
-    {
-        foreach (var member in state.Crew)
-        {
-            if (member.JobId == 0) continue;
-            if (Jobs.Find(state, member.JobId) is not { } job || !IsWorkable(state, job)) { member.JobId = 0; continue; }
-            int workers = state.Crew.Count(m => m.JobId == job.Id);
-            long canDo = (long)workers * WorkCosts.SpeedPermille(state, job.CurrentWorkType) * minutesLeft;
-            if (WorkCosts.RemainingMinutes(state.CrewRules, job) * 1000 > canDo)
-                foreach (var other in state.Crew.Where(m => m.JobId == job.Id))
-                    other.JobId = 0;
         }
     }
 

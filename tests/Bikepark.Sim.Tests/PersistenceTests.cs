@@ -65,6 +65,21 @@ public class PersistenceTests
     }
 
     [Fact]
+    public void Load_MigratesVersion3_DropsThePreAndAfterHoursRules()
+    {
+        string current = SaveGame.Serialize(TestWorlds.Create());
+        string v3 = current.Replace($"\"version\": {SaveGame.CurrentVersion}", "\"version\": 3")
+            .Replace("\"rules\": {", "\"rules\": {\n      \"lastRideMinutes\": 45,\n      \"liftWarmupMinutes\": 30,")
+            .Replace("\"crewRules\": {", "\"crewRules\": {\n      \"workStartMinute\": 450,\n      \"workEndMinute\": 1050,\n      \"overtimeMinutes\": 90,");
+        Assert.Contains("lastRideMinutes", v3);
+        Assert.Contains("overtimeMinutes", v3);
+
+        var loaded = SaveGame.Deserialize(v3);
+
+        Assert.Equal(StateHash.Compute(SaveGame.Deserialize(current)), StateHash.Compute(loaded));
+    }
+
+    [Fact]
     public void ShippedScenarios_LoadAndValidate()
     {
         string dir = Path.Combine(RepoRoot(), "data", "scenarios");

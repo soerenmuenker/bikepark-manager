@@ -61,7 +61,8 @@ public class ExpansionTests
     [Fact]
     public void Career_GuestsPedalUpTheTrack_UntilTheTBarIsRestored_AndNeverUseTheGondola()
     {
-        var sim = Career(TestWorlds.CareerOpening());
+        // The crew only works in opening hours, so the trails are cut faster here to be ready on day 2 as before.
+        var sim = Career(TestWorlds.CareerOpening(), s => s.CrewRules.TrailWorkMinutesPerMeter = 3);
         // Days 1 and 2: the T-bar is being restored, riders pedal up the track.
         int pedalling = 0;
         for (int minute = 0; minute < 2 * GameTime.MinutesPerDay; minute += 10)
@@ -102,7 +103,7 @@ public class ExpansionTests
         Assert.Null(Reject(sim, new RestoreLiftCommand(SkiLift)));
         Assert.Equal(money - type.BuildCostCents / 2, sim.State.Finance.MoneyCents);
         var tbar = Lift(sim, SkiLift);
-        long ready = GameTime.TicksForDays(type.RestoreDays) + sim.State.Rules.OpenMinute - sim.State.Rules.LiftWarmupMinutes;
+        long ready = GameTime.TicksForDays(type.RestoreDays) + sim.State.Rules.OpenMinute;
         Assert.Equal(ready, tbar.ReadyTick);
         Assert.Contains("already being restored", Reject(sim, new RestoreLiftCommand(SkiLift)));
 
@@ -131,7 +132,7 @@ public class ExpansionTests
         var lift = sim.State.Lifts[^1];
         Assert.Equal(money - type.BuildCostCents, sim.State.Finance.MoneyCents);
         Assert.False(lift.InService);
-        Assert.Equal(GameTime.TicksForDays(type.BuildDays) + sim.State.Rules.OpenMinute - sim.State.Rules.LiftWarmupMinutes, lift.ReadyTick);
+        Assert.Equal(GameTime.TicksForDays(type.BuildDays) + sim.State.Rules.OpenMinute, lift.ReadyTick);
 
         var days = new List<DayReport>();
         sim.Events.Subscribe<DayEnded>(e => days.Add(e.Report));

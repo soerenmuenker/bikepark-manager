@@ -23,7 +23,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Crew/` – `CrewRules`/`ToolType` (content), `CrewMember`/`Job` (state), `WorkCosts` (all work/wood/speed numbers),
     `Forest` (which scatter trees are gone or claimed), `ClearingPlanner` (felling areas), `Jobs` (queue/cancel/complete)
   - `Systems/JobSystem.cs` – the crew at work: assigns workers to jobs in priority order, fells trees (wood), builds planned ways and features;
-    after the shift only overtime that finishes a job
+    only during opening hours (no shift or overtime of its own)
   - `Weather/` – `WeatherRules`/`WeatherState`/`DayWeather` (daily seeded forecast, ground wetness), `Systems/WeatherSystem.cs`
   - `Trails/TrailCondition.cs` – `WearRules` and feature condition (wear per rider pass, more when wet; worn
     features slower/less fun); `Systems/TrailCareSystem.cs` raises the repair warning and closes worn-out trails
@@ -35,8 +35,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     parts per billion, premium), `SafetyState` (counts, accident history); crash rolls live in `RiderSystem` (`Crash`),
     `Systems/SafetySystem.cs` books the daily insurance; `Trails/Crossings.cs` finds where ways cross (derived in
     `WayNetwork.Crossings`, warned about in `WayPlanner`)
-  - `Systems/ParkSchedule.cs` – the daily timetable (open, last rides, lift warm-up, crew shift/overtime, day phase,
-    quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
+  - `Systems/ParkSchedule.cs` – the daily timetable (opening hours, which guests, lifts and crew keep, then the last rides
+    until the last rider is down; quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel`, drawn icons, theme in code),
@@ -127,8 +127,10 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     features count. All work, wood and speed numbers come from `WorkCosts`; which trees stand comes only from `Forest`
     (scatter trees are identified by position; felled ones are stored in `FelledTrees`).
 15. **Daily rhythm:** `ParkSchedule` is the only timetable (systems and views ask it). Skips (night skip, skip to opening)
-    only step more ticks per frame, never jump `Tick`. New daily-rhythm rules default to off. Riders on a lap finish it
-    in the last rides; overtime only finishes jobs (no new assignments).
+    only step more ticks per frame, never jump `Tick`. New daily-rhythm rules default to off. Opening hours are the
+    only schedule for crew and arrivals (no pre-opening, no overtime). After closing: last rides, no fixed length —
+    guests between laps and in lift queues go home, riders aboard or on a trail finish their lap, lifts run only for riders already aboard, then the park is
+    empty and the night is skipped.
 16. **Wear and weather:** weather is rolled once a day by `WeatherSystem` (no odds ⇒ always sunny, no RNG). Trail
     only trail features wear: condition lives on `TrailFeature.Condition` (never in `WaySegment`, never bumps
     `WaysRevision`). Closures are filters (`Way.IsRideable`: closed, worn out at 0 %, or under repair), not graph
@@ -223,7 +225,7 @@ block the trail until the rescue helicopter has flown them out) or orange (minor
 `--features=<wayId>` (open the feature overview), `--follow` (follow the first rider, shows the rider card), `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
 (queue a command script, before `--advance`), `--no-night-skip`
 (turn off the automatic night skip, e.g. for screenshots at night with `--speed=0`).
-Day: crew 07:30, gondola warm-up 08:30, open 09:00–18:00, lunch ~12–13:30, last rides until 18:45, then the night is
+Day: open 09:00–18:00 for guests, lifts and crew alike, lunch ~12–13:30, last rides until the last rider is down, then the night is
 skipped automatically (Game menu → Skip nights).
 
 ## Conventions

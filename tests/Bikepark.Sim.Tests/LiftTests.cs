@@ -192,7 +192,7 @@ public class LiftTests
     public void LongQueues_ShowUp_AndRidersInLineLoseMood()
     {
         var sim = LiftWorld(out _, withTrails: true);
-        sim.RunTicks(Opening + 4 * 60);
+        sim.RunTicks(Opening + 5 * 60);
         var lift = sim.State.Lifts[0];
         Assert.True(lift.Stats.MaxQueue >= 20, $"max queue {lift.Stats.MaxQueue}");
         Assert.True(lift.Stats.Riders > 0);

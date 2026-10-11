@@ -233,14 +233,14 @@ public class WearAndWeatherTests
         Assert.Equal("Repair Berm on Red Rocket at 200 m", Jobs.Title(sim.State, job));
         var type = sim.State.TrailFeatureTypes.Single(t => t.Id == "berm");
         Assert.Equal(type.WorkMinutes * sim.State.CrewRules.RepairWorkPermille / 1000 * 900_000 / 1_000_000, job.WorkMinutes);
-        Assert.True(red.IsRideable); // the crew hasn't started yet (shift starts 07:30)
+        Assert.True(red.IsRideable); // the crew hasn't started yet (the crew works only in opening hours)
 
         var closed = new List<TrailClosed>();
         var reopened = new List<TrailReopened>();
         sim.Events.Clear();
         sim.Events.Subscribe<TrailClosed>(closed.Add);
         sim.Events.Subscribe<TrailReopened>(reopened.Add);
-        sim.RunTicks(sim.State.CrewRules.WorkStartMinute - sim.State.Tick + 3);
+        sim.RunTicks(sim.State.Rules.OpenMinute - sim.State.Tick + 3);
         Assert.Equal(2, sim.State.Crew.Count(m => m.JobId == job.Id));
         Assert.True(red.Repairing);
         Assert.False(red.IsRideable);
@@ -317,7 +317,7 @@ public class WearAndWeatherTests
         sim.Events.Clear();
         sim.Events.Subscribe<TrailClosed>(closed.Add);
         sim.Events.Subscribe<TrailReopened>(reopened.Add);
-        sim.RunTicks(sim.State.CrewRules.WorkStartMinute - sim.State.Tick + 3);
+        sim.RunTicks(sim.State.Rules.OpenMinute - sim.State.Tick + 3);
         Assert.False(red.IsRideable);
         Assert.Contains(sim.Events.Pending, e => e is TrailClosed { WayId: RedRocket, Reason: TrailClosedReason.Building });
 
@@ -337,7 +337,7 @@ public class WearAndWeatherTests
         var red = Trail(sim, RedRocket);
         sim.Commands.Enqueue(new HireCrewCommand());
         sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 20_000));
-        sim.RunTicks(sim.State.CrewRules.WorkStartMinute - sim.State.Tick + 3);
+        sim.RunTicks(sim.State.Rules.OpenMinute - sim.State.Tick + 3);
         Assert.False(red.IsRideable);
         sim.Commands.Enqueue(new RemoveTrailFeatureCommand(RedRocket, red.Features[0].Id));
         sim.Step();

@@ -697,9 +697,9 @@ public partial class CrewPanel : HudPanel
         _wood.Text = $"{state.WoodStock}";
         _jobs.Text = $"{state.Jobs.Count}";
         long remaining = state.Jobs.Sum(j => WorkCosts.RemainingMinutes(rules, j));
-        int perDay = state.Crew.Count * (rules.WorkEndMinute - rules.WorkStartMinute);
+        int perDay = state.Crew.Count * (state.Rules.CloseMinute - state.Rules.OpenMinute);
         _ahead.Text = remaining == 0 ? "–" : perDay == 0 ? HudContext.CrewTime(remaining) : $"{HudContext.CrewTime(remaining)} (~{(remaining + perDay - 1) / perDay} d)";
-        _hours.Text = $"Work hours {rules.WorkStartMinute / 60:00}:00–{rules.WorkEndMinute / 60:00}:00 · {UiTheme.Money(rules.WagePerDayCents)} per worker and day";
+        _hours.Text = $"Work hours = opening hours {state.Rules.OpenMinute / 60:00}:{state.Rules.OpenMinute % 60:00}–{state.Rules.CloseMinute / 60:00}:{state.Rules.CloseMinute % 60:00} · {UiTheme.Money(rules.WagePerDayCents)} per worker and day";
         _buy10.Text = $"Buy 10 ({UiTheme.Money(10 * rules.WoodPriceCents)})";
         _buy50.Text = $"Buy 50 ({UiTheme.Money(50 * rules.WoodPriceCents)})";
 

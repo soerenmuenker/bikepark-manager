@@ -232,11 +232,11 @@ public sealed record RestoreLiftCommand(int LiftId) : ICommand
 /// <summary>Contractor work on lifts and who owns the ground under them.</summary>
 public static class LiftWorks
 {
-    /// <summary>The lift warm-up of the opening <paramref name="days"/> days after today (0 days: tomorrow's at the earliest).</summary>
+    /// <summary>The opening of the <paramref name="days"/>th day after today (0 days: tomorrow's at the earliest).</summary>
     public static long ReadyTick(State.WorldState state, long tick, int days)
     {
         long day = Core.GameTime.Day(tick) + Math.Max(1, days);
-        return Core.GameTime.TicksForDays(day) + state.Rules.OpenMinute - state.Rules.LiftWarmupMinutes;
+        return Core.GameTime.TicksForDays(day) + state.Rules.OpenMinute;
     }
 
     /// <summary>Why the park can't have a contractor build this lift type now (level, money), or null.</summary>

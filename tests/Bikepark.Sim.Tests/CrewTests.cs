@@ -56,10 +56,6 @@ public class CrewTests
         duplicate.ToolTypes.Add(TestWorlds.ToolCatalog()[0]);
         Assert.Throws<InvalidDataException>(() => ScenarioLoader.CreateWorld(duplicate));
 
-        var badRules = TestWorlds.Scenario();
-        badRules.CrewRules.WorkEndMinute = badRules.CrewRules.WorkStartMinute;
-        Assert.Contains("work hours", Assert.Throws<InvalidDataException>(() => ScenarioLoader.CreateWorld(badRules)).Message);
-
         var badFeature = TestWorlds.Scenario();
         badFeature.TrailFeatureTypes[0].WorkMinutes = 0;
         Assert.Contains("workMinutes", Assert.Throws<InvalidDataException>(() => ScenarioLoader.CreateWorld(badFeature)).Message);
@@ -112,7 +108,7 @@ public class CrewTests
 
         for (int i = 0; i < 3; i++)
             sim.Commands.Enqueue(new HireCrewCommand());
-        sim.RunTicks(420 + 320 - sim.State.Tick); // three workers: 320 minutes
+        sim.RunTicks(480 + 320 - sim.State.Tick); // three workers: 320 minutes
         Assert.Empty(sim.State.Jobs);
         Assert.True(feature.Feature.Built);
         Assert.Equal(720, sim.Network.Geometry(RedRocket).DifficultyScore);
@@ -129,12 +125,12 @@ public class CrewTests
     // ---------------------------------------------------------------- jobs
 
     [Fact]
-    public void Work_HappensInWorkHours_AndFinishesOnTime()
+    public void Work_HappensInOpeningHours_AndFinishesOnTime()
     {
         var sim = TestWorld();
         sim.Commands.Enqueue(new HireCrewCommand());
         sim.Commands.Enqueue(new PlaceTrailFeatureCommand(BlueLine, "berm", 18_000)); // 200 crew-minutes
-        sim.RunTicks(420 - sim.State.Tick); // until 07:00
+        sim.RunTicks(480 - sim.State.Tick); // until 08:00 (opening)
         var job = Assert.Single(sim.State.Jobs);
         Assert.Equal(0, job.Progress);
         Assert.Equal(0, sim.State.Crew[0].JobId);
@@ -144,9 +140,9 @@ public class CrewTests
         Assert.Equal(60_000, job.Progress);
         Assert.Equal(300, WorkCosts.ProgressPermille(sim.State.CrewRules, job));
 
-        sim.RunTicks(619 - sim.State.Tick);
+        sim.RunTicks(679 - sim.State.Tick);
         Assert.Single(sim.State.Jobs);
-        sim.Step(); // tick 619: the 200th minute
+        sim.Step(); // tick 679: the 200th minute
         Assert.Empty(sim.State.Jobs);
         Assert.True(sim.State.Ways.Single(w => w.Id == BlueLine).Features.Single().Built);
         Assert.Equal(0, sim.State.Crew[0].JobId);
@@ -161,12 +157,12 @@ public class CrewTests
         sim.Commands.Enqueue(new BuyToolCommand("shovel_set"));
         sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 30_000));
         sim.Step();
-        sim.State.Jobs[0].WorkMinutes = 960; // longer than a day, so the shift end is what stops it
-        sim.RunTicks(480 - sim.State.Tick);
+        sim.State.Jobs[0].WorkMinutes = 960; // longer than a day, so closing is what stops it
+        sim.RunTicks(540 - sim.State.Tick);
         Assert.Equal(60 * 1250, sim.State.Jobs[0].Progress);
 
-        sim.RunTicks(1100 - sim.State.Tick); // past 17:00: 600 minutes worked
-        Assert.Equal(600 * 1250, sim.State.Jobs[0].Progress);
+        sim.RunTicks(1250 - sim.State.Tick); // past 20:00: 720 minutes worked
+        Assert.Equal(720 * 1250, sim.State.Jobs[0].Progress);
         Assert.All(sim.State.Crew, m => Assert.Equal(0, m.JobId));
     }
 
@@ -178,7 +174,7 @@ public class CrewTests
             sim.Commands.Enqueue(new HireCrewCommand());
         sim.Commands.Enqueue(new PlaceTrailFeatureCommand(BlueLine, "berm", 18_000));
         sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 30_000));
-        sim.RunTicks(421);
+        sim.RunTicks(481);
 
         int first = sim.State.Jobs[0].Id, second = sim.State.Jobs[1].Id;
         Assert.Equal(3, sim.State.Crew.Count(m => m.JobId == first));
@@ -199,7 +195,7 @@ public class CrewTests
         var sim = TestWorld();
         sim.Commands.Enqueue(new HireCrewCommand());
         sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "drop", 15_000)); // 25 wood
-        sim.RunTicks(430);
+        sim.RunTicks(490);
         var job = Assert.Single(sim.State.Jobs);
         Assert.False(JobSystem.IsWorkable(sim.State, job));
         Assert.False(job.WoodTaken);
@@ -254,7 +250,7 @@ public class CrewTests
         Assert.Equal(WorkType.Felling, job.CurrentWorkType);
         Assert.Equal(trees * 20L, WorkCosts.TotalMinutes(sim.State.CrewRules, job));
 
-        sim.RunTicks(420 + 20 - sim.State.Tick);
+        sim.RunTicks(480 + 20 - sim.State.Tick);
         Assert.Equal(1, job.TreesFelled);
         Assert.Equal(2, sim.State.WoodStock);
         var gone = Bikepark.Sim.Crew.Forest.GoneFilter(sim.Network, sim.State);
@@ -284,7 +280,7 @@ public class CrewTests
         var job = Assert.Single(sim.State.Jobs);
         Assert.True(job.Trees.Count > 12);
 
-        sim.RunTicks(sim.State.CrewRules.WorkStartMinute + 1 - sim.State.Tick);
+        sim.RunTicks(sim.State.Rules.OpenMinute + 1 - sim.State.Tick);
         Assert.Equal(6, sim.State.Crew.Count(m => m.JobId == job.Id)); // more than maxWorkersPerJob (3)
         Assert.Equal(WorkType.Felling, job.CurrentWorkType);
     }
@@ -298,7 +294,7 @@ public class CrewTests
             sim.Commands.Enqueue(new CancelJobCommand(other.Id));
         for (int i = 0; i < 6; i++)
             sim.Commands.Enqueue(new HireCrewCommand());
-        sim.RunTicks(sim.State.CrewRules.WorkStartMinute + 2 - sim.State.Tick);
+        sim.RunTicks(sim.State.Rules.OpenMinute + 2 - sim.State.Tick);
         Assert.True(job.IsFelling);
         Assert.Equal(sim.State.Crew.Count, sim.State.Crew.Count(m => m.JobId == job.Id));
 
@@ -343,7 +339,7 @@ public class CrewTests
             sim.Commands.Enqueue(new CancelJobCommand(other.Id));
         sim.Commands.Enqueue(new HireCrewCommand());
         int wood = sim.State.WoodStock;
-        sim.RunTicks(sim.State.CrewRules.WorkStartMinute + trees * 20 / 3 + 5 - sim.State.Tick); // three workers fell
+        sim.RunTicks(sim.State.Rules.OpenMinute + trees * 20 / 3 + 5 - sim.State.Tick); // three workers fell
         Assert.Equal(trees, job.TreesFelled);
         Assert.Equal(WorkType.Digging, job.CurrentWorkType);
         Assert.Equal(wood + trees * 2, sim.State.WoodStock);
@@ -443,7 +439,7 @@ public class CrewTests
         var sim = TestWorld();
         sim.Commands.Enqueue(new HireCrewCommand());
         sim.Commands.Enqueue(new FellTreesCommand(Forest, 2_000));
-        sim.RunTicks(420 + 61);
+        sim.RunTicks(480 + 61);
         int felled = sim.State.Jobs[0].TreesFelled;
         Assert.Equal(3, felled);
         sim.Commands.Enqueue(new CancelJobCommand(sim.State.Jobs[0].Id));

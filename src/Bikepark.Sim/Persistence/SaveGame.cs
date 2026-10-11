@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -74,6 +74,20 @@ public static class SaveGame
                         }
             }
             version = 3;
+        }
+
+        if (version == 3)
+        {
+            // v4: the park day is just the opening hours (no last rides, lift warm-up, crew shift or overtime).
+            if (root["world"] is JsonObject world)
+            {
+                world["rules"]?.AsObject().Remove("lastRideMinutes");
+                world["rules"]?.AsObject().Remove("liftWarmupMinutes");
+                if (world["crewRules"] is JsonObject crewRules)
+                    foreach (string old in new[] { "workStartMinute", "workEndMinute", "overtimeMinutes" })
+                        crewRules.Remove(old);
+            }
+            version = 4;
         }
 
         root["version"] = version;

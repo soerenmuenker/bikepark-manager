@@ -1,6 +1,12 @@
 # Daily rhythm (Phase 5.1)
 
-Status: implemented 2026-10-07. Rules that must not break are in `architecture.md` §15. Phase 5.2 (wear and weather)
+Status: implemented 2026-10-07. **Simplified 2026-10-11.** Pre-opening (crew shift start, lift warm-up) and overtime
+were removed: guests, lifts and crew all keep the opening hours. The last rides stay, but with no fixed length: after
+closing guests between laps and in lift queues go home, riders aboard or on a trail finish their lap and the lifts board
+nobody new; once
+the last rider is down the park is empty and the night is skipped. Phases: `Open` / `LastRides` / `Closed`. Save version 4 drops
+`lastRideMinutes`, `liftWarmupMinutes` and the crew's `workStartMinute`/`workEndMinute`/`overtimeMinutes`. The
+sections below describe the original 5.1 design and its measurements. Rules that must not break are in `architecture.md` §15. Phase 5.2 (wear and weather)
 builds on it.
 
 Plan row: *"Continuous sim time (no closing-time freeze) with an RCT3-style day skip: dead hours between closing and the

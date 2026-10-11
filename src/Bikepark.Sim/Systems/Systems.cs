@@ -145,8 +145,8 @@ internal sealed class GuestArrivalSystem : ISimSystem
 
 /// <summary>
 /// Updates guests in the park: mood, spending, rest, and leaving. Riders only leave between laps or out of a lift
-/// queue, never during lunch; tired riders go home. After closing, guests between laps go home; riders on a lap finish
-/// it during the last rides (<see cref="ParkRules.LastRideMinutes"/>), then everyone left goes home. Waiting in a queue beyond the grace time costs mood; queuing and
+/// queue, never during lunch; tired riders go home. After closing (the last rides), guests between laps and in lift queues go home;
+/// riders on a lift or a trail finish their lap, then they go home too. Waiting in a queue beyond the grace time costs mood; queuing and
 /// riding a lift restore energy.
 /// </summary>
 internal sealed class GuestSystem : ISimSystem
@@ -213,9 +213,9 @@ internal sealed class GuestSystem : ISimSystem
         return lift is null || LiftNetwork.FindType(state, lift.TypeId) is not { Sheltered: false };
     }
 
-    /// <summary>Not on a lap: idle, having lunch or wandering (queuing riders are on a lap).</summary>
+    /// <summary>Not on the way up or down: idle, having lunch, wandering or waiting in a lift queue.</summary>
     private static bool IsBetweenLaps(Guest guest) =>
-        guest.Activity is RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Wandering;
+        guest.Activity is RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Wandering or RiderActivity.Queuing;
 
     private static GuestLeaveReason? UpdateGuest(SimContext ctx, Guest guest, bool crowded, bool raining)
     {

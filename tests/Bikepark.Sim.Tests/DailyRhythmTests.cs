@@ -10,70 +10,47 @@ namespace Bikepark.Sim.Tests;
 
 public class DailyRhythmTests
 {
-    // Starter Valley: open 09:00-18:00, last rides until 18:45, gondola warm-up from 08:30, crew 07:30-17:30 + 90 min
-    // overtime, lunch planned between 11:00 and 13:00, no arrivals from 16:30.
+    // Starter Valley: open 09:00-18:00 for guests, lifts and crew alike; lunch planned between 11:00 and 13:00, no
+    // arrivals from 16:30.
     private const int Open = 9 * 60;
     private const int Close = 18 * 60;
-    private const int LastRidesEnd = Close + 45;
-    private const int Warmup = Open - 30;
-    private const int CrewStart = 7 * 60 + 30;
 
     private static long At(int day, int minute) => day * (long)GameTime.MinutesPerDay + minute;
 
     // ---------------------------------------------------------------- timetable
 
     [Fact]
-    public void Phases_FollowTheTimetable_AndTheNightIsQuiet()
+    public void Phases_AreOpeningHoursThenLastRidesUntilTheParkIsEmpty()
     {
         var state = ScenarioLoader.CreateWorld(TestWorlds.LiftScenario());
         new Simulation(state).Step(); // builds the gondola, hires the two workers
-        var crew = state.Crew.ToList();
-        state.Crew.Clear();
+        Assert.NotEmpty(state.Crew);
 
-        Assert.Equal(DayPhase.Night, ParkSchedule.Phase(state, At(0, 3 * 60)));
+        Assert.Equal(DayPhase.Closed, ParkSchedule.Phase(state, At(0, 3 * 60)));
         Assert.True(ParkSchedule.IsQuiet(state, At(0, 3 * 60)));
-        Assert.Equal(DayPhase.PreOpening, ParkSchedule.Phase(state, At(0, Warmup)));
-        Assert.Equal(DayPhase.Night, ParkSchedule.Phase(state, At(0, Warmup - 1))); // no crew
+        Assert.Equal(DayPhase.Closed, ParkSchedule.Phase(state, At(0, Open - 1)));
         Assert.Equal(DayPhase.Open, ParkSchedule.Phase(state, At(0, Open)));
+        Assert.Equal(DayPhase.Open, ParkSchedule.Phase(state, At(0, Close - 1)));
+        Assert.Equal(DayPhase.Closed, ParkSchedule.Phase(state, At(0, Close))); // empty: nothing left to ride
+        Assert.True(ParkSchedule.IsQuiet(state, At(0, Close)));
+
+        Assert.Equal(At(0, Open), ParkSchedule.NextWakeTick(state, At(0, 3 * 60)));
+        Assert.Equal(At(1, Open), ParkSchedule.NextWakeTick(state, At(0, Open)));
+        Assert.Equal(At(1, Open), ParkSchedule.NextWakeTick(state, At(0, 20 * 60)));
+
+        // Someone still in the park after closing: last rides, no skipping, until they are gone.
+        state.Guests.Add(new Guest { Id = 1 });
         Assert.Equal(DayPhase.LastRides, ParkSchedule.Phase(state, At(0, Close)));
-        Assert.Equal(DayPhase.LastRides, ParkSchedule.Phase(state, At(0, LastRidesEnd - 1)));
-        Assert.Equal(DayPhase.Night, ParkSchedule.Phase(state, At(0, LastRidesEnd)));
-
-        Assert.Equal(At(0, Warmup), ParkSchedule.NextWakeTick(state, At(0, 3 * 60)));
-        Assert.Equal(At(1, Warmup), ParkSchedule.NextWakeTick(state, At(0, Warmup)));
-        Assert.Equal(At(1, Warmup), ParkSchedule.NextWakeTick(state, At(0, 20 * 60)));
-
-        state.Crew.AddRange(crew);
-        Assert.Equal(DayPhase.PreOpening, ParkSchedule.Phase(state, At(0, CrewStart)));
-        Assert.Equal(DayPhase.Night, ParkSchedule.Phase(state, At(0, CrewStart - 1)));
-        Assert.Equal(At(0, CrewStart), ParkSchedule.NextWakeTick(state, At(0, 3 * 60)));
-        Assert.Equal(At(1, CrewStart), ParkSchedule.NextWakeTick(state, At(0, 20 * 60)));
-        // Shift ends 17:30, before the last rides end: then it is night unless someone does overtime.
-        Assert.Equal(DayPhase.Night, ParkSchedule.Phase(state, At(0, LastRidesEnd)));
-        state.Crew[0].JobId = 1;
-        Assert.Equal(DayPhase.AfterHours, ParkSchedule.Phase(state, At(0, LastRidesEnd)));
-    }
-
-    [Fact]
-    public void DefaultRules_KeepTheOldDay()
-    {
-        var state = TestWorlds.Create();
-        var rules = state.Rules;
-        Assert.Equal(0, rules.LastRideMinutes);
-        Assert.False(rules.HasLunch);
-        Assert.Equal(DayPhase.Night, ParkSchedule.Phase(state, rules.CloseMinute));
-        Assert.Equal(rules.OpenMinute, ParkSchedule.NextWakeTick(state, 0));
-        Assert.Equal(1000, GuestArrivalSystem.ProfilePermille(rules.ArrivalProfile, 600));
+        Assert.Equal(DayPhase.LastRides, ParkSchedule.Phase(state, At(0, 23 * 60 + 59)));
+        Assert.False(ParkSchedule.IsQuiet(state, At(0, Close)));
+        Assert.Equal(DayPhase.Closed, ParkSchedule.Phase(state, At(1, 3 * 60)));
     }
 
     [Fact]
     public void Rules_RejectBadTimetables()
     {
-        Assert.NotEmpty(new ParkRules { LastRideMinutes = 300 }.Validate()); // past midnight
-        Assert.NotEmpty(new ParkRules { LiftWarmupMinutes = -1 }.Validate());
         Assert.NotEmpty(new ParkRules { ArrivalProfile = [new(600, 1000), new(600, 500)] }.Validate());
         Assert.NotEmpty(new ParkRules { LunchStartMinute = 800, LunchEndMinute = 700 }.Validate());
-        Assert.Contains(new CrewRules { OvertimeMinutes = 500 }.Validate(), e => e.Contains("overtime"));
         Assert.Empty(TestWorlds.LiftScenario().Rules.Validate());
     }
 
@@ -156,82 +133,81 @@ public class DailyRhythmTests
     }
 
     [Fact]
-    public void AtClosing_RidersFinishTheirLap_AndThePark_IsEmptyAfterTheLastRides()
+    public void AtClosing_RidersFinishTheirLap_ThenTheParkIsEmptyAndQuiet()
     {
         var sim = TestWorlds.RunLift(1337, Close, TestWorlds.DemoLiftNetwork());
         Assert.Contains(sim.State.Guests, g => g.Activity is RiderActivity.Descending or RiderActivity.OnLift or RiderActivity.Queuing);
         sim.Events.Clear();
         var runs = new List<RunFinished>();
         var left = new List<GuestLeft>();
+        var arrivals = new List<GuestArrived>();
         sim.Events.Subscribe<RunFinished>(runs.Add);
         sim.Events.Subscribe<GuestLeft>(left.Add);
+        sim.Events.Subscribe<GuestArrived>(arrivals.Add);
 
-        sim.Step(); // 18:00
-        Assert.DoesNotContain(sim.State.Guests, g => g.Activity is RiderActivity.Idle or RiderActivity.Eating);
-        Assert.NotEmpty(sim.State.Guests);
+        var boarded = new List<RiderBoarded>();
+        sim.Events.Subscribe<RiderBoarded>(boarded.Add);
 
-        sim.RunTicks(LastRidesEnd - Close);
+        sim.Step(); // 18:00: guests between laps and in the queue go home, nobody new comes
+        Assert.DoesNotContain(sim.State.Guests, g => g.Activity is RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Queuing);
+        Assert.Equal(DayPhase.LastRides, ParkSchedule.Phase(sim.State, sim.State.Tick));
+
+        int guard = 0;
+        while (sim.State.Guests.Count > 0 && guard++ < 3 * 60)
+            sim.Step();
         sim.Events.Dispatch();
+
         Assert.Empty(sim.State.Guests);
         Assert.Empty(sim.State.Lifts[0].Queue);
+        Assert.Empty(arrivals);
+        Assert.Empty(boarded); // the lift only finished those already aboard
         Assert.True(runs.Count > 5, $"{runs.Count} runs after closing");
-        Assert.All(runs, r => Assert.InRange(GameTime.MinuteOfDay(r.Tick), Close, LastRidesEnd - 1));
         Assert.All(left, l => Assert.Equal(GuestLeaveReason.ParkClosed, l.Reason));
+        Assert.True(ParkSchedule.IsQuiet(sim.State, sim.State.Tick));
+        Assert.False(ParkSchedule.LiftRunning(sim.State, sim.State.Lifts[0], sim.State.Tick));
     }
 
     // ---------------------------------------------------------------- lifts and crew
 
     [Fact]
-    public void Gondola_WarmsUpEmpty_BeforeOpening()
+    public void Gondola_RunsOnlyInOpeningHours()
     {
-        var sim = TestWorlds.RunLift(1337, Warmup - 1);
+        var sim = TestWorlds.RunLift(1337, Open - 1);
         var lift = sim.State.Lifts[0];
         Assert.Equal(0, lift.CarriersDispatched);
         Assert.False(ParkSchedule.LiftRunning(sim.State, lift, sim.State.Tick));
 
-        sim.RunTicks(Open - Warmup + 1);
+        sim.RunTicks(2);
+        Assert.True(ParkSchedule.LiftRunning(sim.State, lift, sim.State.Tick));
         Assert.True(lift.CarriersDispatched > 0);
-        Assert.Equal(0, lift.Stats.Riders);
-        Assert.Empty(sim.State.Guests);
     }
 
     [Fact]
-    public void Overtime_FinishesANearlyDoneJob_ButNotALongOne()
-    {
-        var sim = OvertimeWorld();
-        var job = sim.State.Jobs[0];
-        job.Progress = (job.WorkMinutes - 40) * 1000L; // 40 minutes left, 60 minutes of overtime
-        sim.RunTicks(17 * 60 + 39 - sim.State.Tick);
-        Assert.Equal(job.Id, sim.State.Crew[0].JobId);
-        sim.Step();
-        Assert.Empty(sim.State.Jobs);
-        Assert.Equal(0, sim.State.Crew[0].JobId);
-
-        sim = OvertimeWorld();
-        job = sim.State.Jobs[0];
-        job.Progress = (job.WorkMinutes - 100) * 1000L;
-        long progress = job.Progress;
-        sim.Step(); // 17:00: too much left, the worker goes home
-        Assert.Equal(0, sim.State.Crew[0].JobId);
-        sim.RunTicks(120);
-        Assert.Equal(progress, job.Progress);
-    }
-
-    /// <summary>Test world with one worker on a double, 60 min overtime, at 16:59 (the last shift minute) after it ran.</summary>
-    private static Simulation OvertimeWorld()
+    public void Crew_WorksOnlyInOpeningHours()
     {
         var scenario = TestWorlds.Scenario();
-        scenario.CrewRules = new CrewRules { OvertimeMinutes = 60 };
         var sim = new Simulation(ScenarioLoader.CreateWorld(scenario));
         foreach (var c in TestWorlds.DemoNetwork())
             sim.Commands.Enqueue(c.Command, 0);
         sim.Commands.Enqueue(new HireCrewCommand(), 0);
         sim.Commands.Enqueue(new PlaceTrailFeatureCommand(2, "double", 30_000), 0);
         sim.Step();
-        sim.State.Jobs[0].WorkMinutes = 960; // a long job: the double alone would be done before 17:00
-        sim.RunTicks(17 * 60 - sim.State.Tick);
-        Assert.Single(sim.State.Jobs);
-        Assert.NotEqual(0, sim.State.Crew[0].JobId);
-        return sim;
+        var job = sim.State.Jobs[0];
+        job.WorkMinutes = 960; // a long job: still running at closing
+
+        int open = sim.State.Rules.OpenMinute, close = sim.State.Rules.CloseMinute;
+        sim.RunTicks(open - 1 - sim.State.Tick);
+        Assert.Equal(0, sim.State.Crew[0].JobId);
+        Assert.Equal(0, job.Progress);
+
+        sim.RunTicks(2);
+        Assert.Equal(job.Id, sim.State.Crew[0].JobId);
+
+        sim.RunTicks(close + 1 - sim.State.Tick);
+        Assert.Equal(0, sim.State.Crew[0].JobId);
+        long progress = job.Progress;
+        Assert.True(progress > 0);
+        sim.RunTicks(120);
+        Assert.Equal(progress, job.Progress);
     }
 }

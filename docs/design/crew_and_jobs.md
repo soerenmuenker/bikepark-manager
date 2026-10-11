@@ -129,8 +129,7 @@ so state hashes for older scripts are unchanged. During work hours, every minute
 3. Every job with workers advances.
 4. A finished job sets `Built`, bumps `WaysRevision` and publishes `JobCompleted`.
 
-After the shift, a worker stays on for up to `overtimeMinutes` only if their job can be finished in the overtime left
-(Phase 5.1); nobody starts new work. Outside work hours everyone goes home (`JobId` = 0). `FinanceSystem` pays `wagePerDayCents` per worker at the end of
+Work hours are the park's opening hours (simplified 2026-10-11: no shift of its own, no overtime). Outside them everyone goes home (`JobId` = 0). `FinanceSystem` pays `wagePerDayCents` per worker at the end of
 each day.
 
 ### Network
@@ -170,7 +169,7 @@ difficulty and give riders fun.
 | Wage | €180 per day |
 | Max crew | 12 |
 | Max workers per job | 3 |
-| Work hours | 07:30–17:30, up to 90 min overtime to finish a job (Phase 5.1) |
+| Work hours | the park's opening hours (09:00–18:00 in the scenarios), no overtime |
 | Trail digging | 4 crew-min/m |
 | Path digging | 3 crew-min/m |
 | Steep extra | +50 % |

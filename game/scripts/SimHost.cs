@@ -23,7 +23,7 @@ namespace Bikepark.Game;
 /// (after <c>--demo</c>, e.g. 720 = noon on day 1), <c>--no-night-skip</c> turns off the automatic night skip,
 /// <c>--script=&lt;file&gt;</c> queues a command script (path relative to the repo, at the script's ticks; put it before
 /// <c>--advance</c>).
-/// Night skip: whenever the park is quiet (<see cref="ParkSchedule.IsQuiet"/>: closed, empty, crew off) time
+/// Night skip: whenever the park is quiet (<see cref="ParkSchedule.IsQuiet"/>: closed and empty) time
 /// fast-forwards to <see cref="ParkSchedule.NextWakeTick"/> and then continues at the speed it had. Skips always step
 /// every tick, so the sim sees each minute.
 /// </summary>
@@ -59,7 +59,7 @@ public partial class SimHost : Node
     /// <summary>Debug: the build tools build ways and features at once instead of planning crew jobs.</summary>
     public bool InstantBuild { get; set; }
 
-    /// <summary>Fast-forward through quiet nights (closed, empty park, crew off) automatically.</summary>
+    /// <summary>Fast-forward through quiet nights (closed, empty park) automatically.</summary>
     public bool AutoSkipNights { get; set; } = true;
 
     /// <summary>Game minutes per real second during the night skip (a 12-hour night passes in about 2.5 s).</summary>

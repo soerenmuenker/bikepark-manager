@@ -7,7 +7,7 @@ namespace Bikepark.Sim.Systems;
 
 /// <summary>
 /// Runs the lifts. At opening time booked bike access tiers take effect. While the lift runs
-/// (<see cref="ParkSchedule.LiftRunning"/>: open, warm-up before opening, last rides while riders wait) each lift sends up a
+/// (<see cref="ParkSchedule.LiftRunning"/>: open, or last rides while riders are aboard) each lift sends up a
 /// carrier every <see cref="LiftType.IntervalSeconds"/>; bike-equipped carriers (<see cref="LiftMath.IsBikeCarrier"/>)
 /// take up to <see cref="LiftType.BikesPerCarrier"/> riders from the front of the queue, who then ride up
 /// (<see cref="RiderSystem"/> moves them). Runs after <see cref="RiderSystem"/>, so riders reaching the station board in
@@ -83,6 +83,7 @@ internal sealed class LiftSystem : ISimSystem
         int carriers = budget / intervalMs;
         lift.DispatchRemainderMs = budget % intervalMs;
 
+        bool open = ParkSchedule.IsOpen(state, ctx.Tick); // after closing nobody boards any more
         for (int c = 0; c < carriers; c++)
         {
             // This carrier leaves (c + 1) intervals after the previous minute's last one: its riders have the rest of the
@@ -91,7 +92,7 @@ internal sealed class LiftSystem : ISimSystem
             long headStartCm = (long)Math.Max(0, 60_000 - leftAtMs) * type.SpeedCmPerS / 1000;
             long k = lift.CarriersDispatched++;
             if (!LiftMath.IsBikeCarrier(k, lift.BikeCarrierPermille)) continue;
-            for (int seat = 0; seat < type.BikesPerCarrier && lift.Queue.Count > 0; seat++)
+            for (int seat = 0; seat < type.BikesPerCarrier && lift.Queue.Count > 0 && open; seat++)
             {
                 int guestId = lift.Queue[0];
                 lift.Queue.RemoveAt(0);

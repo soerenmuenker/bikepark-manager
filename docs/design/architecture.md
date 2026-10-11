@@ -250,18 +250,16 @@ Design note: [crew_and_jobs.md](crew_and_jobs.md).
 
 Details: [daily_rhythm.md](daily_rhythm.md).
 
-- **`ParkSchedule` is the only timetable**: opening hours, last rides, lift warm-up, crew shift and overtime, the day
+- **`ParkSchedule` is the only timetable**: the opening hours (guests, lifts and crew all keep them) and the last rides after closing, the day
   phase, `IsQuiet` and `NextWakeTick` are pure functions of `WorldState` + tick. Systems and views ask it; nobody
   compares minutes against the rules directly.
 - **Skipping never jumps `Tick`.** The host's night skip (and the manual skips) only run more steps per frame, so every
   minute is simulated: tier switches at opening, the books at 23:59, lunch plans and determinism all hold. Whether to
   skip is a host setting, not state.
-- **Every new daily-rhythm rule defaults to "off"** (`LastRideMinutes`, `LiftWarmupMinutes`, `ArrivalProfile`,
-  lunch window, `OvertimeMinutes`); scenarios opt in. Older saves need no migration.
-- **Guests on a lap are never removed mid-lap before `close + lastRideMinutes`**; guests eating are never removed
-  before closing. Lunch is planned at arrival (`Guest.LunchMinute`) and taken at the next break between laps.
-- **Overtime only finishes work**: no new assignments after the shift; a worker stays only if the job fits in the
-  overtime left.
+- **Every new daily-rhythm rule defaults to "off"** (`ArrivalProfile`, lunch window); scenarios opt in. Last rides, lift warm-up, crew shift and
+  overtime were removed (save v4 drops them): the day is just the opening hours.
+- **Last rides** (after closing, no fixed length): guests between laps and in lift queues go home, riders aboard or on a
+  trail finish their lap, a lift runs only while someone is aboard and boards nobody; whoever is left at midnight goes home. Lunch is planned at arrival (`Guest.LunchMinute`) and taken at the next break between laps.
 - Day light is view-only (`game/scripts/world/DayLight.cs`), derived from the minute of the day.
 
 ## 16. Wear and weather (Phase 5.2)

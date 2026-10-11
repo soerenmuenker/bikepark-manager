@@ -472,7 +472,6 @@ public partial class Hud : CanvasLayer
             : ParkSchedule.Phase(state, state.Tick) switch
             {
                 DayPhase.Open => ("OPEN", UiTheme.Good),
-                DayPhase.PreOpening => ("PRE-OPENING", UiTheme.Warn),
                 DayPhase.LastRides => ("LAST RIDES", UiTheme.Warn),
                 _ => ("CLOSED", UiTheme.TextDim),
             };

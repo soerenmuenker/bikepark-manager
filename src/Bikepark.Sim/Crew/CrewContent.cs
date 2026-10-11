@@ -46,16 +46,6 @@ public sealed class CrewRules
     public int MaxCrew { get; set; } = 12;
     public int MaxWorkersPerJob { get; set; } = 3;
 
-    /// <summary>The crew works from this minute of the day until <see cref="WorkEndMinute"/>.</summary>
-    public int WorkStartMinute { get; set; } = 7 * GameTime.MinutesPerHour;
-    public int WorkEndMinute { get; set; } = 17 * GameTime.MinutesPerHour;
-
-    /// <summary>
-    /// After <see cref="WorkEndMinute"/>, a worker stays on their job for up to this long if the job can be finished in
-    /// that time; nobody starts new work.
-    /// </summary>
-    public int OvertimeMinutes { get; set; }
-
     public int TrailWorkMinutesPerMeter { get; set; } = 4;
     public int PathWorkMinutesPerMeter { get; set; } = 6;
 
@@ -78,10 +68,6 @@ public sealed class CrewRules
         if (WagePerDayCents < 0) errors.Add("crewRules.wagePerDayCents must be >= 0");
         if (MaxCrew is < 1 or > 100) errors.Add("crewRules.maxCrew must be within 1..100");
         if (MaxWorkersPerJob is < 1 or > 20) errors.Add("crewRules.maxWorkersPerJob must be within 1..20");
-        if (WorkStartMinute < 0 || WorkEndMinute <= WorkStartMinute || WorkEndMinute > GameTime.MinutesPerDay)
-            errors.Add("crewRules: work hours must satisfy 0 <= workStartMinute < workEndMinute <= 1440");
-        if (OvertimeMinutes < 0 || WorkEndMinute + OvertimeMinutes > GameTime.MinutesPerDay)
-            errors.Add("crewRules.overtimeMinutes must be >= 0 and end within the day");
         if (TrailWorkMinutesPerMeter is < 1 or > 1000 || PathWorkMinutesPerMeter is < 1 or > 1000)
             errors.Add("crewRules: work minutes per meter must be within 1..1000");
         if (SteepExtraPermille is < 0 or > 10_000) errors.Add("crewRules.steepExtraPermille must be within 0..10000");

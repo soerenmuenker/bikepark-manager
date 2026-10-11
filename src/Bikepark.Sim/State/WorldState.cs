@@ -168,12 +168,6 @@ public sealed class ParkRules
 
     // ---- Daily rhythm (all off by default, so older saves and scenarios behave as before) ----
 
-    /// <summary>After closing, riders already on a lap finish it (the lift still serves its queue) for this long; then everyone goes home.</summary>
-    public int LastRideMinutes { get; set; }
-
-    /// <summary>The lifts start running (empty) this many minutes before opening.</summary>
-    public int LiftWarmupMinutes { get; set; }
-
     /// <summary>
     /// Arrival rate over the day, in permille of <see cref="BaseArrivalPermille"/>: points sorted by minute, linearly
     /// interpolated, held flat before the first and after the last point. Empty = 1000 all day.
@@ -204,9 +198,6 @@ public sealed class ParkRules
         if (BaseArrivalPermille < 0) errors.Add("rules.baseArrivalPermille must be >= 0");
         if (ReferenceEntryFeeCents <= 0) errors.Add("rules.referenceEntryFeeCents must be > 0");
         if (Capacity <= 0) errors.Add("rules.capacity must be > 0");
-        if (LastRideMinutes < 0 || CloseMinute + LastRideMinutes > GameTime.MinutesPerDay)
-            errors.Add("rules.lastRideMinutes must be >= 0 and end within the day");
-        if (LiftWarmupMinutes < 0 || LiftWarmupMinutes > OpenMinute) errors.Add("rules.liftWarmupMinutes must be within 0..openMinute");
         for (int i = 0; i < ArrivalProfile.Count; i++)
         {
             var p = ArrivalProfile[i];

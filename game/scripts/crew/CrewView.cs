@@ -49,8 +49,8 @@ public partial class CrewView : Node3D
         var mm = _instances.Multimesh;
         if (mm.InstanceCount < state.Crew.Count) mm.InstanceCount = state.Crew.Count + 4;
 
-        // Idle workers wait at the base during their shift; in overtime only those still on a job are out.
-        bool workHours = Bikepark.Sim.Systems.ParkSchedule.IsCrewShift(state, state.Tick);
+        // Idle workers wait at the base during opening hours.
+        bool workHours = Bikepark.Sim.Systems.ParkSchedule.IsOpen(state, state.Tick);
         _drawn.Clear();
         var slots = new Dictionary<int, int>(); // job id → workers placed so far
         int count = 0;
