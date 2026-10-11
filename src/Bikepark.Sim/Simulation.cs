@@ -34,7 +34,7 @@ public sealed class Simulation
         State = state;
         Events = new EventBus();
         Commands = new CommandQueue(state);
-        _baseTerrain = new Lazy<TerrainGrid>(() => TerrainCache.Get(state.Terrain, state.Seed));
+        _baseTerrain = new Lazy<TerrainGrid>(() => TerrainSculptor.Apply(TerrainCache.Get(state.Terrain, state.Seed), state.TerrainSculpt));
         _context = new SimContext(this, Events);
 
         // Order matters for determinism and gameplay. Append new systems deliberately.
@@ -61,8 +61,8 @@ public sealed class Simulation
     public CommandQueue Commands { get; }
 
     /// <summary>
-    /// The terrain, derived from <see cref="WorldState.Terrain"/> (and the world seed) plus the stored
-    /// <see cref="WorldState.TerrainEdits"/>. Generated on first access, re-derived when <see cref="WorldState.TerrainRevision"/>
+    /// The terrain, derived from <see cref="WorldState.Terrain"/> (and the world seed), the scenario's
+    /// <see cref="WorldState.TerrainSculpt"/> and the stored <see cref="WorldState.TerrainEdits"/>. Generated on first access, re-derived when <see cref="WorldState.TerrainRevision"/>
     /// changes.
     /// </summary>
     public TerrainGrid Terrain
@@ -78,7 +78,7 @@ public sealed class Simulation
         }
     }
 
-    /// <summary>The generated terrain without edits.</summary>
+    /// <summary>The generated terrain with the scenario's <see cref="WorldState.TerrainSculpt"/>, without the pads.</summary>
     public TerrainGrid BaseTerrain => _baseTerrain.Value;
 
     /// <summary>

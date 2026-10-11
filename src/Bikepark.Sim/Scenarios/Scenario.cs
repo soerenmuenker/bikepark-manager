@@ -31,6 +31,9 @@ public sealed class ScenarioDefinition
     /// <summary>Terrain parameters. A null terrain seed follows the scenario seed (and --seed overrides).</summary>
     public TerrainSettings Terrain { get; set; } = new();
 
+    /// <summary>Hand-made terrain changes (raise, lower, paint), applied to the generated terrain (tools/scenario-editor).</summary>
+    public List<TerrainStroke> TerrainSculpt { get; set; } = [];
+
     /// <summary>Lift catalog file, relative to the scenario file (e.g. <c>../lift_types.json</c>); loaded into <see cref="LiftTypes"/>.</summary>
     public string? LiftTypesFile { get; set; }
 
@@ -122,6 +125,7 @@ public static class ScenarioLoader
             Park = new ParkState { Name = scenario.ParkName, EntryFeeCents = scenario.EntryFeeCents, LiftTicketCents = scenario.LiftTicketCents },
             Rules = scenario.Rules,
             Terrain = scenario.Terrain with { Seed = scenario.Terrain.Seed ?? seed },
+            TerrainSculpt = scenario.TerrainSculpt,
             TrailRules = scenario.TrailRules,
             WearRules = scenario.WearRules,
             WeatherRules = scenario.WeatherRules,
@@ -156,6 +160,7 @@ public static class ScenarioLoader
         if (s.LiftTicketCents < 0 || s.LiftTicketCents > r.MaxEntryFeeCents) errors.Add("liftTicketCents out of range");
 
         errors.AddRange(s.Terrain.Validate());
+        for (int i = 0; i < s.TerrainSculpt.Count; i++) errors.AddRange(s.TerrainSculpt[i].Validate(i));
         errors.AddRange(s.TrailRules.Validate());
         errors.AddRange(s.WearRules.Validate());
         errors.AddRange(s.WeatherRules.Validate());

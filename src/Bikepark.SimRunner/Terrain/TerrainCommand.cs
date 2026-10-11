@@ -17,8 +17,10 @@ namespace Bikepark.SimRunner.Terrain;
 internal static class TerrainCommand
 {
     public const string Usage =
-        "usage: Bikepark.SimRunner terrain --scenario <path> [--out <file.png>] [--mode relief|slope|surface|all] [--seed S] [--scatter] [--commands <file>] [--bare]";
-    // --bare: terrain only (no ways, structures or parcel borders), e.g. as the backdrop of tools/scenario-editor.
+        "usage: Bikepark.SimRunner terrain --scenario <path> [--out <file.png>] [--mode relief|slope|surface|all] [--seed S] [--scatter] [--commands <file>] [--bare] [--raw <file.bin>]";
+    // --bare: terrain only (no ways, structures or parcel borders).
+    // --raw: the generated grid before the scenario's sculpting, for tools/scenario-editor: int32 samples per side, then
+    // heights (int32 cm), tree density, rock and roots (one byte each per sample), row by row, little-endian.
 
     public static void Run(string[] args)
     {
@@ -45,6 +47,8 @@ internal static class TerrainCommand
             sim.Step();
             rejected.AddRange(sim.Events.Pending.OfType<CommandRejected>().Select(r => $"{r.Command.GetType().Name}: {r.Reason}"));
         }
+        if (options.RawPath is { } rawPath)
+            WriteRaw(rawPath, TerrainCache.Get(state.Terrain, state.Seed));
         var grid = sim.Terrain;
         var network = sim.Network;
 
@@ -122,13 +126,23 @@ internal static class TerrainCommand
         };
     }
 
+    private static void WriteRaw(string path, TerrainGrid grid)
+    {
+        using var writer = new BinaryWriter(File.Create(path));
+        writer.Write(grid.Samples);
+        foreach (int h in grid.Heights) writer.Write(h);
+        writer.Write(grid.TreeDensity);
+        writer.Write(grid.Rock);
+        writer.Write(grid.Roots);
+    }
+
     private static string WithSuffix(string path, string suffix)
     {
         string dir = Path.GetDirectoryName(path) ?? "";
         return Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(path)}_{suffix}{Path.GetExtension(path)}");
     }
 
-    private sealed record Options(string ScenarioPath, string? OutPath, MapMode? Mode, ulong? Seed, bool Scatter, string? CommandsPath, bool Bare);
+    private sealed record Options(string ScenarioPath, string? OutPath, MapMode? Mode, ulong? Seed, bool Scatter, string? CommandsPath, bool Bare, string? RawPath);
 
     private static Options Parse(string[] args)
     {
@@ -138,6 +152,7 @@ internal static class TerrainCommand
         bool scatter = false;
         string? commands = null;
         bool bare = false;
+        string? raw = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -159,6 +174,7 @@ internal static class TerrainCommand
                 case "--scatter": scatter = true; break;
                 case "--commands": commands = Next(); break;
                 case "--bare": bare = true; break;
+                case "--raw": raw = Next(); break;
                 case "-h" or "--help": throw new ArgumentException("help requested");
                 default: throw new ArgumentException($"unknown argument '{args[i]}'");
             }
@@ -166,6 +182,6 @@ internal static class TerrainCommand
 
         if (scenario is null)
             throw new ArgumentException("--scenario is required");
-        return new Options(scenario, outPath, mode, seed, scatter, commands, bare);
+        return new Options(scenario, outPath, mode, seed, scatter, commands, bare, raw);
     }
 }

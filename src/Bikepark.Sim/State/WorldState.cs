@@ -38,6 +38,9 @@ public sealed class WorldState
     /// </summary>
     public TerrainSettings Terrain { get; set; } = new();
 
+    /// <summary>Authored terrain strokes (scenario content), applied in order to the generated terrain, before the pads.</summary>
+    public List<TerrainStroke> TerrainSculpt { get; set; } = [];
+
     /// <summary>Flattened pads (stations, plateaus, parking lots), applied in order on top of the generated terrain.</summary>
     public List<TerrainEdit> TerrainEdits { get; set; } = [];
 

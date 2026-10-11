@@ -78,7 +78,6 @@ public class ExpansionTests
         Assert.True(Lift(sim, SkiLift).InService);
         Assert.True(Lift(sim, SkiLift).Stats.Riders > 100);
         Assert.Equal(0, Lift(sim, Gondola).Stats.Riders);
-        Assert.Contains("foot_forest", sim.State.OwnedParcelIds);
     }
 
     [Fact]
@@ -162,9 +161,9 @@ public class ExpansionTests
         var sim = Career();
         sim.Step();
         Assert.Contains("Buy the land at both stations", Reject(sim, new SetLiftBikeAccessCommand(Gondola, 1)));
-        sim.State.OwnedParcelIds.Add("valley_meadows");
+        sim.State.OwnedParcelIds.Add("parcel_5"); // South slope: next to it, but neither station
         Assert.Contains("Buy the land at both stations", Reject(sim, new SetLiftBikeAccessCommand(Gondola, 1)));
-        sim.State.OwnedParcelIds.Add("plateau");
+        sim.State.OwnedParcelIds.Add("parcel_6"); // Hikers Paradise: both stations
         Assert.Null(Reject(sim, new SetLiftBikeAccessCommand(Gondola, 1)));
         Assert.Null(Reject(sim, new SetLiftBikeAccessCommand(Gondola, 0))); // "no bikes" is always allowed
     }
@@ -209,7 +208,7 @@ public class ExpansionTests
         Assert.All(crossings, c => Assert.InRange(c.LiftCm, 1, liftLength - 1));
 
         // ... and a new T-bar whose track would cross the trail is warned about too.
-        var tbar = StructurePlanner.PlanLift(sim.Terrain, sim.Network, sim.State, "tbar", M(705, 885), M(715, 715));
+        var tbar = StructurePlanner.PlanLift(sim.Terrain, sim.Network, sim.State, "tbar", M(860, 930), M(830, 760));
         Assert.Contains(tbar.Issues, i => i.Code == "crossing" && i.Message.Contains("Old Piste"));
     }
 
@@ -233,7 +232,7 @@ public class ExpansionTests
     [Fact]
     public void TrailRiders_CanCollideWithRidersOnTheTBar()
     {
-        // The career's own rules: the Old Piste crosses the T-bar track five times, riders meeting there collide.
+        // The career's own rules: the Old Piste crosses the T-bar track a few times, riders meeting there collide.
         var sim = Career(OpeningBuiltAtOnce(), s =>
         {
             s.CrashRules.FeatureBasePpm = 0;

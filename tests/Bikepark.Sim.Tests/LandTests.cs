@@ -13,6 +13,10 @@ public class LandTests
 {
     private static PointCm M(int x, int z) => new(x * 100, z * 100); // metres
 
+    // Starter Valley parcels: the ski hill (owned), the South slope west of it (level 3) and Hikers Paradise with both
+    // gondola stations (level 8).
+    private const string SouthSlope = "parcel_5", HikersParadise = "parcel_6";
+
     private static Simulation Career(Action<ScenarioDefinition>? tweak = null)
     {
         var scenario = TestWorlds.CareerScenario();
@@ -65,8 +69,8 @@ public class LandTests
         Assert.Equal(["ski_hill"], sim.State.OwnedParcelIds);
         Assert.True(LandMath.IsOwned(sim.State, 74_000, 80_000));
         Assert.False(LandMath.IsOwned(sim.State, 20_500, 85_000)); // gondola valley station
-        Assert.False(LandMath.IsOwned(sim.State, 90_000, 80_000)); // foot forest
-        Assert.Equal("foot_forest", LandMath.ParcelAt(sim.State, 90_000, 80_000)?.Id);
+        Assert.False(LandMath.IsOwned(sim.State, 60_000, 90_000)); // south slope
+        Assert.Equal(SouthSlope, LandMath.ParcelAt(sim.State, 60_000, 90_000)?.Id);
         Assert.Empty(sim.Events.Pending.OfType<CommandRejected>()); // the scenario's own builds are fine anywhere
     }
 
@@ -76,11 +80,11 @@ public class LandTests
     public void Ways_MustStayOnYourLand_InThePreviewAndTheCommand()
     {
         var sim = Career();
-        List<PointCm> intoForest = [M(740, 700), M(900, 760), M(760, 890)];
-        var plan = WayPlanner.Plan(sim.Terrain, sim.Network, sim.State.TrailRules, WayKind.Trail, intoForest, LandMath.OwnedPredicate(sim.State));
+        List<PointCm> intoSouthSlope = [M(740, 760), M(700, 830), M(640, 900)];
+        var plan = WayPlanner.Plan(sim.Terrain, sim.Network, sim.State.TrailRules, WayKind.Trail, intoSouthSlope, LandMath.OwnedPredicate(sim.State));
         var issue = Assert.Single(plan.Issues, i => i.Code == "notYourLand");
         Assert.Equal(IssueSeverity.Error, issue.Severity);
-        Assert.Equal(issue.Message, Reject(sim, new BuildWayCommand(WayKind.Trail, "Forest Run", intoForest)));
+        Assert.Equal(issue.Message, Reject(sim, new BuildWayCommand(WayKind.Trail, "South Run", intoSouthSlope)));
     }
 
     [Fact]
@@ -93,9 +97,12 @@ public class LandTests
         var parking = StructurePlanner.PlanParking(sim.Terrain, sim.Network, sim.State, M(250, 870), M(205, 850), 30);
         Assert.Contains(parking.Issues, i => i.Code == "notYourLand");
 
-        var felling = ClearingPlanner.Plan(sim.Terrain, sim.Network, sim.State, M(900, 800), 2_000);
+        var felling = ClearingPlanner.Plan(sim.Terrain, sim.Network, sim.State, FellingSpot, 2_000);
         Assert.Equal("notYourLand", felling.Issues.Single().Code);
     }
+
+    /// <summary>Woods on the South slope, just west of the ski hill.</summary>
+    private static readonly PointCm FellingSpot = M(600, 900);
 
     // ---------------------------------------------------------------- buying land
 
@@ -103,30 +110,30 @@ public class LandTests
     public void BuyParcel_NeedsTheLevel_AndTheMoney()
     {
         var sim = Career();
-        Assert.Contains("needs park level 4", Reject(sim, new BuyParcelCommand("valley_meadows")));
+        Assert.Contains("needs park level 8", Reject(sim, new BuyParcelCommand(HikersParadise)));
         Assert.Contains("Unknown parcel", Reject(sim, new BuyParcelCommand("moon")));
 
-        var poor = Career(s =>
-        {
-            s.Parcels.Single(p => p.Id == "foot_forest").RequiredLevel = 0;
-            s.StartingMoneyCents = 1_000;
-        });
-        Assert.Contains("Not enough money", Reject(poor, new BuyParcelCommand("foot_forest")));
+        var poor = Career(s => s.Parcels.Single(p => p.Id == SouthSlope).RequiredLevel = 0); // 200 000 € > the 150 000 € start
+        Assert.Contains("Not enough money", Reject(poor, new BuyParcelCommand(SouthSlope)));
     }
 
     [Fact]
     public void BuyParcel_ChargesThePrice_AndOpensTheLandForBuilding()
     {
-        var sim = Career(s => s.Parcels.Single(p => p.Id == "foot_forest").RequiredLevel = 0);
+        var sim = Career(s =>
+        {
+            s.Parcels.Single(p => p.Id == SouthSlope).RequiredLevel = 0;
+            s.StartingMoneyCents = 30_000_000;
+        });
         long money = sim.State.Finance.MoneyCents;
-        Assert.Null(Reject(sim, new BuyParcelCommand("foot_forest")));
-        Assert.Contains(sim.Events.Pending, e => e is ParcelBought { ParcelId: "foot_forest" });
-        Assert.Equal(money - 4_000_000, sim.State.Finance.MoneyCents);
-        Assert.Equal(4_000_000, sim.State.Finance.TotalLandCents);
-        Assert.True(LandMath.IsOwned(sim.State, 90_000, 80_000));
-        Assert.Contains("already yours", Reject(sim, new BuyParcelCommand("foot_forest")));
+        Assert.Null(Reject(sim, new BuyParcelCommand(SouthSlope)));
+        Assert.Contains(sim.Events.Pending, e => e is ParcelBought { ParcelId: SouthSlope });
+        Assert.Equal(money - 20_000_000, sim.State.Finance.MoneyCents);
+        Assert.Equal(20_000_000, sim.State.Finance.TotalLandCents);
+        Assert.True(LandMath.IsOwned(sim.State, 60_000, 90_000));
+        Assert.Contains("already yours", Reject(sim, new BuyParcelCommand(SouthSlope)));
 
-        var felling = ClearingPlanner.Plan(sim.Terrain, sim.Network, sim.State, M(900, 800), 2_000);
+        var felling = ClearingPlanner.Plan(sim.Terrain, sim.Network, sim.State, FellingSpot, 2_000);
         Assert.True(felling.IsValid, felling.FirstError);
 
         var loaded = SaveGame.Clone(sim.State);

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Scenario map editor: edit a scenario's land parcels and its tick-0 structures (lifts, parking lots, ways) on the 2D map.
+"""Scenario map editor: edit a scenario's land parcels, its tick-0 structures (lifts, parking lots, ways) and the terrain
+(raise / lower / paint strokes) on the 2D map.
 
 Usage (from the repo root):
     python3 tools/scenario-editor/server.py [data/scenarios/starter_valley.json] [--port 8765]
 then open http://localhost:8765
 
-The backdrop is rendered by the SimRunner `terrain` subcommand (--bare). Saving rewrites only the "parcels" and
-"commands" blocks of the scenario file (comments elsewhere are kept), then runs the same command to validate: rejected
+The backdrop is rendered by the SimRunner `terrain` subcommand (--bare). Saving rewrites only the "parcels",
+"commands" and "terrainSculpt" blocks of the scenario file (comments elsewhere are kept), then runs the same command to validate: rejected
 scenario commands (a lift on too steep ground, ...) are listed in the editor. Tooling only, nothing here feeds the sim.
 """
 
@@ -147,11 +148,36 @@ def format_commands(commands):
     return "[\n" + ",\n".join(blocks) + "\n  ]"
 
 
-def patched_text(path, parcels, commands):
+def format_sculpt(strokes):
+    if not strokes:
+        return "[]"
+    lines = []
+    for s in strokes:
+        head = ", ".join(f'"{k}": {dump(v)}' for k, v in s.items() if k != "points")
+        lines.append(f"    {{ {head},\n      \"points\": {dump(s['points'])} }}")
+    return "[\n" + ",\n".join(lines) + "\n  ]"
+
+
+SCULPT_COMMENT = ("  // Hand-made terrain changes from tools/scenario-editor (raise / lower / paint strokes), applied in order to the\n"
+                  "  // generated terrain before the structures' pads.\n")
+
+
+def patched_text(path, parcels, commands, sculpt):
     text = path.read_text()
+    if find_top_level_value(text, "terrainSculpt") is None:
+        if not sculpt:
+            sculpt = None
+        else:  # first strokes: add the block right after "terrain"
+            span = find_top_level_value(text, "terrain")
+            if span is None:
+                raise ValueError('scenario has no top-level "terrain" block')
+            text = text[:span[1]] + ',\n' + SCULPT_COMMENT + '  "terrainSculpt": []' + text[span[1]:]
     # Replace from the back so the first range stays valid.
     edits = []
-    for key, value in (("parcels", format_parcels(parcels)), ("commands", format_commands(commands))):
+    blocks = [("parcels", format_parcels(parcels)), ("commands", format_commands(commands))]
+    if sculpt is not None:
+        blocks.append(("terrainSculpt", format_sculpt(sculpt)))
+    for key, value in blocks:
         span = find_top_level_value(text, key)
         if span is None:
             raise ValueError(f'scenario has no top-level "{key}" block')
@@ -237,8 +263,19 @@ class Handler(BaseHTTPRequestHandler):
                     "sizeMeters": data.get("terrain", {}).get("sizeMeters", 1000),
                     "parcels": data.get("parcels", []),
                     "commands": data.get("commands", []),
+                    "terrainSculpt": data.get("terrainSculpt", []),
                     "liftTypes": lift_types,
                 })
+            elif url.path == "/api/raw":
+                raw = OUT / f"{self.scenario.stem}_raw.bin"
+                with lock:
+                    if not raw.exists() or "fresh" in q:
+                        OUT.mkdir(parents=True, exist_ok=True)
+                        args = [DOTNET, *RUNNER, "terrain", "--scenario", str(self.scenario), "--raw", str(raw)]
+                        proc = subprocess.run(args, cwd=ROOT, capture_output=True, text=True)
+                        if proc.returncode != 0:
+                            raise RuntimeError(proc.stderr.strip() or proc.stdout.strip())
+                self.send(200, raw.read_bytes(), "application/octet-stream")
             elif url.path == "/api/map":
                 mode = q.get("mode", ["relief"])[0]
                 if mode not in ("relief", "slope", "surface"):
@@ -259,7 +296,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            text = patched_text(self.scenario, body["parcels"], body["commands"])
+            text = patched_text(self.scenario, body["parcels"], body["commands"], body.get("terrainSculpt", []))
             with lock:
                 if self.path == "/api/validate":
                     self.send(200, validate(text, self.scenario))

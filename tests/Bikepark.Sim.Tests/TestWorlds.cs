@@ -73,7 +73,7 @@ internal static class TestWorlds
         return scenario;
     }
 
-    /// <summary>data/scripts/career_opening.json: restore the T-bar, hire two, plan two trails, buy the foot forest.</summary>
+    /// <summary>data/scripts/career_opening.json: restore the T-bar, hire two, plan two trails, try to buy the South slope.</summary>
     public static IReadOnlyList<TimedCommand> CareerOpening() =>
         JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(Path.Combine(RepoRoot(), "data", "scripts", "career_opening.json")), SimJson.Indented)!;
 

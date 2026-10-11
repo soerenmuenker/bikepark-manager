@@ -7,6 +7,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 
 - `src/Bikepark.Sim/` – simulation library (WorldState, Simulation tick loop, SimRandom, commands, events, save/load, scenarios, KPIs)
   - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks),
+    `TerrainSculpt` (`TerrainStroke`/`TerrainSculptor`: the scenario's hand-made raise / lower / paint strokes),
     `TerrainEdit`/`TerrainEditor` (stored flattened pads applied on top of the generated grid)
   - `Trails/` – `Way` (player-built access paths and trails), `WayGeometry` (integer spline, segments, rating),
     `WayPlanner` (validation, shared by command and preview), `WayNetwork` (derived graph, routing, corridors,
@@ -38,7 +39,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Systems/ParkSchedule.cs` – the daily timetable (opening hours, which guests, lifts and crew keep, then the last rides
     until the last rider is down; quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
-- `tools/scenario-editor/` – local browser editor for a scenario's parcels and tick-0 structures (Python stdlib server + one HTML page)
+- `tools/scenario-editor/` – local browser editor for a scenario's parcels, tick-0 structures and terrain sculpting (Python stdlib server + one HTML page)
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel`, drawn icons, theme in code),
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
@@ -64,18 +65,19 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json --daily [--auto-repair]
 # Terrain: top-down PNG maps + stats (use this to check terrain changes, no Godot needed)
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
-dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/demo_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json] [--bare]
+dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/demo_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json] [--bare] [--raw grid.bin]
 # (parcel borders are drawn too: owned at start teal, for sale yellow; --bare: terrain only)
 # Scenario map editor (browser, http://localhost:8765): drag/split/draw land parcels and move the tick-0 structures
-# (lift stations, parking lots, way points) on the terrain map; Validate runs the scenario commands, Save rewrites only
-# the scenario's "parcels" and "commands" blocks (comments elsewhere are kept)
+# (lift stations, parking lots, way points) on the terrain map; Terrain tab: raise / lower / paint-surface brushes
+# (same integer math as TerrainSculptor, live on the raw grid from `terrain --raw`); Validate runs the scenario commands,
+# Save rewrites only the scenario's "parcels", "commands" and "terrainSculpt" blocks (comments elsewhere are kept)
 python3 tools/scenario-editor/server.py data/scenarios/starter_valley.json
 # Reputation: the output's "reputation" block (stars overall/per group, demand parts, XP parts, level, influencer posts,
 # a log of influencer visits and level changes); --daily adds reviews, rating, demand, XP and level per day
 # Crashes: the output's "safety" block (crashes, serious, collisions, evacuations, average helicopter wait, insurance,
 # crossings found, a crash log) and per trail crashes / serious / collisions / per 1000 runs (crashes per feature in
 # featureConditions); --daily adds crashes, serious crashes and insurance per day
-# Career: the first weeks (restore the T-bar, two trails on the ski hill, buy the foot forest at level 2); the "land"
+# Career: the first weeks (restore the T-bar, two trails on the ski hill, try to buy the South slope (level 3)); the "land"
 # block lists parcels (owned / level / price), money spent on land and lifts, upkeep and a log; lifts show their status
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 20 --commands data/scripts/career_opening.json --daily
 # Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
@@ -113,7 +115,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
    self-contained. Unknown JSON fields are errors.
 9. **Derived data is never saved.** The terrain is regenerated from `WorldState.Terrain` (settings + seed) via
    `Simulation.Terrain` (lazy, cached in `TerrainCache`). Anything derived must be a pure function of `WorldState`;
-   future terrain edits must be stored as changes in `WorldState`, not by mutating the grid.
+   future terrain edits must be stored as changes in `WorldState`, not by mutating the grid. Order: generated →
+   `WorldState.TerrainSculpt` (scenario content; = `BaseTerrain`) → `TerrainEdits` (pads) = `Simulation.Terrain`.
 10. **Terrain generation is integer-only** (Q16 fixed point in `FixedMath`/`IntNoise`, heights in cm, slopes as
     grade permille). Changing the generator changes every map: check the 2D maps before and after.
 11. **Ways store only player input** (oriented, snapped control points + joins). Geometry, segments, ratings, the
