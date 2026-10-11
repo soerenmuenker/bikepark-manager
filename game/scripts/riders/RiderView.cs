@@ -28,7 +28,13 @@ public partial class RiderView : Node3D
     private SimHost _host = null!;
     private RtsCamera _camera = null!;
     private MultiMeshInstance3D _instances = null!;
-    private readonly Dictionary<int, (List<RouteLeg> Route, long Progress)> _previous = [];
+    /// <summary>
+    /// Each rider before the last step: their lap and progress, or no lap (<c>Route</c> null) while between laps. Riders
+    /// whose lap ended in the last step are still drawn riding to its end from here; a new lap is drawn from its start.
+    /// </summary>
+    private readonly Dictionary<int, Previous> _previous = [];
+
+    private readonly record struct Previous(List<RouteLeg>? Route, long Progress, RiderActivity Activity, Color Color);
     private readonly Dictionary<int, Vector3> _positions = [];
     private int _followId;
     private Vector3 _followPosition;
@@ -64,9 +70,16 @@ public partial class RiderView : Node3D
         AddChild(_instances);
         AddChild(new HelicopterView(_host, this));
         _host.BeforeStep += Snapshot;
+        _host.SimulationReplaced += OnSimulationReplaced;
     }
 
-    public override void _ExitTree() => _host.BeforeStep -= Snapshot;
+    public override void _ExitTree()
+    {
+        _host.BeforeStep -= Snapshot;
+        _host.SimulationReplaced -= OnSimulationReplaced;
+    }
+
+    private void OnSimulationReplaced(Simulation sim) => _previous.Clear();
 
     public override void _UnhandledInput(InputEvent @event)
     {
@@ -134,8 +147,12 @@ public partial class RiderView : Node3D
     {
         _previous.Clear();
         foreach (var g in _host.Sim.State.Guests)
+        {
             if (IsOnNetwork(g))
-                _previous[g.Id] = (g.Route, g.RouteProgressCm);
+                _previous[g.Id] = new(g.Route, g.RouteProgressCm, g.Activity, Jersey(g));
+            else if (g.Activity is RiderActivity.Idle or RiderActivity.Eating)
+                _previous[g.Id] = new(null, 0, g.Activity, Jersey(g));
+        }
     }
 
     public override void _Process(double delta)
@@ -164,14 +181,12 @@ public partial class RiderView : Node3D
             {
                 if (!queueIndex.TryGetValue(guest.Id, out var q) || LiftNetwork.Pad(sim.State, q.Lift.Valley.TerrainEditId) is not { } pad) continue;
                 position = LiftShapes.QueueSlot(pad, q.Index);
+                position.Y = sim.Terrain.HeightAt((long)(position.X * 100), (long)(position.Z * 100)) / 100f; // long queues reach past the pad
                 forward = LiftShapes.Forward(pad);
             }
             else
             {
-                long progress = guest.RouteProgressCm;
-                if (_previous.TryGetValue(guest.Id, out var prev) && ReferenceEquals(prev.Route, guest.Route))
-                    progress = prev.Progress + (long)((guest.RouteProgressCm - prev.Progress) * alpha);
-                if (!TryLocate(sim, network, guest.Route, progress, out position, out forward)) continue;
+                if (!TryLocate(sim, network, guest.Route, Progress(sim, guest, alpha), out position, out forward)) continue;
             }
 
             if (count >= mm.InstanceCount)
@@ -180,15 +195,29 @@ public partial class RiderView : Node3D
             if (guest.Activity == RiderActivity.Injured)
                 basis = new Basis(forward.Normalized(), Mathf.Pi / 2) * basis; // lying where they fell
             mm.SetInstanceTransform(count, new Transform3D(basis, position));
-            var jersey = guest.IsInfluencer ? InfluencerColor : SkillColor(guest.Skill);
             mm.SetInstanceColor(count, guest.Activity switch
             {
-                RiderActivity.Eating => jersey.Lerp(LunchTint, 0.6f),
+                RiderActivity.Eating => Jersey(guest).Lerp(LunchTint, 0.6f),
                 RiderActivity.Injured => InjuredColor,
-                _ when guest.Injury == InjurySeverity.Minor => jersey.Lerp(HurtTint, 0.6f),
-                _ => jersey,
+                _ => Jersey(guest),
             });
             _positions[guest.Id] = position;
+            count++;
+        }
+
+        // Riders whose lap ended in the last step (the sim has them between laps already, or gone home): they still ride
+        // the rest of the way to its end, instead of vanishing where the last step began.
+        foreach (var (id, prev) in _previous)
+        {
+            if (prev.Route is not { Count: > 0 } route || _positions.ContainsKey(id)) continue;
+            if (!FinishedLap(sim.State.Guests.FirstOrDefault(g => g.Id == id), prev)) continue;
+            long end = route.Sum(l => l.LengthCm);
+            if (!TryLocate(sim, network, route, prev.Progress + (long)((end - prev.Progress) * alpha), out var position, out var forward)) continue;
+            if (count >= mm.InstanceCount)
+                mm.InstanceCount = Math.Max(64, mm.InstanceCount * 2);
+            mm.SetInstanceTransform(count, new Transform3D(Basis.LookingAt(forward, Vector3.Up).Scaled(Vector3.One * ModelScale), position));
+            mm.SetInstanceColor(count, prev.Color);
+            if (sim.State.Guests.Any(g => g.Id == id)) _positions[id] = position;
             count++;
         }
         mm.VisibleInstanceCount = count;
@@ -206,6 +235,34 @@ public partial class RiderView : Node3D
             : $"Rider #{followed.Id} · skill {followed.Skill / 10} · {followed.Style} · {(followed.EntryWaitMs >= 0 ? "waiting to drop in" : followed.Activity)}" +
               (followed.TrailId != 0 ? $" → {network.FindWay(followed.TrailId)?.Name}" : "") +
               $" · energy {followed.Energy / 10}% · mood {followed.Happiness / 10}%";
+    }
+
+    /// <summary>
+    /// Route progress drawn this frame: between the last two steps. On a lift, riders move with their carrier: a rider who
+    /// boarded in the last step waits at the station until it leaves (the sim gives them its head start at once).
+    /// </summary>
+    private long Progress(Simulation sim, Guest guest, float alpha)
+    {
+        long current = guest.RouteProgressCm;
+        if (!_previous.TryGetValue(guest.Id, out var prev)) return current;
+        if (prev.Route is null)
+            return (long)(current * alpha); // a new lap from where the last one ended (or lunch was)
+        if (!ReferenceEquals(prev.Route, guest.Route)) return current;
+        if (guest.Activity == RiderActivity.OnLift && guest.Route[Math.Clamp(guest.LegIndex, 0, guest.Route.Count - 1)] is { Kind: LegKind.Lift } leg
+            && sim.State.Lifts.FirstOrDefault(l => l.Id == leg.WayId) is { } lift && LiftNetwork.FindType(sim.State, lift.TypeId) is { } type)
+            return Math.Max(prev.Progress, current - (long)((1f - alpha) * type.SpeedCmPerS * 60));
+        return prev.Progress + (long)((current - prev.Progress) * alpha);
+    }
+
+    /// <summary>The rider (null: gone home) finished their run in the last step, at the end of their lap.</summary>
+    private static bool FinishedLap(Guest? guest, Previous prev) =>
+        prev.Activity == RiderActivity.Descending
+        && (guest is null || guest.Activity == RiderActivity.Idle && guest.LocationHubId == 0 && guest.LocationWayId == prev.Route![^1].WayId);
+
+    private static Color Jersey(Guest guest)
+    {
+        var jersey = guest.IsInfluencer ? InfluencerColor : SkillColor(guest.Skill);
+        return guest.Injury == InjurySeverity.Minor ? jersey.Lerp(HurtTint, 0.6f) : jersey;
     }
 
     private static bool IsOnNetwork(Guest g) =>

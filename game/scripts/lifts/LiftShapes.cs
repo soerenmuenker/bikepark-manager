@@ -30,13 +30,17 @@ internal static class LiftShapes
         return Center(valley, CableHeight).Lerp(Center(mountain, CableHeight), Mathf.Clamp(t, 0f, 1f)) + right;
     }
 
-    /// <summary>Where the <paramref name="index"/>-th rider in the queue stands: rows of four behind the valley station.</summary>
+    /// <summary>
+    /// Where the <paramref name="index"/>-th rider in the queue stands: rows of four in the up rope's lane, starting just
+    /// behind the boarding point (the station centre) and growing away from the line (past the pad for long queues), so
+    /// carriers and towed riders never pass through it. The height is the platform's.
+    /// </summary>
     public static Vector3 QueueSlot(TerrainPad valley, int index)
     {
         var back = -Forward(valley);
         var right = Right(valley);
-        float along = valley.HalfLengthCm / 100f - 4f - index / 4 * 1.3f;
+        float along = 2f + index / 4 * 1.3f;
         float across = (index % 4 - 1.5f) * 1.2f + RopeOffset;
-        return Center(valley, 0.05f) - back * along + right * across;
+        return Center(valley, 0.05f) + back * along + right * across;
     }
 }

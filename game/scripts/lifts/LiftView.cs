@@ -43,6 +43,12 @@ public partial class LiftView : Node3D
     private bool _dirty = true;
     private int _carsShown = -1;
 
+    /// <summary>
+    /// Each lift's dispatch state before the last step and whether it ran in it. Riders are drawn between the last two
+    /// steps, so carriers are too: from here, moving on through the step only if the lift ran.
+    /// </summary>
+    private readonly Dictionary<int, (int RemainderMs, long Dispatched, bool Ran)> _previous = [];
+
     public override void _Ready()
     {
         _host = GetNode<SimHost>(SimHostPath);
@@ -57,17 +63,28 @@ public partial class LiftView : Node3D
         _cars = Instances("Cars", CarMesh());
         _terrain.TerrainBuilt += _ => _dirty = true;
         _host.SimulationReplaced += OnSimulationReplaced;
+        _host.BeforeStep += Snapshot;
         OnSimulationReplaced(_host.Sim);
+    }
+
+    private void Snapshot()
+    {
+        _previous.Clear();
+        var state = _host.Sim.State;
+        foreach (var lift in state.Lifts)
+            _previous[lift.Id] = (lift.DispatchRemainderMs, lift.CarriersDispatched, ParkSchedule.LiftRunning(state, lift, state.Tick));
     }
 
     public override void _ExitTree()
     {
         _host.SimulationReplaced -= OnSimulationReplaced;
+        _host.BeforeStep -= Snapshot;
         foreach (var s in _subscriptions) s.Dispose();
     }
 
     private void OnSimulationReplaced(Simulation sim)
     {
+        _previous.Clear();
         foreach (var s in _subscriptions) s.Dispose();
         _subscriptions.Clear();
         _subscriptions.Add(sim.Events.Subscribe<LiftBuilt>(_ => _dirty = true));
@@ -287,18 +304,22 @@ public partial class LiftView : Node3D
         foreach (var lift in state.Lifts)
         {
             if (!lift.InService) continue; // rusty or with the contractor: no carriers on the rope
-            float alpha = ParkSchedule.LiftRunning(state, lift, state.Tick) ? _host.InterpolationAlpha : 0f;
             var type = LiftNetwork.FindType(state, lift.TypeId);
             var valley = LiftNetwork.Pad(state, lift.Valley.TerrainEditId);
             var mountain = LiftNetwork.Pad(state, lift.Mountain.TerrainEditId);
-            if (type is null || valley is null || mountain is null) continue;
+            if (type is null || valley is null || mountain is null || type.SpeedCmPerS <= 0 || type.IntervalSeconds <= 0) continue;
 
             float length = LiftMath.Line(valley, mountain).LengthCm / 100f;
             float spacing = type.SpeedCmPerS / 100f * type.IntervalSeconds;
-            int perSide = Math.Max(1, (int)(length / spacing));
-            // Distance the newest cabin has travelled since it left the valley station.
-            float intervalMs = type.IntervalSeconds * 1000f;
-            float sinceDispatch = (alpha * 60_000f + lift.DispatchRemainderMs) % intervalMs / 1000f * type.SpeedCmPerS / 100f;
+            // Time since the newest carrier left the valley station, in the sim's carrier sequence: from the state before
+            // the last step (no step yet: the current state, standing still, as the riders are drawn).
+            var (remainderMs, dispatched, ran) = _previous.TryGetValue(lift.Id, out var before)
+                ? before
+                : (lift.DispatchRemainderMs, lift.CarriersDispatched, false);
+            int intervalMs = type.IntervalSeconds * 1000;
+            long elapsedMs = remainderMs + (ran ? (long)(_host.InterpolationAlpha * 60_000f) : 0);
+            long newest = dispatched - 1 + elapsedMs / intervalMs;
+            float sinceDispatch = elapsedMs % intervalMs / 1000f * type.SpeedCmPerS / 100f;
             var basis = Basis.LookingAt(LiftShapes.Forward(valley), Vector3.Up);
 
             // T-bar: riders being pulled up, each on their own hanger reaching down to them (where the rider is drawn).
@@ -321,14 +342,13 @@ public partial class LiftView : Node3D
                 }
             }
 
-            for (int j = 0; j < 2 * perSide; j++)
+            for (int j = 0; sinceDispatch + j * spacing < 2f * length; j++)
             {
                 float s = sinceDispatch + j * spacing; // along the loop: up the line, then back down
                 bool up = s <= length;
                 float t = up ? s / length : 2f - s / length;
-                if (t < 0f) continue;
                 var position = LiftShapes.OnRope(valley, mountain, t, up) + Vector3.Down * LiftShapes.CabinDrop;
-                bool bikes = LiftMath.IsBikeCarrier(lift.CarriersDispatched - 1 - j, lift.BikeCarrierPermille);
+                bool bikes = LiftMath.IsBikeCarrier(newest - j, lift.BikeCarrierPermille);
                 if (type.Kind == LiftKind.TBar)
                 {
                     // Empty hangers ride retracted; the ones carrying a rider are drawn with the rider above.
