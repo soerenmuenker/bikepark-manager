@@ -197,10 +197,12 @@ public partial class TrailEditTool : Node3D
         return network.Nearest(c.X, c.Z, radius) is { } n ? (n.WayId, n.DistanceCm) : null;
     }
 
-    /// <summary>The lift, parking lot or platform whose pad is under the cursor (0 m around it), or null.</summary>
+    /// <summary>The lift, parking lot, platform, bar or shop whose pad is under the cursor (0 m around it), or null.</summary>
     private int? HoverStructure()
     {
-        if (Cursor() is not { } c || _host.Sim.Network.HubAt(c.X, c.Z, 0) is not { } hub) return null;
+        if (Cursor() is not { } c) return null;
+        if (Bikepark.Sim.Facilities.FacilityMath.AtPoint(_host.Sim.State, c.X, c.Z) is { } facility) return facility.Id;
+        if (_host.Sim.Network.HubAt(c.X, c.Z, 0) is not { } hub) return null;
         int owner = StructureRemoval.OwnerOfHub(_host.Sim.State, hub.Id);
         return owner == 0 ? null : owner;
     }

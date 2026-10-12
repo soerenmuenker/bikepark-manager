@@ -86,6 +86,10 @@ internal static class TestWorlds
     public static IReadOnlyList<TimedCommand> DemoLiftNetwork() =>
         JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(Path.Combine(RepoRoot(), "data", "scripts", "demo_lift_network.json")), SimJson.Indented)!;
 
+    /// <summary>The Demo's valley snack bar and merch shop (data/scripts/demo_facilities.json), built at tick 0.</summary>
+    public static IReadOnlyList<TimedCommand> DemoFacilities() =>
+        JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(Path.Combine(RepoRoot(), "data", "scripts", "demo_facilities.json")), SimJson.Indented)!;
+
     /// <summary>A command script for the lift world: the demo trails plus bike access bookings.</summary>
     public static IReadOnlyList<TimedCommand> LiftScript() =>
     [
@@ -122,9 +126,9 @@ internal static class TestWorlds
         // Crew 12, 13; felling job 14 (forest east of the plateau).
         new(20, new HireCrewCommand()),
         new(20, new HireCrewCommand("Alex")),
-        new(20, new BuyToolCommand("chainsaw")),
-        new(20, new BuyToolCommand("chainsaw")), // rejected: already owned
         new(20, new FellTreesCommand(new PointCm(72_000, 52_000), 2_000)),
+        new(20, new BuyToolCommand("chainsaw")), // tools 15, 16: two of them
+        new(20, new BuyToolCommand("chainsaw")),
         new(30, new PrioritizeJobCommand(9)), // the drop: waits for wood, so the crew skips it
         new(30, new PrioritizeJobCommand(14)), // the felling first (it yields the drop's wood)
         new(700, new CancelJobCommand(14)), // trees cut so far stay cut
@@ -150,11 +154,12 @@ internal static class TestWorlds
         new(720, new RenameTrailCommand(1, "Gravel")), // rejected: a path
         new(720, new RenameTrailCommand(2, "Blue Groove")),
         new(720, new BuildPlatformCommand("", new PointCm(-100, 0), new PointCm(0, 0))), // rejected: off the map
-        // Loans: the starter loan (id 15, first installment at the end of day 6), once.
+        // Loans: the starter loan (id 17, first installment at the end of day 6), once.
         new(750, new TakeLoanCommand("starter")),
         new(750, new TakeLoanCommand("starter")), // rejected: already running
         new(750, new TakeLoanCommand("nowhere")), // rejected: unknown offer
         new(760, new RepayLoanCommand(99)), // rejected: no such loan
+        new(760, new BuildFacilityCommand("snack_bar", new PointCm(0, 0), new PointCm(100, 0))), // rejected: no such building here
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

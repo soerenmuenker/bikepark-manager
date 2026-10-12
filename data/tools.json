@@ -1,10 +1,15 @@
-// Tool catalog (ToolType). Copied into the world when a scenario starts. A tool is bought once (priceCents) and from
-// then on speeds up one kind of work for the whole crew: workType digging (trails, paths, dirt features), carpentry
-// (wood features) or felling (cutting trees). speedBonusPermille is added to the base speed of 1000; for each kind of
-// work only the best owned tool counts.
+// Tool catalog (ToolType). Copied into the world when a scenario starts. Tools are bought one at a time (priceCents)
+// and owned in numbers: each worker on a job uses one free tool of the job's kind of work, the best first (workType
+// digging: trails, paths, dirt and stone features; carpentry: wood features; felling: cutting trees). The worker
+// using it works speedBonusPermille faster than the base speed of 1000; workers without a tool work by hand. A tool
+// wears with every minute worked and is gone after lifeMinutes (a work day is 540 minutes). requiredLevel: the park
+// level needed to buy it.
 [
-  { "id": "shovel_set", "name": "Shovel & rake set", "workType": "digging", "priceCents": 150000, "speedBonusPermille": 250 },
-  { "id": "mini_excavator", "name": "Mini excavator", "workType": "digging", "priceCents": 1800000, "speedBonusPermille": 1000 },
-  { "id": "chainsaw", "name": "Chainsaw", "workType": "felling", "priceCents": 90000, "speedBonusPermille": 500 },
-  { "id": "cordless_kit", "name": "Cordless tool kit", "workType": "carpentry", "priceCents": 120000, "speedBonusPermille": 400 }
+  { "id": "shovel_set", "name": "Shovel & rake set", "workType": "digging", "priceCents": 15000, "speedBonusPermille": 250, "lifeMinutes": 10800, "requiredLevel": 0 },
+  { "id": "mini_excavator", "name": "Mini excavator", "workType": "digging", "priceCents": 1800000, "speedBonusPermille": 1000, "lifeMinutes": 54000, "requiredLevel": 2 },
+  { "id": "excavator", "name": "Excavator", "workType": "digging", "priceCents": 6000000, "speedBonusPermille": 2000, "lifeMinutes": 108000, "requiredLevel": 8 },
+  { "id": "chainsaw", "name": "Chainsaw", "workType": "felling", "priceCents": 90000, "speedBonusPermille": 500, "lifeMinutes": 8100, "requiredLevel": 0 },
+  { "id": "pro_chainsaw", "name": "Pro chainsaw", "workType": "felling", "priceCents": 250000, "speedBonusPermille": 900, "lifeMinutes": 16200, "requiredLevel": 4 },
+  { "id": "cordless_kit", "name": "Cordless tool kit", "workType": "carpentry", "priceCents": 120000, "speedBonusPermille": 400, "lifeMinutes": 10800, "requiredLevel": 0 },
+  { "id": "workshop_kit", "name": "Workshop kit", "workType": "carpentry", "priceCents": 600000, "speedBonusPermille": 900, "lifeMinutes": 21600, "requiredLevel": 5 }
 ]

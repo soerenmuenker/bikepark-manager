@@ -2,7 +2,7 @@ using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Crew;
 
-/// <summary>A worker. All workers are alike (same wage and speed); tools make the whole crew faster.</summary>
+/// <summary>A worker. All workers are alike (same wage and speed); a tool makes the worker using it faster.</summary>
 public sealed class CrewMember
 {
     public int Id { get; set; }

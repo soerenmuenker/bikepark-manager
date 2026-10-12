@@ -61,6 +61,12 @@ public sealed class ScenarioDefinition
 
     public int StartingWood { get; set; }
 
+    /// <summary>Bar and shop catalog file, relative to the scenario file; loaded into <see cref="FacilityTypes"/>.</summary>
+    public string? FacilityTypesFile { get; set; }
+
+    /// <summary>Bars and shops the park can build (inline, plus those from <see cref="FacilityTypesFile"/>).</summary>
+    public List<Facilities.FacilityType> FacilityTypes { get; set; } = [];
+
     public Reputation.ReputationRules ReputationRules { get; set; } = new();
 
     public Safety.CrashRules CrashRules { get; set; } = new();
@@ -100,8 +106,16 @@ public static class ScenarioLoader
             scenario.ToolTypes = [.. scenario.ToolTypes, .. LoadToolCatalog(Path.Combine(directory, tools))];
             scenario.ToolsFile = null;
         }
+        if (scenario.FacilityTypesFile is { Length: > 0 } facilities)
+        {
+            scenario.FacilityTypes = [.. scenario.FacilityTypes, .. LoadFacilityCatalog(Path.Combine(directory, facilities))];
+            scenario.FacilityTypesFile = null;
+        }
         return scenario;
     }
+
+    /// <summary>Loads a bar and shop catalog (<c>data/facility_types.json</c>).</summary>
+    public static List<Facilities.FacilityType> LoadFacilityCatalog(string path) => LoadCatalog<Facilities.FacilityType>(path, "Facility");
 
     /// <summary>Loads a trail feature catalog (<c>data/trail_features.json</c>).</summary>
     public static List<Trails.TrailFeatureType> LoadFeatureCatalog(string path) => LoadCatalog<Trails.TrailFeatureType>(path, "Trail feature");
@@ -138,6 +152,7 @@ public static class ScenarioLoader
             CrewRules = scenario.CrewRules,
             ToolTypes = scenario.ToolTypes,
             WoodStock = scenario.StartingWood,
+            FacilityTypes = scenario.FacilityTypes,
             ReputationRules = scenario.ReputationRules,
             CrashRules = scenario.CrashRules,
             Parcels = scenario.Parcels,
@@ -183,6 +198,9 @@ public static class ScenarioLoader
         foreach (var tool in s.ToolTypes) errors.AddRange(tool.Validate());
         if (s.ToolTypes.Select(t => t.Id).Distinct().Count() != s.ToolTypes.Count) errors.Add("toolTypes: ids must be unique");
         if (s.StartingWood < 0) errors.Add("startingWood must be >= 0");
+        if (s.FacilityTypesFile is { Length: > 0 }) errors.Add("facilityTypesFile can only be resolved when loading from a file");
+        foreach (var type in s.FacilityTypes) errors.AddRange(type.Validate());
+        if (s.FacilityTypes.Select(t => t.Id).Distinct().Count() != s.FacilityTypes.Count) errors.Add("facilityTypes: ids must be unique");
         errors.AddRange(s.ReputationRules.Validate());
         errors.AddRange(s.CrashRules.Validate());
         errors.AddRange(s.LoanRules.Validate());

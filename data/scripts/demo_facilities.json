@@ -1,0 +1,8 @@
+// The Demo's snack bar and merch shop next to the gondola's valley station (lunch and snacks need a bar in scenarios
+// with bars). Queued after demo_lift_network.json by the game's Demo; add it with --commands in the SimRunner.
+[
+  { "tick": 0, "command": { "type": "buildFacility", "typeId": "snack_bar", "name": "Valley Snack Bar", "origin": "scenario",
+    "center": {"x": 17500, "z": 83000}, "toward": {"x": 18500, "z": 83000} } },
+  { "tick": 0, "command": { "type": "buildFacility", "typeId": "merch_shop", "name": "Valley Shop", "origin": "scenario",
+    "center": {"x": 19500, "z": 89500}, "toward": {"x": 20500, "z": 89500} } }
+]

@@ -51,12 +51,36 @@ public static class WorkCosts
     /// <summary>Work one worker does per minute, in permille crew-minutes: base speed plus the best owned tool for it.</summary>
     public static int SpeedPermille(WorldState state, WorkType type)
     {
-        int bonus = 0;
-        foreach (string id in state.OwnedToolIds)
-            if (state.ToolTypes.FirstOrDefault(t => t.Id == id) is { } tool && tool.WorkType == type)
-                bonus = Math.Max(bonus, tool.SpeedBonusPermille);
-        return BaseSpeedPermille + bonus;
+        var tools = ToolsFor(state, type);
+        return BaseSpeedPermille + (tools.Count > 0 ? tools[0].Type.SpeedBonusPermille : 0);
     }
+
+    /// <summary>The park's tools for one kind of work, best first (then oldest first: lower id).</summary>
+    public static List<(OwnedTool Tool, ToolType Type)> ToolsFor(WorldState state, WorkType type)
+    {
+        var tools = new List<(OwnedTool, ToolType)>();
+        foreach (var tool in state.Tools)
+            if (state.ToolTypes.FirstOrDefault(t => t.Id == tool.TypeId) is { } toolType && toolType.WorkType == type)
+                tools.Add((tool, toolType));
+        return tools.OrderByDescending(t => t.Item2.SpeedBonusPermille).ThenBy(t => t.Item1.Id).ToList();
+    }
+
+    /// <summary>
+    /// Work <paramref name="workers"/> workers do together per minute on one kind of work, in permille crew-minutes,
+    /// if they get the best tools there are (for estimates; at work the tools are shared out over all jobs).
+    /// </summary>
+    public static long CrewSpeedPermille(WorldState state, WorkType type, int workers)
+    {
+        var tools = ToolsFor(state, type);
+        long speed = 0;
+        for (int i = 0; i < workers; i++)
+            speed += BaseSpeedPermille + (i < tools.Count ? tools[i].Type.SpeedBonusPermille : 0);
+        return speed;
+    }
+
+    /// <summary>How worn a tool is: 1000 = new, 0 = worn out (always 1000 for tools that last forever).</summary>
+    public static int ConditionPermille(ToolType type, OwnedTool tool) =>
+        type.LifeMinutes <= 0 ? 1000 : (int)Math.Clamp(1000 - tool.MinutesUsed * 1000 / type.LifeMinutes, 0, 1000);
 
     /// <summary>All of a job's work in crew-minutes at base speed (felling plus main work).</summary>
     public static long TotalMinutes(CrewRules crew, Job job) => FellMinutes(crew, job.Trees.Count) + job.WorkMinutes;

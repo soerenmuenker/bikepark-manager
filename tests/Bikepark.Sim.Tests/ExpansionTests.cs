@@ -187,7 +187,7 @@ public class ExpansionTests
     /// crosses the T-bar track a few times (<see cref="OldPiste"/>) instead of the script's line east of it.
     /// </summary>
     private static IEnumerable<TimedCommand> OpeningBuiltAtOnce(bool zigzag = false) =>
-        TestWorlds.CareerOpening().Select(c => c.Command is BuildWayCommand build
+        TestWorlds.CareerOpening().Where(c => c.Command is not BuildFacilityCommand).Select(c => c.Command is BuildWayCommand build
             ? c with { Command = (zigzag && build.Name == "Old Piste" ? OldPiste() : build) with { Instant = true } }
             : c);
 
@@ -258,7 +258,9 @@ public class ExpansionTests
         {
             sim.Step();
             sim.Events.Dispatch();
-            foreach (var c in crashes.Where(c => c.Tick == sim.State.Tick - 1 && c.LiftId == SkiLift))
+            // A towed rider hit by a trail rider still at the crossing (a trail rider already past it goes on unhurt).
+            foreach (var c in crashes.Where(c => c.Tick == sim.State.Tick - 1 && c.LiftId == SkiLift
+                                                 && crashes.Any(o => o.Tick == c.Tick && o.GuestId != c.GuestId && o.WayId == c.WayId)))
             {
                 towedVictims.Add(c.GuestId);
                 if (sim.State.Guests.FirstOrDefault(g => g.Id == c.GuestId) is { Route.Count: > 0 } g)

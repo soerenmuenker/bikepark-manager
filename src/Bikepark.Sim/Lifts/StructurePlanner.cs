@@ -143,6 +143,43 @@ public static class StructurePlanner
         return new ParkingPlan { Pad = pad, LiftId = liftId, Issues = issues };
     }
 
+    /// <summary>
+    /// A bar or shop centred at <paramref name="center"/>, its length pointing towards <paramref name="toward"/>: on the
+    /// park's land, within reach of a valley station (whose base it serves). <see cref="ParkingPlan.LiftId"/> is that lift.
+    /// </summary>
+    public static ParkingPlan PlanFacility(TerrainGrid grid, WayNetwork network, WorldState state, string typeId, PointCm center, PointCm toward,
+        bool scenario = false)
+    {
+        var issues = new List<WayIssue>();
+        if (Facilities.FacilityMath.FindType(state, typeId) is not { } type)
+            return new ParkingPlan { Issues = [Error("unknownType", $"Unknown building '{typeId}'.")] };
+        if (!grid.Contains(center.X, center.Z))
+            return new ParkingPlan { Issues = [Error("outsideMap", $"The {type.Name.ToLowerInvariant()} must be on the map.")] };
+        var rules = state.LiftRules;
+        var (dirX, dirZ) = TerrainPad.Direction(toward.X - center.X, toward.Z - center.Z);
+        var pad = MakePad(grid, rules, center, type.LengthMeters, type.WidthMeters, dirX, dirZ);
+        CheckPad(grid, network, state, rules, pad, type.Name, issues, checkLand: !scenario);
+        int liftId = NearestValleyStation(state, pad, rules.StationReachMeters * 100L);
+        if (liftId == 0)
+            issues.Add(Error("noStation", $"Place it within {rules.StationReachMeters} m of a valley station: it serves the guests at that lift's base."));
+        return new ParkingPlan { Pad = pad, LiftId = liftId, Issues = issues };
+    }
+
+    /// <summary>The lift whose valley station is nearest the pad, within <paramref name="reachCm"/> (0: none).</summary>
+    private static int NearestValleyStation(WorldState state, TerrainPad pad, long reachCm)
+    {
+        int liftId = 0;
+        long best = long.MaxValue;
+        foreach (var lift in state.Lifts)
+        {
+            var station = LiftNetwork.Pad(state, lift.Valley.TerrainEditId);
+            if (station is null) continue;
+            long d = pad.Corners().Append(new PointCm(pad.CenterX, pad.CenterZ)).Min(p => station.DistanceOutside(p.X, p.Z));
+            if (d < best) { best = d; liftId = lift.Id; }
+        }
+        return best <= reachCm ? liftId : 0;
+    }
+
     /// <summary>Side of a gravel platform (square).</summary>
     public const int PlatformMeters = 12;
 

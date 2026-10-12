@@ -1,4 +1,5 @@
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Facilities;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reputation;
@@ -194,6 +195,8 @@ internal sealed class GuestSystem : ISimSystem
                 stats.SumExitHappiness += guest.Happiness;
                 if (reason == GuestLeaveReason.Unhappy)
                     stats.TotalLeftUnhappy++;
+                if (reason is not (GuestLeaveReason.Evacuated or GuestLeaveReason.Injured))
+                    BuyMerch(ctx, guest);
                 ctx.Publish(new GuestLeft(ctx.Tick, guest.Id, reason));
                 ReputationSystem.Review(ctx, guest);
             }
@@ -203,6 +206,55 @@ internal sealed class GuestSystem : ISimSystem
                 LiftSystem.LeaveQueue(state, guest);
         }
         guests.RemoveRange(write, guests.Count - write);
+    }
+
+    /// <summary>
+    /// Between laps a guest now and then buys a snack: at a bar at their base (scenarios with bars), or anywhere at the
+    /// park's snack price (scenarios without).
+    /// </summary>
+    private static void TrySnack(SimContext ctx, Guest guest)
+    {
+        var state = ctx.State;
+        if (!FacilityMath.BarsNeeded(state))
+        {
+            if (guest.CashCents < state.Rules.SnackPriceCents || !ctx.Rng.ChancePermille(SnackChancePermille)) return;
+            guest.CashCents -= state.Rules.SnackPriceCents;
+            state.Finance.Earn(state.Rules.SnackPriceCents);
+            guest.Happiness += SnackHappinessBoost;
+            return;
+        }
+        var bar = FacilityMath.At(state, FacilityMath.BaseLiftOf(state, ctx.Network, guest), FacilityKind.Bar).FirstOrDefault();
+        if (bar.Facility is null || bar.Type.SnackPriceCents <= 0 || guest.CashCents < bar.Type.SnackPriceCents) return;
+        if (!ctx.Rng.ChancePermille(SnackChancePermille)) return;
+        FacilityMath.Sell(state, bar.Facility, guest, bar.Type.SnackPriceCents);
+        state.Finance.TotalSnackCents += bar.Type.SnackPriceCents;
+        state.Finance.FoodTodayCents += bar.Type.SnackPriceCents;
+        guest.Happiness += SnackHappinessBoost;
+    }
+
+    /// <summary>
+    /// A guest going home passes the shop at their base (or the arrival base) and buys something with the shop's chance,
+    /// scaled by their mood. The goods cost the park <see cref="FacilityType.MerchCostPermille"/> of the price.
+    /// </summary>
+    private static void BuyMerch(SimContext ctx, Guest guest)
+    {
+        var state = ctx.State;
+        if (state.Facilities.Count == 0) return;
+        int liftId = FacilityMath.BaseLiftOf(state, ctx.Network, guest);
+        if (liftId == 0 && ctx.Network.BaseHub is { } hub)
+            liftId = state.ParkingLots.FirstOrDefault(p => p.Id == hub.Id)?.LiftId ?? state.Lifts.FirstOrDefault(l => l.Valley.Id == hub.Id)?.Id ?? 0;
+        var shop = FacilityMath.At(state, liftId, FacilityKind.Shop).FirstOrDefault();
+        if (shop.Facility is null || guest.CashCents < shop.Type.MerchPriceCents || shop.Type.MerchPriceCents <= 0) return;
+        if (!ctx.Rng.ChancePermille(shop.Type.BuyChancePermille * Math.Clamp(guest.Happiness, 0, 1000) / 1000)) return;
+        long price = shop.Type.MerchPriceCents;
+        FacilityMath.Sell(state, shop.Facility, guest, price);
+        shop.Facility.Customers++;
+        state.Finance.TotalMerchCents += price;
+        state.Finance.MerchTodayCents += price;
+        long cost = price * shop.Type.MerchCostPermille / 1000;
+        state.Finance.Spend(cost);
+        state.Finance.TotalMerchCostCents += cost;
+        ctx.Publish(new MerchSold(ctx.Tick, guest.Id, shop.Facility.Id, price));
     }
 
     /// <summary>On a lift whose cabins keep riders dry (T-bars and chairlifts don't).</summary>
@@ -238,12 +290,8 @@ internal sealed class GuestSystem : ISimSystem
             guest.QueueMinutes++;
         }
 
-        if (!onTheWay && guest.CashCents >= rules.SnackPriceCents && ctx.Rng.ChancePermille(SnackChancePermille))
-        {
-            guest.CashCents -= rules.SnackPriceCents;
-            ctx.State.Finance.Earn(rules.SnackPriceCents);
-            guest.Happiness += SnackHappinessBoost;
-        }
+        if (!onTheWay)
+            TrySnack(ctx, guest);
 
         guest.Happiness = Math.Clamp(guest.Happiness, 0, 1000);
 
@@ -262,7 +310,7 @@ internal sealed class GuestSystem : ISimSystem
 }
 
 /// <summary>
-/// Charges daily upkeep, crew wages and the bike access fees of lifts run by lift companies (the tier in effect that
+/// Charges daily upkeep, trail and feature upkeep, crew wages and the bike access fees of lifts run by lift companies (the tier in effect that
 /// day), and closes the books at the last minute of each day: days in the red are counted towards bankruptcy.
 /// </summary>
 internal sealed class FinanceSystem : ISimSystem
@@ -280,6 +328,19 @@ internal sealed class FinanceSystem : ISimSystem
             state.Finance.Spend(wages);
             state.Finance.TotalWagesCents += wages;
             state.Finance.WagesTodayCents += wages;
+        }
+        long facilityUpkeep = state.Facilities.Sum(f => FacilityMath.FindType(state, f.TypeId)?.UpkeepPerDayCents ?? 0);
+        if (facilityUpkeep > 0)
+        {
+            state.Finance.Spend(facilityUpkeep);
+            state.Finance.TotalFacilityUpkeepCents += facilityUpkeep;
+        }
+        long trailUpkeep = Trails.TrailFeatures.DailyUpkeepCents(state, ctx.Network);
+        if (trailUpkeep > 0)
+        {
+            state.Finance.Spend(trailUpkeep);
+            state.Finance.TotalTrailUpkeepCents += trailUpkeep;
+            state.Finance.TrailUpkeepTodayCents += trailUpkeep;
         }
         foreach (var lift in state.Lifts)
         {
@@ -324,7 +385,11 @@ internal sealed class FinanceSystem : ISimSystem
             LiftTicketsCents: state.Finance.LiftTicketsTodayCents,
             LoanPaymentsCents: state.Finance.LoanPaymentsTodayCents,
             DebtCents: Banking.LoanMath.DebtCents(state),
-            DaysInDebt: CountDebtDays(ctx));
+            DaysInDebt: CountDebtDays(ctx),
+            TrailUpkeepCents: state.Finance.TrailUpkeepTodayCents,
+            FoodCents: state.Finance.FoodTodayCents,
+            MerchCents: state.Finance.MerchTodayCents,
+            FacilityUpkeepCents: facilityUpkeep);
         ctx.Publish(new DayEnded(ctx.Tick, report));
         state.DayHistory.Add(report);
         if (state.DayHistory.Count > WorldState.DayHistoryDays)
@@ -340,6 +405,11 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.LiftFeesTodayCents = 0;
         state.Finance.LiftTicketsTodayCents = 0;
         state.Finance.LoanPaymentsTodayCents = 0;
+        state.Finance.TrailUpkeepTodayCents = 0;
+        state.Finance.FoodTodayCents = 0;
+        state.Finance.MerchTodayCents = 0;
+        foreach (var facility in state.Facilities)
+            facility.RevenueTodayCents = 0;
         state.Finance.WagesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
         state.Reputation.ReviewsToday = 0;

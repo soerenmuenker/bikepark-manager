@@ -96,6 +96,7 @@ public partial class LiftView : Node3D
         _subscriptions.Add(sim.Events.Subscribe<PlatformBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<PlatformDeleted>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<StructureRenaturalized>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<FacilityBuilt>(_ => _dirty = true));
         _dirty = true;
     }
 
@@ -134,6 +135,15 @@ public partial class LiftView : Node3D
             if (LiftNetwork.Pad(state, platform.TerrainEditId) is not { } pad) continue;
             AddMesh(Surface(pad, Gravel), platform.Name);
             AddLabel(platform.Name, LiftShapes.Center(pad, 5f));
+        }
+
+        foreach (var facility in state.Facilities)
+        {
+            if (LiftNetwork.Pad(state, facility.TerrainEditId) is not { } pad) continue;
+            var type = Bikepark.Sim.Facilities.FacilityMath.FindType(state, facility.TypeId);
+            AddMesh(Surface(pad, Gravel), $"{facility.Name} terrace");
+            AddMesh(Building(pad, type?.Kind ?? Bikepark.Sim.Facilities.FacilityKind.Shop), facility.Name);
+            AddLabel(facility.Name, LiftShapes.Center(pad, 7f));
         }
 
         foreach (var lift in state.Lifts)
@@ -185,6 +195,46 @@ public partial class LiftView : Node3D
     /// Placeholder station: a hall over the rope end with a bull-wheel housing on top (gondola, chairlift), or a small
     /// hut next to an open bull-wheel frame (T-bar).
     /// </summary>
+    /// <summary>
+    /// A bar (a wooden hut at the back, tables with umbrellas in front) or a shop (a white hut with a coloured awning),
+    /// filling the pad (local x along its length, z across).
+    /// </summary>
+    private static ArrayMesh Building(TerrainPad pad, Bikepark.Sim.Facilities.FacilityKind kind)
+    {
+        var b = new FlatMeshBuilder();
+        float l = pad.HalfLengthCm / 100f, w = pad.HalfWidthCm / 100f;
+        var wood = new Color(0.62f, 0.44f, 0.27f);
+        var roof = new Color(0.33f, 0.20f, 0.14f);
+        if (kind == Bikepark.Sim.Facilities.FacilityKind.Bar)
+        {
+            // Hut on the back half, counter facing the terrace.
+            b.Box(new Vector3(-l + 0.6f, 0, -w + 0.6f), new Vector3(-0.4f, 3.0f, w - 0.6f), wood);
+            b.Box(new Vector3(-l + 0.3f, 3.0f, -w + 0.3f), new Vector3(0.0f, 3.5f, w - 0.3f), roof);
+            b.Box(new Vector3(-0.4f, 0, -w + 1.2f), new Vector3(0.2f, 1.1f, w - 1.2f), roof);
+            var cloth = new[] { new Color(0.85f, 0.25f, 0.22f), new Color(0.95f, 0.85f, 0.35f), new Color(0.25f, 0.55f, 0.85f) };
+            int across = Math.Max(1, (int)((w * 2 - 2) / 3.2f));
+            int along = Math.Max(1, (int)((l - 1.5f) / 3.2f));
+            for (int i = 0; i < along; i++)
+                for (int j = 0; j < across; j++)
+                {
+                    float x = 1.8f + i * 3.2f, z = -w + 1.6f + j * 3.2f + (w * 2 - 2 - across * 3.2f) / 2 + 0.6f;
+                    if (x > l - 0.8f) continue;
+                    b.Box(new Vector3(x - 0.5f, 0.7f, z - 0.5f), new Vector3(x + 0.5f, 0.8f, z + 0.5f), wood); // table top
+                    b.Box(new Vector3(x - 0.07f, 0, z - 0.07f), new Vector3(x + 0.07f, 2.3f, z + 0.07f), roof); // pole
+                    b.Box(new Vector3(x - 1.1f, 2.3f, z - 1.1f), new Vector3(x + 1.1f, 2.45f, z + 1.1f), cloth[(i + j) % cloth.Length]);
+                }
+        }
+        else
+        {
+            b.Box(new Vector3(-l + 0.7f, 0, -w + 0.7f), new Vector3(l - 0.7f, 3.0f, w - 0.7f), new Color(0.90f, 0.88f, 0.82f));
+            b.Box(new Vector3(-l + 0.4f, 3.0f, -w + 0.4f), new Vector3(l - 0.4f, 3.4f, w - 0.4f), new Color(0.18f, 0.55f, 0.58f));
+            // Awning over the front (local +x) and a sign on the roof.
+            b.Box(new Vector3(l - 0.7f, 2.2f, -w + 0.9f), new Vector3(l + 0.4f, 2.35f, w - 0.9f), new Color(0.95f, 0.45f, 0.20f));
+            b.Box(new Vector3(-0.8f, 3.4f, -w * 0.5f), new Vector3(0.8f, 4.4f, w * 0.5f), new Color(0.95f, 0.45f, 0.20f));
+        }
+        return Placed(b.ToMesh(), pad);
+    }
+
     private static ArrayMesh Station(TerrainPad pad, LiftKind kind, Func<Color, Color> tint)
     {
         var b = new FlatMeshBuilder();

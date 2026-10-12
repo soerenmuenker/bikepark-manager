@@ -209,9 +209,8 @@ internal sealed partial class RepairDialog : PanelContainer
         else
         {
             long minutes = WorkCosts.RepairMinutes(state.CrewRules, type, feature);
-            int speed = WorkCosts.SpeedPermille(state, WorkCosts.RepairWorkType(type));
-            long perWorker = Math.Max(1, minutes * 1000 / speed);
-            long minutesWithCrew = (perWorker + _workers - 1) / _workers;
+            long speed = WorkCosts.CrewSpeedPermille(state, WorkCosts.RepairWorkType(type), _workers);
+            long minutesWithCrew = Math.Max(1, (minutes * 1000 + speed - 1) / speed);
             detail = $"{HudContext.CrewTime(minutes)} · about {Duration(minutesWithCrew)} with {_workers} workers";
         }
         if (feature.Crashes > 0)

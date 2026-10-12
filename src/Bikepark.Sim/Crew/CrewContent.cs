@@ -15,7 +15,11 @@ public enum WorkType : byte
     Felling = 2,
 }
 
-/// <summary>A tool from <c>data/tools.json</c>, copied into the world. Owning it speeds up one kind of work for the whole crew.</summary>
+/// <summary>
+/// A tool from <c>data/tools.json</c>, copied into the world. The park owns tools in numbers (<see cref="OwnedTool"/>);
+/// each worker on a job uses one free tool of the job's kind of work, the best first, and is faster with it. Tools wear
+/// out with use.
+/// </summary>
 public sealed class ToolType
 {
     public string Id { get; set; } = "";
@@ -23,8 +27,14 @@ public sealed class ToolType
     public WorkType WorkType { get; set; }
     public long PriceCents { get; set; }
 
-    /// <summary>Added to the base speed of 1000 for this kind of work (the best owned tool counts).</summary>
+    /// <summary>Added to the base speed of 1000 for the worker using it.</summary>
     public int SpeedBonusPermille { get; set; }
+
+    /// <summary>Worked minutes until it is worn out and gone (0 = it lasts forever).</summary>
+    public int LifeMinutes { get; set; }
+
+    /// <summary>Park level needed to buy it (a sandbox has everything).</summary>
+    public int RequiredLevel { get; set; }
 
     public List<string> Validate()
     {
@@ -35,8 +45,21 @@ public sealed class ToolType
         if (!Enum.IsDefined(WorkType)) errors.Add($"{p}.workType is unknown");
         if (PriceCents < 0) errors.Add($"{p}.priceCents must be >= 0");
         if (SpeedBonusPermille is < 1 or > 5000) errors.Add($"{p}.speedBonusPermille must be within 1..5000");
+        if (LifeMinutes < 0) errors.Add($"{p}.lifeMinutes must be >= 0");
+        if (RequiredLevel is < 0 or > Reputation.ReputationRules.MaxLevel)
+            errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
         return errors;
     }
+}
+
+/// <summary>A tool the park owns.</summary>
+public sealed class OwnedTool
+{
+    public int Id { get; set; }
+    public string TypeId { get; set; } = "";
+
+    /// <summary>Minutes it has been worked with (worn out at <see cref="ToolType.LifeMinutes"/>).</summary>
+    public long MinutesUsed { get; set; }
 }
 
 /// <summary>Crew, work and wood tuning, loaded from the scenario and saved with the game. Work is in crew-minutes at base speed.</summary>

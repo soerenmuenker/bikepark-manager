@@ -65,7 +65,7 @@ public class DailyRhythmTests
         Assert.Equal(700, GuestArrivalSystem.ProfilePermille(profile, 825));
         Assert.Equal(0, GuestArrivalSystem.ProfilePermille(profile, 1000));
 
-        var sim = TestWorlds.RunLift(1337, 0, TestWorlds.DemoLiftNetwork());
+        var sim = TestWorlds.RunLift(1337, 0, [.. TestWorlds.DemoLiftNetwork(), .. TestWorlds.DemoFacilities()]);
         sim.State.ReputationRules.Enabled = false; // full demand, as in an established park
         sim.Events.Clear();
         var arrivals = new List<GuestArrived>();
@@ -82,7 +82,7 @@ public class DailyRhythmTests
     [Fact]
     public void Lunch_IsTakenOnceInTheWindow_PaidFor_AndDipsTheRiding()
     {
-        var sim = TestWorlds.RunLift(1337, 0, TestWorlds.DemoLiftNetwork());
+        var sim = TestWorlds.RunLift(1337, 0, [.. TestWorlds.DemoLiftNetwork(), .. TestWorlds.DemoFacilities()]);
         sim.State.ReputationRules.Enabled = false; // full demand, as in an established park
         sim.State.CrashRules.CollisionDistanceCm = 0; // the demo trails cross: nobody goes home hurt before lunch
         sim.Events.Clear();
@@ -112,7 +112,7 @@ public class DailyRhythmTests
     [Fact]
     public void Eating_RestoresEnergy_AndEndsAfterTheBreak()
     {
-        var sim = TestWorlds.RunLift(1337, 11 * 60, TestWorlds.DemoLiftNetwork());
+        var sim = TestWorlds.RunLift(1337, 11 * 60, [.. TestWorlds.DemoLiftNetwork(), .. TestWorlds.DemoFacilities()]);
         // Riders come in waves (nobody overtakes): wait for one between laps or in the queue.
         while (!sim.State.Guests.Any(Waiting) && GameTime.MinuteOfDay(sim.State.Tick) < 12 * 60)
             sim.Step();

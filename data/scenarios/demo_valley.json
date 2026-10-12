@@ -209,6 +209,7 @@
   "liftTypesFile": "../lift_types.json",
   "trailFeaturesFile": "../trail_features.json",
   "toolsFile": "../tools.json",
+  "facilityTypesFile": "../facility_types.json",
   // Crew and building (CrewRules). Planned ways and features are built by crew jobs during opening hours; work is in
   // crew-minutes at base speed. Trees in a planned way's corridor are felled first (each gives woodPerTree wood).
   "crewRules": {

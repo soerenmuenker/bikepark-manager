@@ -25,6 +25,9 @@ public partial class StructureTool : Node3D
 
         /// <summary>A small square gravel platform to connect paths and trails (click the centre, then a direction).</summary>
         Platform,
+
+        /// <summary>A bar or shop (<see cref="FacilityTypeId"/>) next to a valley station (click the centre, then a direction).</summary>
+        Facility,
     }
 
     [Export] public NodePath SimHostPath { get; set; } = "../SimHost";
@@ -34,6 +37,9 @@ public partial class StructureTool : Node3D
     /// <summary>The lift type the lift mode places (picked in the Build menu).</summary>
     [Export] public string LiftTypeId { get; set; } = "tbar";
     [Export] public int ParkingSpaces { get; set; } = 60;
+
+    /// <summary>The bar or shop the facility mode places (picked in the Build menu).</summary>
+    public string FacilityTypeId { get; set; } = "snack_bar";
 
     private SimHost _host = null!;
     private TerrainView _terrain = null!;
@@ -80,6 +86,8 @@ public partial class StructureTool : Node3D
             ToolMode.Lift => "Lift: click the valley station, then the top station",
             ToolMode.Parking => $"Parking lot ({ParkingSpaces} spaces): click the centre, then where it should point",
             ToolMode.Platform => "Gravel platform: click the centre, then where one side should point",
+            ToolMode.Facility => $"{Bikepark.Sim.Facilities.FacilityMath.FindType(_host.Sim.State, FacilityTypeId)?.Name ?? "Building"}: " +
+                                 "click the centre next to a valley station, then where its front should point",
             _ => "",
         };
     }
@@ -156,10 +164,14 @@ public partial class StructureTool : Node3D
         }
         else
         {
-            ParkingPlan = Mode == ToolMode.Platform
-                ? StructurePlanner.PlanPlatform(grid, sim.Network, sim.State, candidate[0], candidate[1])
-                : StructurePlanner.PlanParking(grid, sim.Network, sim.State, candidate[0], candidate[1], ParkingSpaces);
-            var color = ParkingPlan.IsValid ? new Color(0.2f, 1f, 0.4f) : new Color(1f, 0.25f, 0.2f);
+            ParkingPlan = Mode switch
+            {
+                ToolMode.Platform => StructurePlanner.PlanPlatform(grid, sim.Network, sim.State, candidate[0], candidate[1]),
+                ToolMode.Facility => StructurePlanner.PlanFacility(grid, sim.Network, sim.State, FacilityTypeId, candidate[0], candidate[1]),
+                _ => StructurePlanner.PlanParking(grid, sim.Network, sim.State, candidate[0], candidate[1], ParkingSpaces),
+            };
+            bool ok = ParkingPlan.IsValid && (Mode != ToolMode.Facility || FacilityLocked() is null);
+            var color = ok ? new Color(0.2f, 1f, 0.4f) : new Color(1f, 0.25f, 0.2f);
             if (ParkingPlan.Pad is { } pad)
             {
                 _mesh.SurfaceBegin(Mesh.PrimitiveType.Lines);
@@ -188,6 +200,17 @@ public partial class StructureTool : Node3D
                 ? $"Built a {plan.Type?.Name} ({plan.LengthCm / 100} m, {plan.RideSeconds / 60} min ride). Connect trails to its plateau."
                 : $"Ordered a {plan.Type?.Name} ({plan.LengthCm / 100} m): the contractor needs {plan.Type?.BuildDays} days. Connect trails to its plateau.";
         }
+        else if (Mode == ToolMode.Facility)
+        {
+            var plan = StructurePlanner.PlanFacility(grid, sim.Network, sim.State, FacilityTypeId, _points[0], _points[1]);
+            if (FacilityLocked() is { } locked) { Status = locked; return; }
+            if (!plan.IsValid) { Status = plan.FirstError ?? "Not valid."; return; }
+            // Debug instant build: free (built like scenario content).
+            _host.Enqueue(new BuildFacilityCommand(FacilityTypeId, _points[0], _points[1],
+                Origin: _host.InstantBuild ? WayOrigin.Scenario : WayOrigin.Player));
+            string? lift = sim.State.Lifts.FirstOrDefault(l => l.Id == plan.LiftId)?.Name;
+            Status = $"Built the {Bikepark.Sim.Facilities.FacilityMath.FindType(sim.State, FacilityTypeId)?.Name.ToLowerInvariant()}: it serves the guests at the base of {lift}.";
+        }
         else if (Mode == ToolMode.Platform)
         {
             var plan = StructurePlanner.PlanPlatform(grid, sim.Network, sim.State, _points[0], _points[1]);
@@ -211,6 +234,14 @@ public partial class StructureTool : Node3D
         var sim = _host.Sim;
         if (_host.InstantBuild || LiftNetwork.FindType(sim.State, LiftTypeId) is not { } type) return null;
         return LiftWorks.CannotBuild(sim.State, Bikepark.Sim.Reputation.ParkProgress.CurrentLevel(sim.State, sim.Network), type);
+    }
+
+    /// <summary>Why the chosen bar or shop can't be built now (level, money), or null; debug instant builds are never locked.</summary>
+    public string? FacilityLocked()
+    {
+        var sim = _host.Sim;
+        if (_host.InstantBuild || Bikepark.Sim.Facilities.FacilityMath.FindType(sim.State, FacilityTypeId) is not { } type) return null;
+        return Bikepark.Sim.Facilities.FacilityMath.CannotBuild(sim.State, Bikepark.Sim.Reputation.ParkProgress.CurrentLevel(sim.State, sim.Network), type);
     }
 
     private void Outline(TerrainPad pad, Color color)

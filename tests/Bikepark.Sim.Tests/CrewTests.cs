@@ -28,7 +28,7 @@ public class CrewTests
     public void ShippedContent_LoadsIntoStarterValley_AndValidates()
     {
         var state = ScenarioLoader.CreateWorld(TestWorlds.LiftScenario());
-        Assert.Equal(["shovel_set", "mini_excavator", "chainsaw", "cordless_kit"], state.ToolTypes.Select(t => t.Id));
+        Assert.Equal(["shovel_set", "mini_excavator", "excavator", "chainsaw", "pro_chainsaw", "cordless_kit", "workshop_kit"], state.ToolTypes.Select(t => t.Id));
         Assert.All(state.ToolTypes, t => Assert.Empty(t.Validate()));
         Assert.Empty(state.CrewRules.Validate());
         Assert.Equal(20, state.WoodStock);
@@ -372,8 +372,8 @@ public class CrewTests
         sim.Step();
         var reasons = sim.Events.Pending.OfType<CommandRejected>().Select(r => r.Reason).ToList();
         Assert.Equal(["Not enough money.", "Unknown tool 'drill'.", "Not enough money.", "Buy between 1 and 1000 wood."], reasons);
-        Assert.Equal(["shovel_set"], sim.State.OwnedToolIds);
-        Assert.Equal(1_000_000 - 150_000, sim.State.Finance.MoneyCents);
+        Assert.Equal(["shovel_set"], sim.State.Tools.Select(t => t.TypeId));
+        Assert.Equal(1_000_000 - 15_000, sim.State.Finance.MoneyCents);
         Assert.Equal(1250, WorkCosts.SpeedPermille(sim.State, WorkType.Digging));
         Assert.Equal(1000, WorkCosts.SpeedPermille(sim.State, WorkType.Carpentry));
     }
@@ -490,7 +490,7 @@ public class CrewTests
         sim.Step();
         var root = JsonNode.Parse(SaveGame.Serialize(sim.State))!.AsObject();
         var world = root["world"]!.AsObject();
-        foreach (string name in new[] { "crewRules", "toolTypes", "ownedToolIds", "crew", "jobs", "woodStock", "felledTrees", "crewStats" })
+        foreach (string name in new[] { "crewRules", "toolTypes", "tools", "crew", "jobs", "woodStock", "felledTrees", "crewStats" })
             Assert.True(world.Remove(name), name);
         foreach (var way in world["ways"]!.AsArray())
         {

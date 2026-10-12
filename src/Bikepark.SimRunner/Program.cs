@@ -133,6 +133,7 @@ public static class Program
             Safety: SafetyReport(sim, crashes),
             Land: LandReport(sim, landLog),
             Loans: LoansReport(sim, loanLog),
+            Facilities: FacilitiesReport(sim),
             Ways: WayReports(sim),
             Lifts: LiftReports(sim),
             Crew: CrewReport(sim, completed),
@@ -182,6 +183,18 @@ public static class Program
             state.Finance.TotalLandCents, state.Finance.TotalLiftBuildCents, state.Finance.TotalLiftUpkeepCents, log);
     }
 
+    private static FacilitiesReport? FacilitiesReport(Simulation sim)
+    {
+        var state = sim.State;
+        if (state.FacilityTypes.Count == 0) return null;
+        var f = state.Finance;
+        return new FacilitiesReport(
+            state.Facilities.Select(x => new FacilityReport(x.Id, x.Name, x.TypeId, state.Lifts.FirstOrDefault(l => l.Id == x.LiftId)?.Name,
+                x.Customers, x.TotalRevenueCents)).ToList(),
+            f.TotalFoodCents, f.TotalSnackCents, f.TotalMerchCents, f.TotalMerchCostCents, f.TotalFacilityBuildCents, f.TotalFacilityUpkeepCents,
+            f.TotalTrailUpkeepCents, state.Tools.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.Count()));
+    }
+
     private static LoansReport? LoansReport(Simulation sim, List<string> log)
     {
         var state = sim.State;
@@ -203,7 +216,7 @@ public static class Program
         return new SafetyReport(
             s.TotalCrashes, s.TotalSerious, s.TotalCollisions, s.Evacuations,
             s.Evacuations == 0 ? null : (int)(s.SumRescueMinutes / s.Evacuations),
-            s.TotalInsuranceCents, CrashMath.Premium(state.CrashRules, s),
+            s.TotalInsuranceCents, CrashMath.Premium(state.CrashRules, s, Bikepark.Sim.Trails.TrailFeatures.BuiltByRating(sim.Network)),
             sim.Network.Crossings.Select(c =>
                 $"{state.Ways.First(w => w.Id == c.WayA).Name} {c.CmA / 100} m x {state.Ways.First(w => w.Id == c.WayB).Name} {c.CmB / 100} m")
                 .Concat(state.Ways.SelectMany(w => sim.Network.TowCrossingsOn(w.Id).Select(t =>
@@ -292,7 +305,7 @@ public static class Program
         var rules = state.CrewRules;
         return new CrewReport(
             state.Crew.Count,
-            state.OwnedToolIds,
+            state.Tools.Select(t => t.TypeId).ToList(),
             state.WoodStock,
             stats.TreesFelled,
             stats.WoodFelled,
@@ -352,6 +365,11 @@ internal sealed record LiftReport(
     long? UpkeepPerDayCents);
 
 internal sealed record ParcelReport(string Id, string Name, bool Owned, int RequiredLevel, long PriceCents, long AreaSquareMeters);
+
+internal sealed record FacilityReport(int Id, string Name, string TypeId, string? ServesLift, int Customers, long RevenueCents);
+
+internal sealed record FacilitiesReport(List<FacilityReport> Buildings, long LunchCents, long SnackCents, long MerchCents, long MerchCostCents,
+    long BuildCents, long UpkeepCents, long TrailUpkeepCents, Dictionary<string, int> Tools);
 
 internal sealed record LoanOfferReport(string Id, string Name, long PrincipalCents, int Weeks, int InterestPermille,
     long InstallmentCents, long TotalRepayCents, int RequiredLevel, string? Locked);
@@ -457,6 +475,7 @@ internal sealed record RunnerOutput(
     SafetyReport? Safety,
     LandReport? Land,
     LoansReport? Loans,
+    FacilitiesReport? Facilities,
     List<WayReport> Ways,
     List<LiftReport> Lifts,
     CrewReport? Crew,

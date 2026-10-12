@@ -145,6 +145,9 @@ public sealed class TrailRules
 
     public int MaxFeaturesPerTrail { get; set; } = 40;
 
+    /// <summary>Daily upkeep per km of built trail (signs, drainage, keeping it clear); features add their own.</summary>
+    public long UpkeepCentsPerKm { get; set; }
+
     // Riders. Speeds in cm per second, energy on a 0..1000 scale.
     public int ClimbSpeedMinCmPerS { get; set; } = 110;
     public int ClimbSpeedMaxCmPerS { get; set; } = 300;
@@ -184,6 +187,7 @@ public sealed class TrailRules
                 errors.Add($"trailRules {name} gradients must satisfy 0 < steep <= max <= {Gradient.MaxTenths}");
         }
         if (PathCorridorCm <= 0 || TrailCorridorCm <= 0) errors.Add("trailRules corridor widths must be positive");
+        if (UpkeepCentsPerKm < 0) errors.Add("trailRules.upkeepCentsPerKm must be >= 0");
         if (FeatureStartMarginMeters < 0 || FeatureEndMarginMeters < 0 || FeatureGapMeters < 0 || MaxFeaturesPerTrail < 0)
             errors.Add("trailRules feature margins, gap and count must be >= 0");
         if (ClimbSpeedMinCmPerS <= 0 || ClimbSpeedMaxCmPerS < ClimbSpeedMinCmPerS) errors.Add("trailRules climb speeds are inconsistent");

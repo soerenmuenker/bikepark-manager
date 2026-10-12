@@ -5,9 +5,9 @@ using Bikepark.Sim.State;
 namespace Bikepark.Sim.Lifts;
 
 /// <summary>
-/// Renaturalizing structures: a lift the park owns, a parking lot or a gravel platform is removed at once and its pads
-/// go back to the natural ground. Lifts and parking lots are torn down by a contractor (paid at once, no waiting);
-/// platforms are free. Paths and trails that started or ended on the structure get a loose end there.
+/// Renaturalizing structures: a lift the park owns, a parking lot, a gravel platform, a bar or a shop is removed at once
+/// and its pads go back to the natural ground. Lifts, parking lots and buildings are torn down by a contractor (paid at
+/// once, no waiting); platforms are free. Paths and trails that started or ended on the structure get a loose end there.
 /// </summary>
 public static class StructureRemoval
 {
@@ -16,6 +16,8 @@ public static class StructureRemoval
         state.Lifts.FirstOrDefault(l => l.Id == id) is { } lift ? (lift.Name, LiftNetwork.FindType(state, lift.TypeId)?.Name ?? "lift")
         : state.ParkingLots.FirstOrDefault(p => p.Id == id) is { } lot ? (lot.Name, "parking lot")
         : state.Platforms.FirstOrDefault(p => p.Id == id) is { } platform ? (platform.Name, "gravel platform")
+        : state.Facilities.FirstOrDefault(f => f.Id == id) is { } facility
+            ? (facility.Name, Facilities.FacilityMath.FindType(state, facility.TypeId)?.Name.ToLowerInvariant() ?? "building")
         : null;
 
     /// <summary>The lift, parking lot or platform owning a network hub (a lift for either station), or 0.</summary>
@@ -33,17 +35,20 @@ public static class StructureRemoval
             return (LiftNetwork.FindType(state, lift.TypeId)?.BuildCostCents ?? 0) * rules.RemovalPermille / 1000;
         if (state.ParkingLots.FirstOrDefault(p => p.Id == id) is { } lot)
             return lot.Spaces * rules.ParkingRemovalCentsPerSpace;
+        if (state.Facilities.FirstOrDefault(f => f.Id == id) is { } facility)
+            return (Facilities.FacilityMath.FindType(state, facility.TypeId)?.BuildCostCents ?? 0) * rules.RemovalPermille / 1000;
         return 0;
     }
 
     /// <summary>Why it can't be renaturalized now, or null.</summary>
     public static string? CannotRemove(WorldState state, int id)
     {
-        if (Describe(state, id) is not { } info) return "No such lift, parking lot or platform.";
+        if (Describe(state, id) is not { } info) return "No such lift, parking lot, platform or building.";
         if (state.Lifts.FirstOrDefault(l => l.Id == id) is { } lift)
         {
             if (LiftNetwork.FindOperator(state, lift.OperatorId) is { } op) return $"{lift.Name} belongs to {op.Name}.";
             if (state.ParkingLots.FirstOrDefault(p => p.LiftId == id) is { } lot) return $"{lot.Name} serves {lift.Name}: renaturalize it first.";
+            if (state.Facilities.FirstOrDefault(f => f.LiftId == id) is { } building) return $"{building.Name} serves {lift.Name}: renaturalize it first.";
         }
         if (!PadsOwned(state, id)) return $"{info.Name} stands on land the park doesn't own.";
         long cost = CostCents(state, id);
@@ -66,6 +71,9 @@ public static class StructureRemoval
         }
         state.ParkingLots.RemoveAll(p => p.Id == id);
         state.Platforms.RemoveAll(p => p.Id == id);
+        state.Facilities.RemoveAll(f => f.Id == id);
+        foreach (var guest in state.Guests.Where(g => g.FacilityId == id))
+            guest.FacilityId = 0; // lunch goes on where they are
         state.TerrainEdits.RemoveAll(e => e.OwnerId == id);
         foreach (var way in state.Ways)
         {

@@ -53,6 +53,7 @@ public partial class SimHost : Node
     [Export] public string DemoNetworkFile { get; set; } = "data/scripts/demo_lift_network.json";
 
     [Export] public string DemoFeaturesFile { get; set; } = "data/scripts/demo_features.json";
+    [Export] public string DemoFacilitiesFile { get; set; } = "data/scripts/demo_facilities.json";
 
     [Export] public string DemoCrewFile { get; set; } = "data/scripts/demo_crew.json";
 
@@ -187,7 +188,8 @@ public partial class SimHost : Node
 
     /// <summary>
     /// Queues the demo trails from the plateau (data/scripts/demo_lift_network.json), built at once, or
-    /// <paramref name="planned"/> as crew jobs (debug: <c>--demo-planned</c>).
+    /// <paramref name="planned"/> as crew jobs (debug: <c>--demo-planned</c>), and the valley snack bar and shop
+    /// (data/scripts/demo_facilities.json).
     /// </summary>
     public void LoadDemoNetwork() => LoadDemoNetwork(planned: false);
 
@@ -195,6 +197,8 @@ public partial class SimHost : Node
     {
         foreach (var timed in ReadScript(DemoNetworkFile))
             Enqueue(planned && timed.Command is BuildWayCommand build ? build with { Instant = false } : timed.Command);
+        foreach (var timed in ReadScript(DemoFacilitiesFile))
+            Enqueue(timed.Command);
     }
 
     /// <summary>

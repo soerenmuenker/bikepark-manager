@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 6;
+    public const int CurrentVersion = 7;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -113,6 +113,25 @@ public static class SaveGame
                 foreach (string old in new[] { "xpPerTrailKm", "xpPerRating", "xpPerFeatureKind" })
                     rep.Remove(old);
             version = 6;
+        }
+
+        if (version == 6)
+        {
+            // v7: tools are owned in numbers and wear out: each owned tool id becomes one new tool.
+            if (root["world"] is JsonObject world)
+            {
+                var tools = new JsonArray();
+                if (world["ownedToolIds"] is JsonArray ids)
+                {
+                    int next = world["nextEntityId"]?.GetValue<int>() ?? 1;
+                    foreach (var id in ids)
+                        tools.Add(new JsonObject { ["id"] = next++, ["typeId"] = id?.GetValue<string>(), ["minutesUsed"] = 0 });
+                    world["nextEntityId"] = next;
+                }
+                world.Remove("ownedToolIds");
+                world["tools"] = tools;
+            }
+            version = 7;
         }
 
         root["version"] = version;

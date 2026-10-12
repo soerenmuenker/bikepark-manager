@@ -106,6 +106,9 @@ public sealed class CrashRules
     public long InsurancePerSeriousCents { get; set; } = 15_000;
     public int InsuranceDays { get; set; } = 7;
 
+    /// <summary>Added to the daily premium per built feature, by the feature's rating (big features, big claims).</summary>
+    public Reputation.PerRating InsurancePerFeatureByRating { get; set; } = new();
+
     public List<string> Validate()
     {
         var errors = new List<string>();
@@ -128,6 +131,7 @@ public sealed class CrashRules
         if (InjuredReviewChancePermille is < 0 or > 1000) errors.Add($"{p}.injuredReviewChancePermille must be within 0..1000");
         if (InsuranceBaseCents < 0 || InsurancePerMinorCents < 0 || InsurancePerSeriousCents < 0) errors.Add($"{p}: insurance must be >= 0");
         if (InsuranceDays is < 1 or > 365) errors.Add($"{p}.insuranceDays must be within 1..365");
+        if (InsurancePerFeatureByRating.Any(v => v < 0)) errors.Add($"{p}.insurancePerFeatureByRating must be >= 0");
         return errors;
     }
 }

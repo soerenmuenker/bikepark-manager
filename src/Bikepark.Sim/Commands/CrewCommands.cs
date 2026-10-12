@@ -44,14 +44,16 @@ public sealed record DismissCrewCommand(int CrewId) : ICommand
     }
 }
 
-/// <summary>Buys a tool; from now on it speeds up its kind of work for the whole crew.</summary>
+/// <summary>Buys one more tool: one more worker can work faster at its kind of work (until it is worn out).</summary>
 public sealed record BuyToolCommand(string ToolId) : ICommand
 {
     public string? Validate(SimContext ctx)
     {
         var state = ctx.State;
         if (state.ToolTypes.FirstOrDefault(t => t.Id == ToolId) is not { } tool) return $"Unknown tool '{ToolId}'.";
-        if (state.OwnedToolIds.Contains(ToolId)) return $"You already own the {tool.Name.ToLowerInvariant()}.";
+        int level = Reputation.ParkProgress.CurrentLevel(state, ctx.Network);
+        if (state.Rules.UnlockLevel(level) < tool.RequiredLevel)
+            return $"The {tool.Name.ToLowerInvariant()} needs park level {tool.RequiredLevel} (you are level {level}).";
         if (state.Finance.MoneyCents < tool.PriceCents) return "Not enough money.";
         return null;
     }
@@ -62,7 +64,7 @@ public sealed record BuyToolCommand(string ToolId) : ICommand
         var tool = state.ToolTypes.First(t => t.Id == ToolId);
         state.Finance.Spend(tool.PriceCents);
         state.Finance.TotalToolsCents += tool.PriceCents;
-        state.OwnedToolIds.Add(ToolId);
+        state.Tools.Add(new OwnedTool { Id = state.AllocateEntityId(), TypeId = ToolId });
         ctx.Publish(new ToolBought(ctx.Tick, ToolId));
     }
 }

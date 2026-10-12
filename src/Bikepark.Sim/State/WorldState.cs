@@ -81,6 +81,12 @@ public sealed class WorldState
     /// <summary>Gravel platforms the player built to connect paths and trails.</summary>
     public List<Platform> Platforms { get; set; } = [];
 
+    /// <summary>Bar and shop models (content, copied from <c>data/facility_types.json</c>).</summary>
+    public List<Facilities.FacilityType> FacilityTypes { get; set; } = [];
+
+    /// <summary>Bars and shops the park built, in build order.</summary>
+    public List<Facilities.Facility> Facilities { get; set; } = [];
+
     /// <summary>Land the park can own (content, from the scenario). None = all land is the park's.</summary>
     public List<Parcel> Parcels { get; set; } = [];
 
@@ -92,8 +98,8 @@ public sealed class WorldState
     /// <summary>Tool models (content, copied from <c>data/tools.json</c>).</summary>
     public List<ToolType> ToolTypes { get; set; } = [];
 
-    /// <summary>Ids of the tools the park owns, in purchase order.</summary>
-    public List<string> OwnedToolIds { get; set; } = [];
+    /// <summary>The tools the park owns, in purchase order.</summary>
+    public List<OwnedTool> Tools { get; set; } = [];
 
     /// <summary>Workers in hiring order.</summary>
     public List<CrewMember> Crew { get; set; } = [];
@@ -207,6 +213,9 @@ public sealed class ParkRules
     public int LunchMaxMinutes { get; set; } = 40;
     public long LunchPriceCents { get; set; } = 1_400;
 
+    /// <summary>Mood a packed lunch brings (when the scenario has bars but none had room for the guest).</summary>
+    public int PackedLunchHappiness { get; set; } = 5;
+
     /// <summary>Energy (0..1000) and happiness a lunch restores.</summary>
     public int LunchEnergy { get; set; } = 250;
     public int LunchHappiness { get; set; } = 40;
@@ -235,6 +244,7 @@ public sealed class ParkRules
         if (LunchPriceCents < 0) errors.Add("rules.lunchPriceCents must be >= 0");
         if (LunchEnergy is < 0 or > 1000) errors.Add("rules.lunchEnergy must be within 0..1000");
         if (LunchHappiness is < 0 or > 1000) errors.Add("rules.lunchHappiness must be within 0..1000");
+        if (PackedLunchHappiness is < 0 or > 1000) errors.Add("rules.packedLunchHappiness must be within 0..1000");
         if (BankruptcyDays is < 0 or > 365) errors.Add("rules.bankruptcyDays must be within 0..365");
         return errors;
     }
@@ -278,6 +288,21 @@ public sealed class FinanceState
     /// <summary>Daily upkeep of the park's own lifts (included in the expenses).</summary>
     public long TotalLiftUpkeepCents { get; set; }
     public long LiftUpkeepTodayCents { get; set; }
+
+    /// <summary>Bar sales (lunch and snacks) and merch sold (included in <see cref="TotalFoodCents"/>/the revenue).</summary>
+    public long TotalSnackCents { get; set; }
+    public long TotalMerchCents { get; set; }
+    public long MerchTodayCents { get; set; }
+    public long FoodTodayCents { get; set; }
+
+    /// <summary>Building bars and shops, their upkeep and the goods sold in shops (included in the expenses).</summary>
+    public long TotalFacilityBuildCents { get; set; }
+    public long TotalFacilityUpkeepCents { get; set; }
+    public long TotalMerchCostCents { get; set; }
+
+    /// <summary>Trail and feature upkeep (included in the expenses).</summary>
+    public long TotalTrailUpkeepCents { get; set; }
+    public long TrailUpkeepTodayCents { get; set; }
 
     /// <summary>Money borrowed (not revenue) and installments paid back (included in the expenses).</summary>
     public long TotalBorrowedCents { get; set; }
@@ -428,6 +453,9 @@ public sealed class Guest
 
     /// <summary>When the current break (<see cref="RiderActivity.Eating"/>) ends.</summary>
     public long BusyUntilTick { get; set; }
+
+    /// <summary>The bar the guest is having lunch at (0: a packed lunch where they are, or not eating).</summary>
+    public int FacilityId { get; set; }
 
     // ---- Visit, for the review written on leaving (see Reputation.ReviewMath) ----
 

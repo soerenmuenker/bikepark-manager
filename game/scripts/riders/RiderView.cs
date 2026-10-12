@@ -352,14 +352,32 @@ public partial class RiderView : Node3D
     private static readonly Color InfluencerColor = new(1.0f, 0.25f, 0.70f);
 
     /// <summary>
-    /// A guest on their lunch break: standing next to the bike in a loose ring (by id) around where their last run
-    /// ended, facing out.
+    /// A guest on their lunch break: on the terrace of the bar they eat at, or (a packed lunch) standing next to the bike
+    /// in a loose ring (by id) around where their last run ended, facing out.
     /// </summary>
     private static bool TryLocateBreak(Simulation sim, WayNetwork network, Guest guest, out Vector3 position, out Vector3 forward)
     {
         position = default;
         forward = Vector3.Forward;
         Vector3 spot;
+        if (guest.FacilityId != 0 && sim.State.Facilities.FirstOrDefault(f => f.Id == guest.FacilityId) is { } bar
+            && LiftNetwork.Pad(sim.State, bar.TerrainEditId) is { } barPad)
+        {
+            // At the bar: one seat each on a grid over its terrace (the front half of the pad), facing the counter.
+            int seat = 0;
+            foreach (var other in sim.State.Guests)
+            {
+                if (other == guest) break;
+                if (other.FacilityId == bar.Id && other.Activity == RiderActivity.Eating) seat++;
+            }
+            float l = barPad.HalfLengthCm / 100f, w = barPad.HalfWidthCm / 100f;
+            int perRow = Math.Max(1, (int)((w * 2 - 1.6f) / 1.5f) + 1);
+            float along = 0.8f + seat / perRow * 1.6f;
+            float across = -w + 0.8f + seat % perRow * 1.5f;
+            forward = -LiftShapes.Forward(barPad);
+            position = LiftShapes.Center(barPad, 0.06f) + LiftShapes.Forward(barPad) * Math.Min(along, l + 3f) + LiftShapes.Right(barPad) * across;
+            return true;
+        }
         if (guest.LocationHubId != 0 && network.FindHub(guest.LocationHubId) is { } hub)
             spot = LiftShapes.Center(hub.Pad);
         else if (guest.LocationWayId != 0 && network.TryGetGeometry(guest.LocationWayId, out var g))

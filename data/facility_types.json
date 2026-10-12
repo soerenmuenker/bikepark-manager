@@ -1,0 +1,17 @@
+// Bars and shops (FacilityType). Copied into the world when a scenario starts. The park builds them next to a valley
+// station (within the lifts' stationReachMeters, on its land): paid at once (buildCostCents), open at once, then a daily
+// upkeep (staff, stock). They serve the guests at that lift's base: guests between laps there.
+// Bars (kind "bar"): lunch for up to `seats` guests at a time at lunchPriceCents, and snacks at snackPriceCents. Where a
+// scenario has bars, guests only buy food at a bar: without a seat they ride on and try after the next lap; whoever
+// finds none by the end of the lunch window eats a packed lunch (no money for the park, little mood).
+// Shops (kind "shop"): a guest going home buys merch (merchPriceCents) with buyChancePermille, scaled by their mood;
+// the goods cost the park merchCostPermille of the price.
+// requiredLevel: the park level needed to build it.
+[
+  { "id": "snack_bar", "name": "Snack bar", "kind": "bar", "buildCostCents": 800000, "upkeepPerDayCents": 25000,
+    "lengthMeters": 14, "widthMeters": 10, "requiredLevel": 0, "seats": 24, "lunchPriceCents": 1400, "snackPriceCents": 400 },
+  { "id": "merch_shop", "name": "Merch shop", "kind": "shop", "buildCostCents": 1200000, "upkeepPerDayCents": 15000,
+    "lengthMeters": 8, "widthMeters": 6, "requiredLevel": 1, "merchPriceCents": 2500, "merchCostPermille": 450, "buyChancePermille": 120 },
+  { "id": "bike_cafe", "name": "Bike café", "kind": "bar", "buildCostCents": 4500000, "upkeepPerDayCents": 70000,
+    "lengthMeters": 16, "widthMeters": 12, "requiredLevel": 6, "seats": 80, "lunchPriceCents": 1800, "snackPriceCents": 500 }
+]

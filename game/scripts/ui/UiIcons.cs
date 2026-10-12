@@ -39,6 +39,8 @@ public enum UiIcon
     RockGarden,
     LongJump,
     BigDrop,
+    Bar,
+    Shop,
     Crew,
     Wood,
     Felling,
@@ -224,6 +226,16 @@ internal static class UiIcons
                 Line(0.44f, 0.40f, 0.44f, 0.86f);
                 Line(0.44f, 0.86f, 0.94f, 0.86f);
                 Polyline(0.52f, 0.26f, 0.68f, 0.40f, 0.76f, 0.72f);
+                break;
+            case UiIcon.Bar: // a cup with steam
+                Poly(0.24f, 0.44f, 0.70f, 0.44f, 0.64f, 0.86f, 0.30f, 0.86f);
+                ci.DrawArc(P(0.74f, 0.60f), 0.10f * s, -Mathf.Pi * 0.5f, Mathf.Pi * 0.5f, 10, color, w, true);
+                Polyline(0.38f, 0.34f, 0.42f, 0.24f, 0.38f, 0.14f);
+                Polyline(0.54f, 0.34f, 0.58f, 0.24f, 0.54f, 0.14f);
+                break;
+            case UiIcon.Shop: // a shopping bag
+                Poly(0.20f, 0.38f, 0.80f, 0.38f, 0.86f, 0.88f, 0.14f, 0.88f);
+                ci.DrawArc(P(0.5f, 0.38f), 0.16f * s, Mathf.Pi, Mathf.Tau, 12, color, w, true);
                 break;
             case UiIcon.Crew: // worker with a hard hat
                 Circle(0.5f, 0.40f, 0.14f);

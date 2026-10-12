@@ -83,6 +83,9 @@ public sealed class TrailFeatureType
     public int LandingMinGradient { get; set; } = -60;
     public int LandingMaxGradient { get; set; }
 
+    /// <summary>What it costs to keep up per day once built (materials, checks).</summary>
+    public long UpkeepCentsPerDay { get; set; }
+
     public long LengthCm => LengthMeters * 100L;
 
     /// <summary>The feature plus its landing: the stretch of trail it takes up.</summary>
@@ -106,6 +109,7 @@ public sealed class TrailFeatureType
         if (FunWeight is < 1 or > 10) errors.Add($"{p}.funWeight must be within 1..10");
         if (WorkMinutes is < 1 or > 100_000) errors.Add($"{p}.workMinutes must be within 1..100000");
         if (Wood is < 0 or > 1000) errors.Add($"{p}.wood must be within 0..1000");
+        if (UpkeepCentsPerDay < 0) errors.Add($"{p}.upkeepCentsPerDay must be >= 0");
         if (MinDropMeters is < 0 or > 100) errors.Add($"{p}.minDropMeters must be within 0..100");
         if (GapMeters < 0 || GapMeters >= LengthMeters) errors.Add($"{p}.gapMeters must be within 0..lengthMeters-1");
         if (LandingMeters is < 0 or > 100) errors.Add($"{p}.landingMeters must be within 0..100");
@@ -161,6 +165,31 @@ public static class TrailFeatures
         state.Rules.UnlockLevel(level) < type.RequiredLevel
             ? $"The {type.Name.ToLowerInvariant()} needs park level {type.RequiredLevel} (you are level {level})."
             : null;
+
+    /// <summary>Built features on built trails, per rating of the feature itself (index = <see cref="TrailRating"/>).</summary>
+    public static int[] BuiltByRating(WayNetwork network)
+    {
+        var counts = new int[4];
+        foreach (var trail in network.Trails)
+            foreach (var feature in network.FeaturesOn(trail.Id))
+                if (feature.Feature.Built)
+                    counts[(int)feature.Type.Rating]++;
+        return counts;
+    }
+
+    /// <summary>The daily upkeep of the trails: per km of built trail plus each built feature's own.</summary>
+    public static long DailyUpkeepCents(WorldState state, WayNetwork network)
+    {
+        long lengthCm = 0, features = 0;
+        foreach (var trail in network.Trails)
+        {
+            if (network.TryGetGeometry(trail.Id, out var geometry)) lengthCm += geometry.LengthCm;
+            foreach (var feature in network.FeaturesOn(trail.Id))
+                if (feature.Feature.Built)
+                    features += feature.Type.UpkeepCentsPerDay;
+        }
+        return lengthCm * state.TrailRules.UpkeepCentsPerKm / 100_000 + features;
+    }
 
     /// <summary>The way's features that resolve to a known type, in distance order.</summary>
     public static List<PlacedFeature> Resolve(Way way, IReadOnlyList<TrailFeatureType> types)

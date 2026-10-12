@@ -61,7 +61,9 @@
     // entrance (letting faster riders waiting there go first) and lose mood while held up behind a slower rider.
     "riderGapCm": 500,
     "entryWaitSeconds": 10,
-    "heldUpMoodPerMinute": 5
+    "heldUpMoodPerMinute": 5,
+    // Upkeep per km of built trail and day (signs, drainage, keeping it clear); built features add their own.
+    "upkeepCentsPerKm": 5000
   },
   // Weather: each day is rolled at midnight from these odds (permille), tomorrow's is the forecast. Rain wets the ground
   // (wetness 0..1000), which dries afterwards; fewer guests come on bad days and riders in the rain lose mood.
@@ -293,7 +295,7 @@
   // helicopter (public service) has flown them out; otherwise they ride down slowly and go home. A rider hurt while
   // being pulled up a T-bar stops the whole lift: for towStopMinutes (minor: they get off the track and go home) or
   // until the helicopter has flown them out (serious). The insurance premium
-  // is charged daily: a base plus a charge per accident of the last insuranceDays days.
+  // is charged daily: a base plus a charge per accident of the last insuranceDays days and per built feature (by its rating).
   "crashRules": {
     "enabled": true,
     "featureBasePpm": 40,
@@ -321,12 +323,14 @@
     "insuranceBaseCents": 5000,
     "insurancePerMinorCents": 1500,
     "insurancePerSeriousCents": 15000,
-    "insuranceDays": 7
+    "insuranceDays": 7,
+    "insurancePerFeatureByRating": { "green": 0, "blue": 100, "red": 400, "black": 1200 }
   },
   // Lift models come from the shared catalog.
   "liftTypesFile": "../lift_types.json",
   "trailFeaturesFile": "../trail_features.json",
   "toolsFile": "../tools.json",
+  "facilityTypesFile": "../facility_types.json",
   // Crew and building (CrewRules). Planned ways and features are built by crew jobs during opening hours; work is in
   // crew-minutes at base speed. Trees in a planned way's corridor are felled first (each gives woodPerTree wood).
   "crewRules": {

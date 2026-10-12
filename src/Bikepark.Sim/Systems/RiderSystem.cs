@@ -1,4 +1,5 @@
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Facilities;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reputation;
@@ -53,6 +54,7 @@ internal sealed class RiderSystem : ISimSystem
             {
                 if (ctx.Tick < guest.BusyUntilTick) continue;
                 guest.Activity = RiderActivity.Idle;
+                guest.FacilityId = 0;
             }
 
             if (guest.Activity == RiderActivity.Idle)
@@ -75,30 +77,60 @@ internal sealed class RiderSystem : ISimSystem
     }
 
     /// <summary>
-    /// At their first break between laps after their planned <see cref="Guest.LunchMinute"/>, guests have lunch where
-    /// they are. It costs <see cref="ParkRules.LunchPriceCents"/> (guests who can't afford it bring their own) and
-    /// restores energy and mood.
+    /// At their first break between laps after their planned <see cref="Guest.LunchMinute"/>, guests have lunch.
+    /// Scenarios with bars: at a bar at the guest's base with a free seat (its lunch price; guests who can't afford it,
+    /// or who find no seat by the end of the lunch window, eat a packed lunch where they are: no money, little mood);
+    /// while there is no such bar the guest rides on and tries again after the next lap. Scenarios without bars: lunch
+    /// where they are at <see cref="ParkRules.LunchPriceCents"/> (guests who can't afford it bring their own).
+    /// Lunch restores energy and mood.
     /// </summary>
     private static bool TryStartLunch(SimContext ctx, Guest guest)
     {
-        var rules = ctx.State.Rules;
-        if (guest.HadLunch || guest.LunchMinute < 0 || GameTime.MinuteOfDay(ctx.Tick) < guest.LunchMinute)
+        var state = ctx.State;
+        var rules = state.Rules;
+        int minute = GameTime.MinuteOfDay(ctx.Tick);
+        if (guest.HadLunch || guest.LunchMinute < 0 || minute < guest.LunchMinute)
             return false;
 
         long paid = 0;
-        if (guest.CashCents >= rules.LunchPriceCents)
+        int facilityId = 0;
+        int happiness = rules.LunchHappiness;
+        if (!FacilityMath.BarsNeeded(state))
         {
-            paid = rules.LunchPriceCents;
-            guest.CashCents -= paid;
-            ctx.State.Finance.Earn(paid);
-            ctx.State.Finance.TotalFoodCents += paid;
+            if (guest.CashCents >= rules.LunchPriceCents)
+            {
+                paid = rules.LunchPriceCents;
+                guest.CashCents -= paid;
+                state.Finance.Earn(paid);
+                state.Finance.TotalFoodCents += paid;
+                state.Finance.FoodTodayCents += paid;
+            }
+        }
+        else if (FacilityMath.FreeBar(state, ctx.Network, guest) is { } bar && guest.CashCents >= bar.Type.LunchPriceCents)
+        {
+            paid = bar.Type.LunchPriceCents;
+            FacilityMath.Sell(state, bar.Facility, guest, paid);
+            bar.Facility.Customers++;
+            state.Finance.TotalFoodCents += paid;
+            state.Finance.FoodTodayCents += paid;
+            facilityId = bar.Facility.Id;
+        }
+        else if (minute < rules.LunchEndMinute && state.Facilities.Any(f =>
+                     FacilityMath.FindType(state, f.TypeId) is { Kind: FacilityKind.Bar } type && guest.CashCents >= type.LunchPriceCents))
+        {
+            return false; // ride on: maybe the next lap ends at a bar with a free seat
+        }
+        else
+        {
+            happiness = rules.PackedLunchHappiness;
         }
         guest.HadLunch = true;
         guest.Activity = RiderActivity.Eating;
+        guest.FacilityId = facilityId;
         guest.BusyUntilTick = ctx.Tick + ctx.Rng.Range(rules.LunchMinMinutes, rules.LunchMaxMinutes + 1);
         guest.Energy = Math.Min(1000, guest.Energy + rules.LunchEnergy);
-        guest.Happiness = Math.Min(1000, guest.Happiness + rules.LunchHappiness);
-        ctx.Publish(new GuestAteLunch(ctx.Tick, guest.Id, paid));
+        guest.Happiness = Math.Min(1000, guest.Happiness + happiness);
+        ctx.Publish(new GuestAteLunch(ctx.Tick, guest.Id, paid, facilityId));
         return true;
     }
 

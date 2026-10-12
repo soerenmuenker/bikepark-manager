@@ -48,7 +48,8 @@ public enum GuestLeaveReason
 public sealed record GuestLeft(long Tick, int GuestId, GuestLeaveReason Reason) : ISimEvent;
 
 /// <summary>A guest started their lunch break (<paramref name="PaidCents"/> 0: they brought their own).</summary>
-public sealed record GuestAteLunch(long Tick, int GuestId, long PaidCents) : ISimEvent;
+/// <summary>A guest started lunch: at a bar (<paramref name="FacilityId"/>), or a packed lunch where they are (0).</summary>
+public sealed record GuestAteLunch(long Tick, int GuestId, long PaidCents, int FacilityId = 0) : ISimEvent;
 
 public sealed record WayBuilt(long Tick, int WayId) : ISimEvent;
 
@@ -128,7 +129,11 @@ public sealed record DayReport(
     long LiftTicketsCents = 0,
     long LoanPaymentsCents = 0,
     long DebtCents = 0,
-    int DaysInDebt = 0);
+    int DaysInDebt = 0,
+    long TrailUpkeepCents = 0,
+    long FoodCents = 0,
+    long MerchCents = 0,
+    long FacilityUpkeepCents = 0);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
 
@@ -236,3 +241,11 @@ public sealed record DebtWarning(long Tick, int DaysInDebt, int DaysLeft) : ISim
 
 /// <summary>Game over: the park stayed in the red too long and closes for good.</summary>
 public sealed record ParkBankrupt(long Tick, int DaysInDebt) : ISimEvent;
+
+/// <summary>A tool is worn out and gone (buy a new one).</summary>
+public sealed record ToolWornOut(long Tick, int ToolId, string TypeId) : ISimEvent;
+
+public sealed record FacilityBuilt(long Tick, int FacilityId, string TypeName) : ISimEvent;
+
+/// <summary>A guest leaving bought something at a shop.</summary>
+public sealed record MerchSold(long Tick, int GuestId, int FacilityId, long PriceCents) : ISimEvent;

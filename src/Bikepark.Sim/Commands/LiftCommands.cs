@@ -122,6 +122,54 @@ public sealed record BuildParkingLotCommand(string Name, PointCm Center, PointCm
 }
 
 /// <summary>
+/// Builds a bar or shop next to a valley station, at once: paid at once (needs its park level and the money; scenario
+/// buildings are free). <see cref="StructurePlanner.PlanFacility"/> validates the spot.
+/// </summary>
+public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm Toward, string Name = "", WayOrigin Origin = WayOrigin.Player)
+    : ICommand
+{
+    public const int MaxNameLength = 40;
+
+    public string? Validate(SimContext ctx)
+    {
+        if (Name is { Length: > MaxNameLength }) return $"Name cannot exceed {MaxNameLength} characters.";
+        if (Facilities.FacilityMath.FindType(ctx.State, TypeId) is not { } type) return $"Unknown building '{TypeId}'.";
+        if (Origin != WayOrigin.Scenario
+            && Facilities.FacilityMath.CannotBuild(ctx.State, Reputation.ParkProgress.CurrentLevel(ctx.State, ctx.Network), type) is { } locked)
+            return locked;
+        return Plan(ctx).FirstError;
+    }
+
+    public void Apply(SimContext ctx)
+    {
+        var plan = Plan(ctx);
+        var state = ctx.State;
+        var type = Facilities.FacilityMath.FindType(state, TypeId)!;
+        int id = state.AllocateEntityId();
+        var edit = new TerrainEdit(state.AllocateEntityId(), id, plan.Pad!);
+        state.TerrainEdits.Add(edit);
+        state.TerrainRevision++;
+        state.Facilities.Add(new Facilities.Facility
+        {
+            Id = id,
+            TypeId = TypeId,
+            Name = string.IsNullOrWhiteSpace(Name) ? $"{type.Name} {state.Facilities.Count(f => f.TypeId == TypeId) + 1}" : Name.Trim(),
+            TerrainEditId = edit.Id,
+            LiftId = plan.LiftId,
+        });
+        if (Origin != WayOrigin.Scenario && type.BuildCostCents > 0)
+        {
+            state.Finance.Spend(type.BuildCostCents);
+            state.Finance.TotalFacilityBuildCents += type.BuildCostCents;
+        }
+        ctx.Publish(new FacilityBuilt(ctx.Tick, id, type.Name));
+    }
+
+    private ParkingPlan Plan(SimContext ctx) =>
+        StructurePlanner.PlanFacility(ctx.Terrain, ctx.Network, ctx.State, TypeId, Center, Toward, scenario: Origin == WayOrigin.Scenario);
+}
+
+/// <summary>
 /// Books a different bike access tier with the lift company. It takes effect at the next opening (the active tier
 /// is billed for the whole day).
 /// </summary>

@@ -123,6 +123,16 @@ internal sealed partial class WorldPicker : Node
                     () => _note($"{platform.Name}: a gravel platform where paths and trails start and end. Build → Renaturalize removes it."));
         }
 
+        // Bars and shops: standing on their pad.
+        if (Bikepark.Sim.Facilities.FacilityMath.AtPoint(state, x, z, radius / 3) is { } facility)
+        {
+            var type = Bikepark.Sim.Facilities.FacilityMath.FindType(state, facility.TypeId);
+            string busy = type?.Kind == Bikepark.Sim.Facilities.FacilityKind.Bar
+                ? $" · {Bikepark.Sim.Facilities.FacilityMath.SeatsTaken(state, facility)}/{type.Seats} seats taken" : "";
+            return new WorldPick($"{facility.Name}{busy} · {UiTheme.Money(facility.RevenueTodayCents)} today · click for finances",
+                () => _show(Hud.Menu.Finance, facility.Id.ToString()));
+        }
+
         // Ways: the closest one (a trail's feature counts as the trail), unless a lift line is closer.
         var way = network.Nearest(x, z, radius) is { } n ? network.FindWay(n.WayId) is { } w ? (Way: w, n.DistanceCm, Off: Distance(x, z, n.Point)) : default : default;
         var line = NearestLiftLine(x, z, Math.Max(radius, 400));

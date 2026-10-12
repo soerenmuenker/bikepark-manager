@@ -80,10 +80,19 @@ public static class CrashMath
         return Math.Clamp(share, 0, 1000);
     }
 
-    /// <summary>The daily insurance premium for the accidents in the history.</summary>
-    public static long Premium(CrashRules rules, SafetyState safety) =>
-        rules.InsuranceBaseCents
-        + safety.History.Sum(d => d.Minor * rules.InsurancePerMinorCents + d.Serious * rules.InsurancePerSeriousCents);
+    /// <summary>
+    /// The daily insurance premium: a base, the accidents in the history and, with <paramref name="featuresByRating"/>
+    /// (built features per rating, see <see cref="Trails.TrailFeatures.BuiltByRating"/>), a charge per feature.
+    /// </summary>
+    public static long Premium(CrashRules rules, SafetyState safety, IReadOnlyList<int>? featuresByRating = null)
+    {
+        long premium = rules.InsuranceBaseCents
+                       + safety.History.Sum(d => d.Minor * rules.InsurancePerMinorCents + d.Serious * rules.InsurancePerSeriousCents);
+        if (featuresByRating is not null)
+            for (int r = 0; r < featuresByRating.Count; r++)
+                premium += (long)featuresByRating[r] * rules.InsurancePerFeatureByRating.For((Trails.TrailRating)r);
+        return premium;
+    }
 
     /// <summary>True with the given chance in parts per billion.</summary>
     public static bool Roll(Core.SimRandom rng, long ppb) => ppb > 0 && rng.NextInt(Billion) < ppb;

@@ -1,4 +1,5 @@
 using Bikepark.Sim.Core;
+using Bikepark.Sim.Events;
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.State;
 
@@ -10,7 +11,8 @@ namespace Bikepark.Sim.Systems;
 ///   <item>workers whose job can't go on are freed; free workers (in hiring order) take the first workable job in the
 ///   queue that has room (<see cref="CrewRules.MaxWorkersPerJob"/>); a job needing wood takes it from the stock when
 ///   its first worker starts; feature work closes its trail at once but only begins once the last rider has left it;</item>
-///   <item>each job advances by its workers' speed (<see cref="WorkCosts.SpeedPermille"/> for the work it needs now):
+///   <item>each job advances by its workers' speed: base speed, plus the bonus of the tool each one uses (the best free
+///   tool for the work the job needs now, handed out in queue order; tools wear with every minute and are gone when worn out):
 ///   first its trees are felled one by one (each adds wood), then the main work is done; a finished job builds its
 ///   way or feature.</item>
 /// </list>
@@ -38,15 +40,36 @@ public sealed class JobSystem : ISimSystem
             if (job.Kind is JobKind.RepairFeature or JobKind.BuildFeature && state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail)
                 Jobs.UpdateWorkClosure(ctx, trail);
 
-        // Work, in queue order (a finished job leaves the list, so iterate over a copy).
+        // Work, in queue order (a finished job leaves the list, so iterate over a copy). Workers take the best free tool
+        // for their job's kind of work in queue order: the first jobs get the best tools.
+        var free = new Dictionary<WorkType, Queue<(OwnedTool Tool, ToolType Type)>>();
+        var worn = new List<OwnedTool>();
         foreach (var job in state.Jobs.ToList())
         {
             int workers = state.Crew.Count(m => m.JobId == job.Id);
             if (workers == 0) continue;
             if (Jobs.IsWaitingForRiders(state, job)) continue; // the last riders are still on the trail
             state.CrewStats.CrewMinutesWorked += workers;
-            job.Progress += (long)workers * WorkCosts.SpeedPermille(state, job.CurrentWorkType);
+            var type = job.CurrentWorkType;
+            if (!free.TryGetValue(type, out var tools))
+                free[type] = tools = new Queue<(OwnedTool, ToolType)>(WorkCosts.ToolsFor(state, type));
+            for (int i = 0; i < workers; i++)
+            {
+                int speed = WorkCosts.BaseSpeedPermille;
+                if (tools.TryDequeue(out var tool))
+                {
+                    speed += tool.Type.SpeedBonusPermille;
+                    tool.Tool.MinutesUsed++;
+                    if (tool.Type.LifeMinutes > 0 && tool.Tool.MinutesUsed >= tool.Type.LifeMinutes) worn.Add(tool.Tool);
+                }
+                job.Progress += speed;
+            }
             Advance(ctx, job);
+        }
+        foreach (var tool in worn)
+        {
+            state.Tools.Remove(tool);
+            ctx.Publish(new ToolWornOut(ctx.Tick, tool.Id, tool.TypeId));
         }
     }
 
