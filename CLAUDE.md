@@ -13,6 +13,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     `WayPlanner` (validation, shared by command and preview), `WayNetwork` (derived graph, routing, corridors,
     `IsConnected`/`IsRideable`), `WayEditing` (renaturalize sections, Part names, join onto loose ends, split at gravel paths),
     `TrailFeature` (feature catalog types + placed features), `FeaturePlanner` (feature placement validation)
+  - `Banking/` – `LoanOffer`/`LoanRules` (content), `Loan` (state), `LoanMath`; `Commands/LoanCommands.cs`, `Systems/LoanSystem.cs`
   - `Land/` – `Parcel` (content: named land outlines with price and required level), `LandMath` (who owns which point,
     the only land check, used by every planner); `Commands/LandCommands.cs` (`BuyParcelCommand`)
   - `Lifts/` – `LiftType`/`LiftOperator`/`LiftRules` (content), `Lift`/`ParkingLot` (state), `LiftMath` (bike carriers,
@@ -46,8 +47,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
 - `data/` – JSON content (`scenarios/`: `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
-  rented; tests and demo scripts use it) and `starter_valley.json` = the career (old ski hill with a derelict T-bar, parcels
-  to buy, company gondola locked); `lift_types.json` (T-bar, chairlift, gondola with costs, levels, build days),
+  rented; tests and demo scripts use it) and `starter_valley.json` = the career (25,000 € start, bank loans, bankruptcy after 14 days in the red; old ski hill with
+  a derelict T-bar, parcels to buy, company gondola locked); `lift_types.json` (T-bar, chairlift, gondola with costs, levels, build days),
   `trail_features.json`, `tools.json`, `scripts/` command scripts such as `demo_lift_network.json`, `demo_features.json`,
   `demo_crew.json`, `career_opening.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
@@ -77,8 +78,9 @@ python3 tools/scenario-editor/server.py data/scenarios/starter_valley.json
 # Crashes: the output's "safety" block (crashes, serious, collisions, evacuations, average helicopter wait, insurance,
 # crossings found, a crash log) and per trail crashes / serious / collisions / per 1000 runs (crashes per feature in
 # featureConditions); --daily adds crashes, serious crashes and insurance per day
-# Career: the first weeks (restore the T-bar, two trails on the ski hill, try to buy the South slope (level 3)); the "land"
-# block lists parcels (owned / level / price), money spent on land and lifts, upkeep and a log; lifts show their status
+# Career: the first weeks (take the starter loan, restore the T-bar, two trails on the ski hill, try to buy the South slope
+# (level 3)); the "land" block lists parcels (owned / level / price), money spent on land and lifts, upkeep and a log; lifts
+# show their status; the "loans" block lists offers, running loans, payments, days in the red and a log
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 20 --commands data/scripts/career_opening.json --daily
 # Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 3 --commands data/scripts/demo_lift_network.json
@@ -172,6 +174,14 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     no staff), then `Evacuated` (even after closing). Crossings are derived geometry, never junctions. Crashes count on
     `WayStats`, `TrailFeature.Crashes` and `SafetyState`; reviews: a serious crash makes safety 0. Insurance =
     base + per accident of the last `InsuranceDays`, charged by `SafetySystem` (before `FinanceSystem`).
+19b. **Loans and bankruptcy** (`Banking/Loans.cs`): `LoanRules` (content: offers with principal, weeks, flat interest,
+    level; late fee) and `WorldState.Loans` (state). `TakeLoanCommand` (money via `Finance.Borrow`, not revenue; one per
+    offer, level via `LoanMath.CannotTake`), `RepayLoanCommand` (everything still owed). `LoanSystem` (before
+    `FinanceSystem`) collects installments every 7th day at the day's end; not enough money ⇒ missed, late fee added,
+    due again in a week. `FinanceSystem` counts `Finance.DaysInDebt` (books closing below zero, reset by a day in the
+    black) and at `ParkRules.BankruptcyDays` (0 = off; Starter 14) sets `Park.Bankrupt` (game over: `ParkSchedule.IsOpen`
+    is false for good). HUD: Finances menu Loans section, `NoticeDialog` (missed installment, debt warnings, the final
+    bankruptcy notice → back to the menu); bankrupt careers can't be continued (`CareerInfo.Bankrupt`).
 19a. **Entrance fee and lift pass:** `Park.EntryFeeCents` is paid on arrival (drives demand); `Park.LiftTicketCents` (0 = free
     lifts, the Demo) is a day pass bought once per visit when a guest first boards a lift (`RiderSystem.BuyLiftPass`,
     `Guest.HasLiftPass`, revenue in `Finance.TotalLiftTicketsCents`). `BestRoute` adds the unbought pass to the lift cost

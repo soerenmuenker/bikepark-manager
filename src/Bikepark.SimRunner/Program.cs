@@ -85,6 +85,14 @@ public static class Program
             $"{GameTime.Format(e.Tick)} {sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name} stopped until {GameTime.Format(e.UntilTick)} (crash on the track)"));
         sim.Events.Subscribe<LiftReady>(e => landLog.Add($"{GameTime.Format(e.Tick)} {sim.State.Lifts.FirstOrDefault(l => l.Id == e.LiftId)?.Name} is running"));
 
+        var loanLog = new List<string>();
+        sim.Events.Subscribe<LoanTaken>(e => loanLog.Add($"{GameTime.Format(e.Tick)} took the {e.Name}: {e.PrincipalCents / 100} €"));
+        sim.Events.Subscribe<LoanPaid>(e => loanLog.Add($"{GameTime.Format(e.Tick)} paid {e.PaidCents / 100} € on the {e.Name}, {e.RemainingCents / 100} € left"));
+        sim.Events.Subscribe<LoanPaymentMissed>(e => loanLog.Add($"{GameTime.Format(e.Tick)} missed {e.DueCents / 100} € on the {e.Name} (late fee {e.LateFeeCents / 100} €)"));
+        sim.Events.Subscribe<LoanRepaid>(e => loanLog.Add($"{GameTime.Format(e.Tick)} the {e.Name} is paid off"));
+        sim.Events.Subscribe<DebtWarning>(e => loanLog.Add($"{GameTime.Format(e.Tick)} in the red for {e.DaysInDebt} day(s): bankrupt in {e.DaysLeft}"));
+        sim.Events.Subscribe<ParkBankrupt>(e => loanLog.Add($"{GameTime.Format(e.Tick)} BANKRUPT after {e.DaysInDebt} days in the red"));
+
         var crashes = new List<string>();
         sim.Events.Subscribe<RiderCrashed>(e => crashes.Add(
             $"{GameTime.Format(e.Tick)} {e.Severity} {e.Cause} on {sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId)?.Name} at {e.Cm / 100} m"
@@ -124,6 +132,7 @@ public static class Program
             Reputation: ReputationReport(sim, influencers),
             Safety: SafetyReport(sim, crashes),
             Land: LandReport(sim, landLog),
+            Loans: LoansReport(sim, loanLog),
             Ways: WayReports(sim),
             Lifts: LiftReports(sim),
             Crew: CrewReport(sim, completed),
@@ -171,6 +180,19 @@ public static class Program
             state.Parcels.Select(p => new ParcelReport(p.Id, p.Name, state.OwnedParcelIds.Contains(p.Id), p.RequiredLevel, p.PriceCents,
                 Bikepark.Sim.Land.LandMath.AreaSquareMeters(p.Outline))).ToList(),
             state.Finance.TotalLandCents, state.Finance.TotalLiftBuildCents, state.Finance.TotalLiftUpkeepCents, log);
+    }
+
+    private static LoansReport? LoansReport(Simulation sim, List<string> log)
+    {
+        var state = sim.State;
+        if (state.LoanRules.Offers.Count == 0) return null;
+        int level = ParkProgress.CurrentLevel(state, sim.Network);
+        return new LoansReport(
+            state.LoanRules.Offers.Select(o => new LoanOfferReport(o.Id, o.Name, o.PrincipalCents, o.Weeks, o.InterestPermille,
+                o.InstallmentCents, o.TotalRepayCents, o.RequiredLevel, Bikepark.Sim.Banking.LoanMath.CannotTake(state, level, o))).ToList(),
+            state.Loans.Select(l => new ActiveLoanReport(l.Id, l.Name, l.PrincipalCents, l.RemainingCents, l.InstallmentCents,
+                l.NextDueDay, l.PaymentsMade, l.MissedPayments)).ToList(),
+            state.Finance.TotalBorrowedCents, state.Finance.TotalLoanPaymentsCents, state.Finance.DaysInDebt, state.Park.Bankrupt, log);
     }
 
     private static SafetyReport? SafetyReport(Simulation sim, List<string> log)
@@ -331,6 +353,15 @@ internal sealed record LiftReport(
 
 internal sealed record ParcelReport(string Id, string Name, bool Owned, int RequiredLevel, long PriceCents, long AreaSquareMeters);
 
+internal sealed record LoanOfferReport(string Id, string Name, long PrincipalCents, int Weeks, int InterestPermille,
+    long InstallmentCents, long TotalRepayCents, int RequiredLevel, string? Locked);
+
+internal sealed record ActiveLoanReport(int Id, string Name, long PrincipalCents, long RemainingCents, long InstallmentCents,
+    long NextDueDay, int PaymentsMade, int MissedPayments);
+
+internal sealed record LoansReport(List<LoanOfferReport> Offers, List<ActiveLoanReport> Active, long TotalBorrowedCents,
+    long TotalLoanPaymentsCents, int DaysInDebt, bool Bankrupt, List<string> Log);
+
 internal sealed record LandReport(int Level, List<ParcelReport> Parcels, long TotalLandCents, long TotalLiftBuildCents, long TotalLiftUpkeepCents, List<string> Log);
 
 internal sealed record HourReport(
@@ -425,6 +456,7 @@ internal sealed record RunnerOutput(
     ReputationReport? Reputation,
     SafetyReport? Safety,
     LandReport? Land,
+    LoansReport? Loans,
     List<WayReport> Ways,
     List<LiftReport> Lifts,
     CrewReport? Crew,

@@ -23,8 +23,10 @@ public enum DayPhase
 /// </summary>
 public static class ParkSchedule
 {
+    /// <summary>Opening hours (a bankrupt park never opens again).</summary>
     public static bool IsOpen(WorldState state, long tick)
     {
+        if (state.Park.Bankrupt) return false;
         int minute = GameTime.MinuteOfDay(tick);
         return minute >= state.Rules.OpenMinute && minute < state.Rules.CloseMinute;
     }

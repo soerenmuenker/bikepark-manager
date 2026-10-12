@@ -18,6 +18,7 @@ internal sealed class ParkHoursSystem : ISimSystem
     public void Update(SimContext ctx)
     {
         int minute = GameTime.MinuteOfDay(ctx.Tick);
+        if (ctx.State.Park.Bankrupt) return;
         if (minute == ctx.State.Rules.OpenMinute)
             ctx.Publish(new ParkOpened(ctx.Tick));
         else if (minute == ctx.State.Rules.CloseMinute)
@@ -262,7 +263,7 @@ internal sealed class GuestSystem : ISimSystem
 
 /// <summary>
 /// Charges daily upkeep, crew wages and the bike access fees of lifts run by lift companies (the tier in effect that
-/// day), and closes the books at the last minute of each day.
+/// day), and closes the books at the last minute of each day: days in the red are counted towards bankruptcy.
 /// </summary>
 internal sealed class FinanceSystem : ISimSystem
 {
@@ -320,7 +321,10 @@ internal sealed class FinanceSystem : ISimSystem
             SeriousCrashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick))?.Serious ?? 0,
             InsuranceCents: state.Safety.InsuranceTodayCents,
             LiftUpkeepCents: state.Finance.LiftUpkeepTodayCents,
-            LiftTicketsCents: state.Finance.LiftTicketsTodayCents);
+            LiftTicketsCents: state.Finance.LiftTicketsTodayCents,
+            LoanPaymentsCents: state.Finance.LoanPaymentsTodayCents,
+            DebtCents: Banking.LoanMath.DebtCents(state),
+            DaysInDebt: CountDebtDays(ctx));
         ctx.Publish(new DayEnded(ctx.Tick, report));
         state.DayHistory.Add(report);
         if (state.DayHistory.Count > WorldState.DayHistoryDays)
@@ -335,6 +339,7 @@ internal sealed class FinanceSystem : ISimSystem
         }
         state.Finance.LiftFeesTodayCents = 0;
         state.Finance.LiftTicketsTodayCents = 0;
+        state.Finance.LoanPaymentsTodayCents = 0;
         state.Finance.WagesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
         state.Reputation.ReviewsToday = 0;
@@ -343,5 +348,30 @@ internal sealed class FinanceSystem : ISimSystem
         state.Stats.TurnedAwayToday = 0;
         state.Finance.RevenueTodayCents = 0;
         state.Finance.ExpensesTodayCents = 0;
+    }
+
+    /// <summary>
+    /// Counts the days the books close in the red (reset by a day in the black), warns on the first day, a week before
+    /// and the day before, and declares the park bankrupt at <see cref="ParkRules.BankruptcyDays"/>.
+    /// </summary>
+    private static int CountDebtDays(SimContext ctx)
+    {
+        var state = ctx.State;
+        if (state.Finance.MoneyCents >= 0)
+            return state.Finance.DaysInDebt = 0;
+        int days = ++state.Finance.DaysInDebt;
+        int limit = state.Rules.BankruptcyDays;
+        if (limit <= 0 || state.Park.Bankrupt) return days;
+        int left = limit - days;
+        if (left <= 0)
+        {
+            state.Park.Bankrupt = true;
+            ctx.Publish(new ParkBankrupt(ctx.Tick, days));
+        }
+        else if (days == 1 || left == 7 || left == 1)
+        {
+            ctx.Publish(new DebtWarning(ctx.Tick, days, left));
+        }
+        return days;
     }
 }

@@ -125,7 +125,10 @@ public sealed record DayReport(
     int SeriousCrashes = 0,
     long InsuranceCents = 0,
     long LiftUpkeepCents = 0,
-    long LiftTicketsCents = 0);
+    long LiftTicketsCents = 0,
+    long LoanPaymentsCents = 0,
+    long DebtCents = 0,
+    int DaysInDebt = 0);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
 
@@ -217,3 +220,19 @@ public sealed record PlatformDeleted(long Tick, int PlatformId) : ISimEvent;
 public sealed record StructureRenaturalized(long Tick, int StructureId, string Name, long CostCents) : ISimEvent;
 
 public sealed record TrailRenamed(long Tick, int WayId, string Name) : ISimEvent;
+
+public sealed record LoanTaken(long Tick, int LoanId, string Name, long PrincipalCents) : ISimEvent;
+
+public sealed record LoanPaid(long Tick, int LoanId, string Name, long PaidCents, long RemainingCents) : ISimEvent;
+
+/// <summary>The installment couldn't be paid: a late fee was added to what is owed.</summary>
+public sealed record LoanPaymentMissed(long Tick, int LoanId, string Name, long DueCents, long LateFeeCents) : ISimEvent;
+
+/// <summary>A loan is paid off (on schedule or early).</summary>
+public sealed record LoanRepaid(long Tick, int LoanId, string Name) : ISimEvent;
+
+/// <summary>The books closed below zero; the park goes bankrupt in <paramref name="DaysLeft"/> more days in the red.</summary>
+public sealed record DebtWarning(long Tick, int DaysInDebt, int DaysLeft) : ISimEvent;
+
+/// <summary>Game over: the park stayed in the red too long and closes for good.</summary>
+public sealed record ParkBankrupt(long Tick, int DaysInDebt) : ISimEvent;

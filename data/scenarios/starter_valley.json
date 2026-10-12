@@ -4,12 +4,13 @@
   "description": "Career: you start on the old beginner ski hill at the foot of the mountain, with a rusty T-bar and a gravel track. Restore the lift, build your first trails, earn a reputation and buy more land: the Alpine Lift Co. gondola only rents you bike access once you own the land at both its stations.",
   "seed": 1337,
   "parkName": "Old Ski Hill Bikepark",
-  "startingMoneyCents": 15000000,
+  "startingMoneyCents": 2500000,
   "entryFeeCents": 1500,
   "liftTicketCents": 1000,
   // Daily rhythm (minutes of the day): open 09:00-18:00.
   // Arrivals follow the profile (permille of baseArrivalPermille): a morning rush, tapering off in the afternoon.
-  // Guests take one lunch break between 11:00 and 13:00.
+  // Guests take one lunch break between 11:00 and 13:00. bankruptcyDays: game over after this many days in a row with the
+  // books closing below zero. dailyUpkeepCents: the base staff (ticket office, first aid, cleaning), every day.
   "rules": {
     "openMinute": 540,
     "closeMinute": 1080,
@@ -29,8 +30,9 @@
     "referenceEntryFeeCents": 1500,
     "maxEntryFeeCents": 10000,
     "capacity": 150,
-    "dailyUpkeepCents": 25000,
-    "snackPriceCents": 400
+    "dailyUpkeepCents": 300000,
+    "snackPriceCents": 400,
+    "bankruptcyDays": 14
   },
   // Building rules and rider tuning (TrailRules). Gradients in tenths of the -10..+10 gradient score
   // (1 point = 9°; 40 = 4.0 = 36°): beyond "max" a way can't be built, beyond "steep" it only warns.
@@ -371,6 +373,17 @@
     "liftRideCostCmPerMinute": 9000,
     "liftWaitCostCmPerMinute": 18000
   },
+  // Bank loans: the amount at once, paid back in equal weekly installments (at the end of every 7th day) with a flat
+  // interest on the whole amount over the term. A missed installment (not enough money) adds lateFeePermille of it to
+  // what is owed. requiredLevel: park level needed to get the loan. One loan of each kind at a time.
+  "loanRules": {
+    "lateFeePermille": 100,
+    "offers": [
+      { "id": "starter", "name": "Starter loan", "principalCents": 1000000, "weeks": 10, "interestPermille": 80, "requiredLevel": 0 },
+      { "id": "bank", "name": "Bank loan", "principalCents": 3000000, "weeks": 20, "interestPermille": 120, "requiredLevel": 3 },
+      { "id": "investor", "name": "Investor loan", "principalCents": 10000000, "weeks": 52, "interestPermille": 180, "requiredLevel": 8 }
+    ]
+  },
   // Land the park can buy (named parcels; outlines in cm). The old ski hill is yours at the start; the others need the
   // park level and the price. Everything you build (paths, trails, lift stations, parking, felling) must be on your land;
   // a lift's cable may cross land you don't own.
@@ -378,19 +391,19 @@
     { "id": "ski_hill", "name": "Old ski hill", "requiredLevel": 0, "priceCents": 0, "ownedAtStart": true,
       "description": "The old beginner ski hill with its rusty T-bar and a gravel track: where it all starts.",
       "outline": [{"x":68000, "z":64000}, {"x":100000, "z":63700}, {"x":100000, "z":100000}, {"x":68000, "z":100000}] },
-    { "id": "east_slope", "name": "East slope", "requiredLevel": 5, "priceCents": 20000000, "ownedAtStart": false,
+    { "id": "east_slope", "name": "East slope", "requiredLevel": 5, "priceCents": 6000000, "ownedAtStart": false,
       "description": "Open slopes east of the summit, above the forest.",
       "outline": [{"x":68000, "z":42100}, {"x":100000, "z":41800}, {"x":100000, "z":63700}, {"x":100000, "z":63700}, {"x":68000, "z":64000}] },
-    { "id": "summit_ridge", "name": "Summit ridge", "requiredLevel": 15, "priceCents": 80000000, "ownedAtStart": false,
+    { "id": "summit_ridge", "name": "Summit ridge", "requiredLevel": 15, "priceCents": 25000000, "ownedAtStart": false,
       "description": "Rock and steep lines around the summit: expert terrain.",
       "outline": [{"x":40200, "z":0}, {"x":100000, "z":0}, {"x":100000, "z":41800}, {"x":68000, "z":42100}, {"x":40000, "z":42000}] },
-    { "id": "parcel_5", "name": "South slope", "requiredLevel": 3, "priceCents": 20000000, "ownedAtStart": false,
+    { "id": "parcel_5", "name": "South slope", "requiredLevel": 3, "priceCents": 4000000, "ownedAtStart": false,
       "description": "the hilly extension, ideally for some red lines",
       "outline": [{"x":68000, "z":100000}, {"x":68000, "z":64000}, {"x":56700, "z":64100}, {"x":37700, "z":83300}, {"x":37700, "z":100000}] },
-    { "id": "parcel_6", "name": "Hikers Paradise", "requiredLevel": 8, "priceCents": 50000000, "ownedAtStart": false,
+    { "id": "parcel_6", "name": "Hikers Paradise", "requiredLevel": 8, "priceCents": 12000000, "ownedAtStart": false,
       "description": "with the only gondola already in town, the hikers paradise is the dream for every hiker. What hikers clearly don't like, are mountainbikers.",
       "outline": [{"x":37700, "z":100000}, {"x":37700, "z":83300}, {"x":56700, "z":64100}, {"x":68000, "z":64000}, {"x":68000, "z":42100}, {"x":40000, "z":42000}, {"x":0, "z":42200}, {"x":0, "z":100000}] },
-    { "id": "parcel_7", "name": "North west end", "requiredLevel": 12, "priceCents": 60000000, "ownedAtStart": false,
+    { "id": "parcel_7", "name": "North west end", "requiredLevel": 12, "priceCents": 15000000, "ownedAtStart": false,
       "description": "It's just the north west end. Gives you lot's of room to develop yourself",
       "outline": [{"x":40200, "z":0}, {"x":40000, "z":42000}, {"x":0, "z":42200}, {"x":0, "z":0}] }
   ],

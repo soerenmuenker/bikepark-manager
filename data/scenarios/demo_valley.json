@@ -255,6 +255,17 @@
     "liftRideCostCmPerMinute": 9000,
     "liftWaitCostCmPerMinute": 18000
   },
+  // Bank loans: the amount at once, paid back in equal weekly installments (at the end of every 7th day) with a flat
+  // interest on the whole amount over the term. A missed installment (not enough money) adds lateFeePermille of it to
+  // what is owed. requiredLevel: park level needed to get the loan. One loan of each kind at a time.
+  "loanRules": {
+    "lateFeePermille": 100,
+    "offers": [
+      { "id": "starter", "name": "Starter loan", "principalCents": 1000000, "weeks": 10, "interestPermille": 80, "requiredLevel": 0 },
+      { "id": "bank", "name": "Bank loan", "principalCents": 3000000, "weeks": 20, "interestPermille": 120, "requiredLevel": 3 },
+      { "id": "investor", "name": "Investor loan", "principalCents": 10000000, "weeks": 52, "interestPermille": 180, "requiredLevel": 8 }
+    ]
+  },
   // What is already there when the scenario starts: the gondola with its valley station and top plateau, the
   // parking lot, the gravel hiking route (riders may pedal up it too) and a crew of two.
   "commands": [

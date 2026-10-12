@@ -115,7 +115,9 @@ public partial class StartScreen : PanelContainer
         bool current = career.Id == _host.CurrentCareerId;
         texts.AddChild(UiTheme.Label(career.ParkName + (current ? "  (open)" : ""), 15, bold: true));
         string rating = career.RatingTenths is { } r ? $" · {r / 10}.{r % 10}★" : "";
-        texts.AddChild(UiTheme.Label($"Day {career.Day + 1} · level {career.Level}{rating} · {UiTheme.Money(career.MoneyCents)}", 12, UiTheme.TextDim));
+        texts.AddChild(career.Bankrupt
+            ? UiTheme.Label($"Bankrupt on day {career.Day + 1} · level {career.Level}{rating}", 12, UiTheme.Bad)
+            : UiTheme.Label($"Day {career.Day + 1} · level {career.Level}{rating} · {UiTheme.Money(career.MoneyCents)}", 12, UiTheme.TextDim));
         texts.AddChild(UiTheme.Label($"Last played {career.LastPlayedUtc.ToLocalTime():g}", 11, UiTheme.TextDim));
         h.AddChild(texts);
 
@@ -126,10 +128,11 @@ public partial class StartScreen : PanelContainer
         void ShowNormal()
         {
             foreach (var child in buttons.GetChildren()) child.QueueFree();
-            buttons.AddChild(UiTheme.Button(current ? "Resume" : "Continue", () =>
-            {
-                if (current) _host.ResumeFromMenu(); else _host.ContinueCareer(id);
-            }));
+            if (!career.Bankrupt)
+                buttons.AddChild(UiTheme.Button(current ? "Resume" : "Continue", () =>
+                {
+                    if (current) _host.ResumeFromMenu(); else _host.ContinueCareer(id);
+                }));
             var delete = UiTheme.Button("Delete", ShowConfirm, "Delete this career for good");
             delete.Disabled = current;
             if (current) delete.TooltipText = "It is open right now";

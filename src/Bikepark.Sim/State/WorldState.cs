@@ -114,6 +114,12 @@ public sealed class WorldState
 
     public FinanceState Finance { get; set; } = new();
 
+    /// <summary>Loan offers (content, from the scenario).</summary>
+    public Banking.LoanRules LoanRules { get; set; } = new();
+
+    /// <summary>Loans the park is paying back, in the order taken.</summary>
+    public List<Banking.Loan> Loans { get; set; } = [];
+
     public ParkStats Stats { get; set; } = new();
 
     /// <summary>The last closed days' reports (oldest first, at most <see cref="DayHistoryDays"/>), for charts after a load.</summary>
@@ -152,6 +158,9 @@ public sealed class ParkState
 
     /// <summary>The lift day pass, paid once per visit when a guest first boards a lift (0 = lifts are free).</summary>
     public long LiftTicketCents { get; set; }
+
+    /// <summary>Game over: the books stayed below zero for <see cref="ParkRules.BankruptcyDays"/> days. The park never opens again.</summary>
+    public bool Bankrupt { get; set; }
 }
 
 /// <summary>Balancing parameters, loaded from the scenario and saved with the game.</summary>
@@ -168,6 +177,11 @@ public sealed class ParkRules
     public int Capacity { get; set; } = 150;
     public long DailyUpkeepCents { get; set; } = 25_000;
     public long SnackPriceCents { get; set; } = 400;
+
+    /// <summary>
+    /// The park goes bankrupt (game over) when the books close below zero this many days in a row (0 = never).
+    /// </summary>
+    public int BankruptcyDays { get; set; }
 
     /// <summary>Sandbox: no park-level gates (features, lifts, and later tools, loans and facilities need no level).</summary>
     public bool UnlockAll { get; set; }
@@ -221,6 +235,7 @@ public sealed class ParkRules
         if (LunchPriceCents < 0) errors.Add("rules.lunchPriceCents must be >= 0");
         if (LunchEnergy is < 0 or > 1000) errors.Add("rules.lunchEnergy must be within 0..1000");
         if (LunchHappiness is < 0 or > 1000) errors.Add("rules.lunchHappiness must be within 0..1000");
+        if (BankruptcyDays is < 0 or > 365) errors.Add("rules.bankruptcyDays must be within 0..365");
         return errors;
     }
 }
@@ -263,6 +278,20 @@ public sealed class FinanceState
     /// <summary>Daily upkeep of the park's own lifts (included in the expenses).</summary>
     public long TotalLiftUpkeepCents { get; set; }
     public long LiftUpkeepTodayCents { get; set; }
+
+    /// <summary>Money borrowed (not revenue) and installments paid back (included in the expenses).</summary>
+    public long TotalBorrowedCents { get; set; }
+    public long TotalLoanPaymentsCents { get; set; }
+    public long LoanPaymentsTodayCents { get; set; }
+
+    /// <summary>Days in a row the books closed below zero (see <see cref="ParkRules.BankruptcyDays"/>).</summary>
+    public int DaysInDebt { get; set; }
+
+    public void Borrow(long cents)
+    {
+        MoneyCents += cents;
+        TotalBorrowedCents += cents;
+    }
 
     public void Earn(long cents)
     {

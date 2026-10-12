@@ -1,13 +1,14 @@
-// Starter Valley career, first weeks: restore the old T-bar, hire two workers and plan two trails on the ski hill (the
-// crew builds them: the Old Piste crosses the T-bar track a few times, the red Meadow Flow runs down the meadow west of
-// the lift), then try to buy the South slope every morning (08:00) until the park has reached level 3 and can afford it
-// (later tries are rejected: already yours).
+// Starter Valley career, first weeks: take the starter loan (the 25,000 € start doesn't pay for the T-bar), restore the
+// old T-bar, hire two workers and plan two trails on the ski hill (the crew builds them: the Old Piste runs down east of
+// the T-bar track without crossing it, the red Meadow Flow down the meadow west of the lift), then try to buy the South
+// slope every morning (08:00) until the park has reached level 3 and can afford it (later tries are rejected: already yours).
 // Ids are those of a fresh Starter Valley career world: Old Ski Lift 1.
 [
+  { "tick": 0, "command": { "type": "takeLoan", "offerId": "starter" } },
   { "tick": 0, "command": { "type": "restoreLift", "liftId": 1 } },
   { "tick": 0, "command": { "type": "hireCrew" } },
   { "tick": 0, "command": { "type": "hireCrew", "name": "Alex" } },
-  { "tick": 1, "command": { "type": "buildWay", "kind": "trail", "name": "Old Piste", "points": [{"x": 73300, "z": 70500}, {"x": 77500, "z": 72200}, {"x": 80000, "z": 76000}, {"x": 79000, "z": 80000}, {"x": 81000, "z": 84000}, {"x": 88000, "z": 86500}, {"x": 90500, "z": 90000}, {"x": 93000, "z": 93700}] } },
+  { "tick": 1, "command": { "type": "buildWay", "kind": "trail", "name": "Old Piste", "points": [{"x": 74500, "z": 70600}, {"x": 78500, "z": 72500}, {"x": 82000, "z": 76500}, {"x": 85000, "z": 81500}, {"x": 88500, "z": 86000}, {"x": 91500, "z": 90000}, {"x": 93500, "z": 93500}] } },
   { "tick": 1, "command": { "type": "buildWay", "kind": "trail", "name": "Meadow Flow", "points": [{"x": 72700, "z": 70400}, {"x": 71200, "z": 73500}, {"x": 72200, "z": 77500}, {"x": 75500, "z": 81200}, {"x": 79500, "z": 85000}, {"x": 84500, "z": 89300}, {"x": 89500, "z": 92500}, {"x": 92400, "z": 94000}] } },
   { "tick": 1920, "command": { "type": "buyParcel", "parcelId": "parcel_5" } },
   { "tick": 3360, "command": { "type": "buyParcel", "parcelId": "parcel_5" } },

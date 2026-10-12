@@ -5,6 +5,7 @@ using Bikepark.Game.Riders;
 using Bikepark.Game.Terrain;
 using Bikepark.Game.Ways;
 using Bikepark.Sim;
+using Bikepark.Sim.Banking;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Crew;
@@ -63,6 +64,9 @@ internal sealed class HudContext
 
     /// <summary>Forgets who paused the game (a new world).</summary>
     public void ClearWarningPauses() => _pausedBy.Clear();
+
+    /// <summary>Opens a menu (set by the HUD).</summary>
+    public Action<Hud.Menu> OpenMenu { get; set; } = _ => { };
 
     /// <summary>Opens the repair pop-up for a trail (set by the HUD).</summary>
     public Action<int> OpenRepair { get; set; } = _ => { };
@@ -1163,7 +1167,9 @@ public partial class FinancePanel : HudPanel
 {
     private Label _money = null!, _revenue = null!, _expenses = null!, _net = null!;
     private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _food = null!, _fee = null!, _liftTicket = null!, _tickets = null!;
-    private Label _insurance = null!, _landAndLifts = null!, _liftUpkeep = null!;
+    private Label _insurance = null!, _landAndLifts = null!, _liftUpkeep = null!, _loanPayments = null!, _debtStatus = null!;
+    private VBoxContainer _loans = null!;
+    private string _loansSignature = "";
     private DayChart _chart = null!;
 
     public override string Title => "Finances";
@@ -1190,8 +1196,21 @@ public partial class FinancePanel : HudPanel
         totals = Row(24);
         totals.AddChild(UiTheme.StatTile("Land bought", out _landAndLifts, 16));
         totals.AddChild(UiTheme.StatTile("Own lifts: upkeep", out _liftUpkeep, 16));
+        totals.AddChild(UiTheme.StatTile("Loan installments", out _loanPayments, 16));
         Body.AddChild(totals);
         Body.AddChild(UiTheme.Separator());
+
+        if (Ctx.Sim.State.LoanRules.Offers.Count > 0)
+        {
+            Body.AddChild(UiTheme.Label("LOANS — the money at once, paid back weekly with a flat interest; a missed installment costs a late fee",
+                11, UiTheme.TextDim, bold: true));
+            _loans = new VBoxContainer();
+            _loans.AddThemeConstantOverride("separation", 4);
+            Body.AddChild(_loans);
+            _debtStatus = UiTheme.Label("", 12, UiTheme.Bad);
+            Body.AddChild(_debtStatus);
+            Body.AddChild(UiTheme.Separator());
+        }
 
         var fee = Row(8);
         fee.AddChild(UiTheme.Label("ENTRANCE", 11, UiTheme.TextDim, bold: true));
@@ -1248,8 +1267,67 @@ public partial class FinancePanel : HudPanel
         _fee.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.EntryFeeCents);
         _liftTicket.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.LiftTicketCents);
         _tickets.Text = UiTheme.Money(f.TotalLiftTicketsCents);
+        _loanPayments.Text = UiTheme.Money(f.TotalLoanPaymentsCents);
+        _loanPayments.TooltipText = $"Borrowed so far: {UiTheme.Money(f.TotalBorrowedCents)}";
+        RefreshLoans();
         _chart.Days = Ctx.Days;
         _chart.QueueRedraw();
+    }
+
+    /// <summary>One line per offer (take it, or the running loan: what is left, next installment, repay).</summary>
+    private void RefreshLoans()
+    {
+        if (_loans is null) return;
+        var state = Ctx.Sim.State;
+        int level = Ctx.Kpi.Level;
+        long day = GameTime.Day(state.Tick);
+        string signature = $"{level}|{state.Finance.MoneyCents / 10_000}|{string.Join(",", state.Loans.Select(l => $"{l.Id}:{l.RemainingCents}:{l.NextDueDay}"))}";
+        int limit = state.Rules.BankruptcyDays;
+        _debtStatus.Text = state.Park.Bankrupt ? "The park is bankrupt."
+            : state.Finance.DaysInDebt > 0 && limit > 0 ? $"In the red for {state.Finance.DaysInDebt} day(s): bankrupt after {limit} days in a row."
+            : "";
+        _debtStatus.Visible = _debtStatus.Text.Length > 0;
+        if (signature == _loansSignature) return;
+        _loansSignature = signature;
+        foreach (var child in _loans.GetChildren()) child.QueueFree();
+
+        foreach (var offer in state.LoanRules.Offers)
+        {
+            var row = Row(12);
+            var loan = state.Loans.FirstOrDefault(l => l.OfferId == offer.Id);
+            var name = UiTheme.Label(offer.Name, 13, bold: true);
+            name.CustomMinimumSize = new Vector2(120, 0);
+            row.AddChild(name);
+            if (loan is not null)
+            {
+                long days = Math.Max(0, loan.NextDueDay - day);
+                var text = UiTheme.Label($"{UiTheme.Money(loan.RemainingCents)} still owed · next {UiTheme.Money(loan.NextPaymentCents)} " +
+                    (days == 0 ? "tonight" : $"in {days + 1} days") + (loan.MissedPayments > 0 ? $" · {loan.MissedPayments} missed" : ""),
+                    12, loan.MissedPayments > 0 ? UiTheme.Warn : UiTheme.Text);
+                text.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                row.AddChild(text);
+                int id = loan.Id;
+                var repay = UiTheme.Button($"Repay {UiTheme.Money(loan.RemainingCents)}", () => Ctx.Host.Enqueue(new RepayLoanCommand(id)),
+                    "Pay back everything still owed now (no discount on the interest)");
+                repay.Disabled = state.Finance.MoneyCents < loan.RemainingCents;
+                row.AddChild(repay);
+            }
+            else
+            {
+                string? locked = LoanMath.CannotTake(state, level, offer);
+                var text = UiTheme.Label($"{UiTheme.Money(offer.PrincipalCents)} · {offer.Weeks} × {UiTheme.Money(offer.InstallmentCents)} weekly · " +
+                    $"{offer.InterestPermille / 10.0:0.#} % interest = {UiTheme.Money(offer.TotalRepayCents)} in total",
+                    12, locked is null ? UiTheme.Text : UiTheme.TextDim);
+                text.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                row.AddChild(text);
+                string id = offer.Id;
+                var take = UiTheme.Button(state.Rules.UnlockLevel(level) < offer.RequiredLevel ? $"Level {offer.RequiredLevel}" : "Take",
+                    () => Ctx.Host.Enqueue(new TakeLoanCommand(id)), locked ?? $"Borrow {UiTheme.Money(offer.PrincipalCents)} now");
+                take.Disabled = locked is not null;
+                row.AddChild(take);
+            }
+            _loans.AddChild(row);
+        }
     }
 }
 

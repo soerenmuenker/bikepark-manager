@@ -65,6 +65,8 @@ public sealed class ScenarioDefinition
 
     public Safety.CrashRules CrashRules { get; set; } = new();
 
+    public Banking.LoanRules LoanRules { get; set; } = new();
+
     /// <summary>Land the park can buy (none: all land is the park's from the start).</summary>
     public List<Land.Parcel> Parcels { get; set; } = [];
 
@@ -141,6 +143,7 @@ public static class ScenarioLoader
             Parcels = scenario.Parcels,
             OwnedParcelIds = scenario.Parcels.Where(p => p.OwnedAtStart).Select(p => p.Id).ToList(),
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
+            LoanRules = scenario.LoanRules,
         };
 
         var queue = new CommandQueue(state);
@@ -182,6 +185,7 @@ public static class ScenarioLoader
         if (s.StartingWood < 0) errors.Add("startingWood must be >= 0");
         errors.AddRange(s.ReputationRules.Validate());
         errors.AddRange(s.CrashRules.Validate());
+        errors.AddRange(s.LoanRules.Validate());
         foreach (var parcel in s.Parcels) errors.AddRange(parcel.Validate());
         if (s.Parcels.Select(p => p.Id).Distinct().Count() != s.Parcels.Count) errors.Add("parcels: ids must be unique");
         if (s.Parcels.Count > 0 && !s.Parcels.Any(p => p.OwnedAtStart)) errors.Add("parcels: at least one must be owned at start");

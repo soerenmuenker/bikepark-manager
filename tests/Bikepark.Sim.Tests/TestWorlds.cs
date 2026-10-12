@@ -1,3 +1,4 @@
+using Bikepark.Sim.Banking;
 using System.Text.Json;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Crew;
@@ -24,6 +25,10 @@ internal static class TestWorlds
         Terrain = new TerrainSettings { Seed = 1337 },
         TrailFeatureTypes = FeatureCatalog(),
         ToolTypes = ToolCatalog(),
+        LoanRules = new LoanRules
+        {
+            Offers = [new LoanOffer { Id = "starter", Name = "Starter loan", PrincipalCents = 1_000_000, Weeks = 10, InterestPermille = 80 }],
+        },
     };
 
     /// <summary>The shipped tool catalog (data/tools.json).</summary>
@@ -145,6 +150,11 @@ internal static class TestWorlds
         new(720, new RenameTrailCommand(1, "Gravel")), // rejected: a path
         new(720, new RenameTrailCommand(2, "Blue Groove")),
         new(720, new BuildPlatformCommand("", new PointCm(-100, 0), new PointCm(0, 0))), // rejected: off the map
+        // Loans: the starter loan (id 15, first installment at the end of day 6), once.
+        new(750, new TakeLoanCommand("starter")),
+        new(750, new TakeLoanCommand("starter")), // rejected: already running
+        new(750, new TakeLoanCommand("nowhere")), // rejected: unknown offer
+        new(760, new RepayLoanCommand(99)), // rejected: no such loan
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

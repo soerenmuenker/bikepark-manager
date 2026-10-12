@@ -74,6 +74,7 @@ public partial class Hud : CanvasLayer
     private VBoxContainer _toasts = null!;
     private RepairDialog _repairDialog = null!;
     private LiftStopDialog _liftStopDialog = null!;
+    private NoticeDialog _notice = null!;
 
     /// <summary>Where the last rider on a T-bar was hit (trail and cm), for the lift-stop pop-up that follows.</summary>
     private (int WayId, long Cm) _lastTowedCrash;
@@ -242,6 +243,9 @@ public partial class Hud : CanvasLayer
         _root.AddChild(_repairDialog);
         _liftStopDialog = new LiftStopDialog(_ctx);
         _root.AddChild(_liftStopDialog);
+        _notice = new NoticeDialog(_ctx);
+        _root.AddChild(_notice);
+        _ctx.OpenMenu = menu => ShowMenu(menu, null);
 
         _nameDialog = new NameDialog();
         _ctx.AskName = _nameDialog.Ask;
@@ -408,6 +412,13 @@ public partial class Hud : CanvasLayer
             // Below the repair pop-up when both are open.
             float y = _repairDialog.Visible ? _repairDialog.Position.Y + _repairDialog.Size.Y + 12 : MathF.Round((view.Y - size.Y) / 3);
             _liftStopDialog.Position = new Vector2(MathF.Round((view.X - size.X) / 2), y);
+        }
+
+        if (_notice.Visible)
+        {
+            var size = _notice.GetCombinedMinimumSize();
+            _notice.Size = size;
+            _notice.Position = new Vector2(MathF.Round((view.X - size.X) / 2), MathF.Round((view.Y - size.Y) / 3));
         }
 
         float top = 14;
@@ -731,10 +742,27 @@ public partial class Hud : CanvasLayer
         _ctx.Days.AddRange(sim.State.DayHistory); // charts continue after loading a career
         _repairDialog.Clear();
         _liftStopDialog.Clear();
+        _notice.Clear();
         _ctx.ClearWarningPauses();
+        if (sim.State.Park.Bankrupt) _notice.Request(BankruptNotice(sim.State.Finance.DaysInDebt));
         var events = sim.Events;
+        _subscriptions.Add(events.Subscribe<LoanTaken>(e => Toast($"Took the {e.Name.ToLowerInvariant()}: {UiTheme.Money(e.PrincipalCents)}", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<LoanPaid>(e => Toast(e.RemainingCents > 0
+            ? $"Paid {UiTheme.Money(e.PaidCents)} on the {e.Name.ToLowerInvariant()}, {UiTheme.Money(e.RemainingCents)} still owed"
+            : $"Paid {UiTheme.Money(e.PaidCents)}: the {e.Name.ToLowerInvariant()} is paid off", UiTheme.TextDim)));
+        _subscriptions.Add(events.Subscribe<LoanPaymentMissed>(e => _notice.Request(new NoticeDialog.Notice(
+            "⚠ Loan installment missed",
+            $"There wasn't enough money for the {UiTheme.Money(e.DueCents)} installment on the {e.Name.ToLowerInvariant()}. " +
+            $"The bank adds a late fee of {UiTheme.Money(e.LateFeeCents)} and expects it again in a week."))));
+        _subscriptions.Add(events.Subscribe<DebtWarning>(e => _notice.Request(new NoticeDialog.Notice(
+            "⚠ The park is in the red",
+            $"The books closed below zero{(e.DaysInDebt > 1 ? $" for {e.DaysInDebt} days in a row" : "")}. " +
+            $"After {e.DaysLeft} more day{(e.DaysLeft == 1 ? "" : "s")} like this the park goes bankrupt. Earn more, spend less " +
+            "(crew, lifts), or take a loan to bridge it."))));
+        _subscriptions.Add(events.Subscribe<ParkBankrupt>(e => _notice.Request(BankruptNotice(e.DaysInDebt))));
         _subscriptions.Add(events.Subscribe<DayEnded>(e =>
         {
+            if (_ctx.Days.Count > 0 && _ctx.Days[^1].Day >= e.Report.Day) return; // already in the loaded history
             _ctx.Days.Add(e.Report);
             long net = e.Report.RevenueCents - e.Report.ExpensesCents;
             Toast($"Day {e.Report.Day + 1} closed: {e.Report.Visitors} visitors, {e.Report.LiftRides} lift rides, net {UiTheme.Money(net)}",
@@ -896,6 +924,12 @@ public partial class Hud : CanvasLayer
         string name = tier is null ? $"tier {tierIndex}" : $"“{tier.Name}” ({UiTheme.Money(tier.DailyFeeCents)}/day)";
         return booked ? $"Booked {name} from the next opening" : $"{lift?.Name}: {name} now in effect";
     }
+
+    private NoticeDialog.Notice BankruptNotice(int days) => new(
+        "Bankrupt",
+        $"{_ctx.Sim.State.Park.Name} stayed in the red for {days} days in a row: the bank closes the park. " +
+        $"It ran for {(_ctx.Sim.State.DayHistory.LastOrDefault()?.Day ?? 0) + 1} days. Start a new career from the menu.",
+        Final: true);
 
     private void Toast(string text, Color accent)
     {

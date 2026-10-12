@@ -10,7 +10,7 @@ using Godot;
 namespace Bikepark.Game;
 
 /// <summary>What the start screen shows about a saved career (written next to its save, so listing is cheap).</summary>
-public sealed record CareerInfo(string Id, string ParkName, long Day, long MoneyCents, int Level, int? RatingTenths, DateTime LastPlayedUtc);
+public sealed record CareerInfo(string Id, string ParkName, long Day, long MoneyCents, int Level, int? RatingTenths, DateTime LastPlayedUtc, bool Bankrupt = false);
 
 /// <summary>
 /// The saved careers: one save per career in <c>user://careers/&lt;id&gt;.json</c> (the whole world, written atomically)
@@ -68,7 +68,7 @@ public static class CareerStore
         SaveGame.SaveAtomic(sim.State, WorldPath(id));
         var kpi = KpiReport.From(sim.State, includeHash: false, network: sim.Network);
         var info = new CareerInfo(id, sim.State.Park.Name, GameTime.Day(sim.State.Tick), kpi.MoneyCents, kpi.Level, kpi.RatingTenths,
-            DateTime.UtcNow);
+            DateTime.UtcNow, sim.State.Park.Bankrupt);
         string temp = MetaPath(id) + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(info, MetaJson));
         File.Move(temp, MetaPath(id), overwrite: true);

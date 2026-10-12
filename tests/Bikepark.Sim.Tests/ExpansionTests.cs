@@ -54,7 +54,7 @@ public class ExpansionTests
         Assert.Equal(0, tbar.BikeCarrierPermille);
         Assert.Equal(0, Lift(sim, Gondola).BikeCarrierPermille);
         Assert.Equal(SkiHillParking, sim.Network.BaseHub?.Id); // guests arrive at the ski hill
-        Assert.Equal(15_000_000, sim.State.Finance.MoneyCents);
+        Assert.Equal(2_500_000, sim.State.Finance.MoneyCents); // 25,000 €: the T-bar needs the starter loan
         Assert.Empty(sim.State.Crew);
     }
 
@@ -95,7 +95,7 @@ public class ExpansionTests
     [Fact]
     public void RestoringTheTBar_CostsHalf_AndItRunsFromTheNextOpeningAfterTheWork()
     {
-        var sim = Career();
+        var sim = Career(tweak: s => s.StartingMoneyCents = 15_000_000);
         sim.Step();
         var type = LiftNetwork.FindType(sim.State, "tbar")!;
         long money = sim.State.Finance.MoneyCents;
@@ -119,7 +119,7 @@ public class ExpansionTests
     [Fact]
     public void BuildingALift_NeedsItsLevel_ThenCostsMoney_TakesDays_AndUpkeep()
     {
-        var sim = Career();
+        var sim = Career(tweak: s => s.StartingMoneyCents = 15_000_000);
         sim.Step();
         // A chairlift on the ski hill: level 5 needed.
         Assert.Contains("needs park level 5", Reject(sim, new BuildLiftCommand("chairlift_4", "Chair", M(760, 890), M(745, 700))));
@@ -182,12 +182,24 @@ public class ExpansionTests
 
     // ---------------------------------------------------------------- the T-bar track
 
-    /// <summary>The career opening with its trails built at once (Old Piste zigzags across the T-bar track).</summary>
-    private static IEnumerable<TimedCommand> OpeningBuiltAtOnce() =>
-        TestWorlds.CareerOpening().Select(c => c.Command is BuildWayCommand build ? c with { Command = build with { Instant = true } } : c);
+    /// <summary>
+    /// The career opening with its trails built at once; with <paramref name="zigzag"/> the Old Piste is the zigzag that
+    /// crosses the T-bar track a few times (<see cref="OldPiste"/>) instead of the script's line east of it.
+    /// </summary>
+    private static IEnumerable<TimedCommand> OpeningBuiltAtOnce(bool zigzag = false) =>
+        TestWorlds.CareerOpening().Select(c => c.Command is BuildWayCommand build
+            ? c with { Command = (zigzag && build.Name == "Old Piste" ? OldPiste() : build) with { Instant = true } }
+            : c);
 
-    private static BuildWayCommand OldPiste() =>
-        (BuildWayCommand)TestWorlds.CareerOpening().Select(c => c.Command).OfType<BuildWayCommand>().First(b => b.Name == "Old Piste");
+    /// <summary>An Old Piste that zigzags across the T-bar track (the career script's first version).</summary>
+    private static BuildWayCommand OldPiste()
+    {
+        var script = TestWorlds.CareerOpening().Select(c => c.Command).OfType<BuildWayCommand>().First(b => b.Name == "Old Piste");
+        return script with
+        {
+            Points = [new(73300, 70500), new(77500, 72200), new(80000, 76000), new(79000, 80000), new(81000, 84000), new(88000, 86500), new(90500, 90000), new(93000, 93700)],
+        };
+    }
 
     [Fact]
     public void TrailsCrossingATBarTrack_AreWarnedAbout_AndFoundInTheNetwork()
@@ -232,8 +244,8 @@ public class ExpansionTests
     [Fact]
     public void TrailRiders_CanCollideWithRidersOnTheTBar()
     {
-        // The career's own rules: the Old Piste crosses the T-bar track a few times, riders meeting there collide.
-        var sim = Career(OpeningBuiltAtOnce(), s =>
+        // The career's own rules: the zigzag Old Piste crosses the T-bar track a few times, riders meeting there collide.
+        var sim = Career(OpeningBuiltAtOnce(zigzag: true), s =>
         {
             s.CrashRules.FeatureBasePpm = 0;
             s.CrashRules.TerrainBasePpm = 0;

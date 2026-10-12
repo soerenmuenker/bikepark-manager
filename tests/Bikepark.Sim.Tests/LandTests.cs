@@ -113,7 +113,7 @@ public class LandTests
         Assert.Contains("needs park level 8", Reject(sim, new BuyParcelCommand(HikersParadise)));
         Assert.Contains("Unknown parcel", Reject(sim, new BuyParcelCommand("moon")));
 
-        var poor = Career(s => s.Parcels.Single(p => p.Id == SouthSlope).RequiredLevel = 0); // 200 000 € > the 150 000 € start
+        var poor = Career(s => s.Parcels.Single(p => p.Id == SouthSlope).RequiredLevel = 0); // 40 000 € > the 25 000 € start
         Assert.Contains("Not enough money", Reject(poor, new BuyParcelCommand(SouthSlope)));
     }
 
@@ -128,8 +128,8 @@ public class LandTests
         long money = sim.State.Finance.MoneyCents;
         Assert.Null(Reject(sim, new BuyParcelCommand(SouthSlope)));
         Assert.Contains(sim.Events.Pending, e => e is ParcelBought { ParcelId: SouthSlope });
-        Assert.Equal(money - 20_000_000, sim.State.Finance.MoneyCents);
-        Assert.Equal(20_000_000, sim.State.Finance.TotalLandCents);
+        Assert.Equal(money - 4_000_000, sim.State.Finance.MoneyCents);
+        Assert.Equal(4_000_000, sim.State.Finance.TotalLandCents);
         Assert.True(LandMath.IsOwned(sim.State, 60_000, 90_000));
         Assert.Contains("already yours", Reject(sim, new BuyParcelCommand(SouthSlope)));
 
