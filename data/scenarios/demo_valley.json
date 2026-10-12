@@ -8,7 +8,7 @@
   "entryFeeCents": 1500,
   // Daily rhythm (minutes of the day): open 09:00-18:00.
   // Arrivals follow the profile (permille of baseArrivalPermille): a morning rush, tapering off in the afternoon.
-  // Guests take one lunch break between 11:00 and 13:00.
+  // Guests take one lunch break between 11:00 and 13:00. unlockAll: a sandbox, every park-level gate is open.
   "rules": {
     "openMinute": 540,
     "closeMinute": 1080,
@@ -29,7 +29,8 @@
     "maxEntryFeeCents": 10000,
     "capacity": 150,
     "dailyUpkeepCents": 25000,
-    "snackPriceCents": 400
+    "snackPriceCents": 400,
+    "unlockAll": true
   },
   // Building rules and rider tuning (TrailRules). Gradients in tenths of the -10..+10 gradient score
   // (1 point = 9°; 40 = 4.0 = 36°): beyond "max" a way can't be built, beyond "steep" it only warns.
@@ -159,9 +160,8 @@
     "influencerPeakPermille": 400,
     "influencerNeutralTenths": 30,
     "influencerEffectDays": 5,
-    "xpPerTrailKm": 150,
-    "xpPerRating": 50,
-    "xpPerFeatureKind": 25,
+    "xpPerKmByRating": { "green": 50, "blue": 100, "red": 175, "black": 250 },
+    "xpPerFeatureByRating": { "green": 5, "blue": 10, "red": 20, "black": 40 },
     "xpPerVisitor": 1,
     "visitorDays": 7,
     "levelXp": [100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500]

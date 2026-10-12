@@ -19,7 +19,7 @@ internal static class TestWorlds
         ParkName = "Test Park",
         StartingMoneyCents = 1_000_000,
         EntryFeeCents = 1500,
-        Rules = new ParkRules(),
+        Rules = new ParkRules { UnlockAll = true }, // a sandbox: no park-level gates
         // Same terrain for every world seed (Starter Valley's), so the demo network is valid everywhere.
         Terrain = new TerrainSettings { Seed = 1337 },
         TrailFeatureTypes = FeatureCatalog(),

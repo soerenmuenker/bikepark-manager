@@ -10,6 +10,7 @@ using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reporting;
+using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Systems;
 using Bikepark.Sim.Trails;
 using Bikepark.Sim.Weather;
@@ -744,8 +745,19 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<InfluencerPosted>(e => Toast(
             $"{e.Post.Name} posted: {ReputationPanel.StarsText(e.Post.StarsTenths)} stars, visitors {e.Post.EffectPermille / 10:+0;-0;0} % for a few days",
             e.Post.EffectPermille > 0 ? UiTheme.Good : e.Post.EffectPermille < 0 ? UiTheme.Bad : UiTheme.TextDim)));
-        _subscriptions.Add(events.Subscribe<LevelChanged>(e => Toast(e.NewLevel > e.OldLevel
-            ? $"Park level {e.NewLevel} reached!" : $"The park dropped to level {e.NewLevel}", e.NewLevel > e.OldLevel ? UiTheme.Good : UiTheme.Warn)));
+        _subscriptions.Add(events.Subscribe<LevelChanged>(e =>
+        {
+            if (e.NewLevel < e.OldLevel)
+            {
+                Toast($"The park dropped to level {e.NewLevel}", UiTheme.Warn);
+                return;
+            }
+            var unlocks = new List<string>();
+            for (int level = e.OldLevel + 1; level <= e.NewLevel; level++)
+                unlocks.AddRange(ParkProgress.UnlocksAt(_ctx.Sim.State, level));
+            Toast(unlocks.Count == 0 || _ctx.Sim.State.Rules.UnlockAll ? $"Park level {e.NewLevel} reached!"
+                : $"Park level {e.NewLevel} reached! Unlocked: {string.Join(", ", unlocks)}", UiTheme.Good);
+        }));
         _subscriptions.Add(events.Subscribe<TrailSplit>(e =>
             Toast($"The gravel path divides the trail into {TrailName(e.WayId)} and {TrailName(e.NewWayId)}", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<TrailRenaturalized>(e =>

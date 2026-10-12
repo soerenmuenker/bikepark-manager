@@ -152,7 +152,13 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     visibility (all-time reviews) × rating factor × influencer post, applied in `GuestArrivalSystem`. An influencer is a
     real guest (`IsInfluencer`, booked at opening), their review becomes the post. XP and level are derived
     (`ParkProgress`, never saved; `Reputation.Level` only remembers the last announced level). `ReputationSystem` runs
-    before `FinanceSystem` (it reads today's visitors before the books close).
+    before `FinanceSystem` (it reads today's visitors before the books close). XP = built trail length per rating
+    (`XpPerKmByRating`) + built features per their own rating (`TrailFeatureType.Rating`, `XpPerFeatureByRating`) +
+    average recent visitors.
+17a. **Unlocks:** content has a `RequiredLevel` (feature types, lift types, parcels); checks compare against
+    `ParkRules.UnlockLevel(level)` (`UnlockAll` = sandbox, the Demo: everything open). Features: `TrailFeatures.CannotPlace`,
+    checked in `PlaceTrailFeatureCommand` (not for debug `Instant`) and `FeatureTool`; lifts: `LiftWorks.CannotBuild`.
+    `ParkProgress.UnlocksAt` lists a level's unlocks for the level-up toast. Feature levels: blue 0, red 3–5, black 7+.
 18. **Crashes** (`CrashRules.Enabled`, off by default; Starter Valley turns it on): rolled only in `RiderSystem`, only
     on a rider's run leg and only while uninjured: per built feature passed and per finished 10 m segment (terrain).
     Collisions are no roll: every uninjured rider passing a crossing (any way, run or not, and towed riders on a T-bar

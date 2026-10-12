@@ -1,3 +1,5 @@
+using Bikepark.Sim.State;
+
 namespace Bikepark.Sim.Trails;
 
 public enum FeatureMaterial : byte
@@ -58,7 +60,13 @@ public sealed class TrailFeatureType
     /// <summary>Wood used to build it.</summary>
     public int Wood { get; set; }
 
+    /// <summary>Park level needed to place it (a sandbox has everything).</summary>
+    public int RequiredLevel { get; set; }
+
     public long LengthCm => LengthMeters * 100L;
+
+    /// <summary>The rating band its difficulty falls in (a trail with it is rated at least this).</summary>
+    public TrailRating Rating => WayGeometry.RatingFor(Difficulty);
 
     public List<string> Validate()
     {
@@ -75,6 +83,8 @@ public sealed class TrailFeatureType
         if (FunWeight is < 1 or > 10) errors.Add($"{p}.funWeight must be within 1..10");
         if (WorkMinutes is < 1 or > 100_000) errors.Add($"{p}.workMinutes must be within 1..100000");
         if (Wood is < 0 or > 1000) errors.Add($"{p}.wood must be within 0..1000");
+        if (RequiredLevel is < 0 or > Reputation.ReputationRules.MaxLevel)
+            errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
         return errors;
     }
 }
@@ -111,6 +121,15 @@ public static class TrailFeatures
 {
     public static TrailFeatureType? FindType(IReadOnlyList<TrailFeatureType> types, string typeId) =>
         types.FirstOrDefault(t => t.Id == typeId);
+
+    /// <summary>
+    /// Why the park can't place this feature type yet (its level), or null. A sandbox (<see cref="ParkRules.UnlockAll"/>)
+    /// has everything; debug instant builds skip this check.
+    /// </summary>
+    public static string? CannotPlace(WorldState state, int level, TrailFeatureType type) =>
+        state.Rules.UnlockLevel(level) < type.RequiredLevel
+            ? $"The {type.Name.ToLowerInvariant()} needs park level {type.RequiredLevel} (you are level {level})."
+            : null;
 
     /// <summary>The way's features that resolve to a known type, in distance order.</summary>
     public static List<PlacedFeature> Resolve(Way way, IReadOnlyList<TrailFeatureType> types)

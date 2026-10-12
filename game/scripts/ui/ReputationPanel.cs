@@ -1,6 +1,7 @@
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Reputation;
+using Bikepark.Sim.Trails;
 using Godot;
 
 namespace Bikepark.Game.Ui;
@@ -184,10 +185,11 @@ public partial class ReputationPanel : HudPanel
             _xpBar.Value = 1000;
             _xpText.Text = rules.LevelXp.Count == 0 ? $"{xp.Total} XP" : $"Level {level} (top level) · {xp.Total} XP";
         }
-        _xpParts.Text = $"Trails {xp.TrailMeters / 1000.0:0.0} km  +{xp.TrailXp} XP\n" +
-                        $"Trail ratings {xp.Ratings} of 4  +{xp.RatingXp} XP\n" +
-                        $"Feature kinds {xp.FeatureKinds} of 7  +{xp.FeatureXp} XP\n" +
-                        $"Visitors {xp.AverageVisitors}/day  +{xp.VisitorXp} XP";
+        _xpParts.Text = $"Trails {PerColour(r => $"{xp.TrailMeters[r] / 1000.0:0.0} km")}  +{xp.TrailXp} XP\n" +
+                        $"Features {PerColour(r => $"{xp.Features[r]}")}  +{xp.FeatureXp} XP\n" +
+                        $"Visitors {xp.AverageVisitors}/day  +{xp.VisitorXp} XP\n" +
+                        $"XP per km: {PerColour(r => $"{rules.XpPerKmByRating.For((TrailRating)r)}")} · per feature: " +
+                        PerColour(r => $"{rules.XpPerFeatureByRating.For((TrailRating)r)}");
 
         long day = GameTime.Day(state.Tick);
         _post.Text = ReputationMath.ActivePost(state, day) is { } post
@@ -224,6 +226,10 @@ public partial class ReputationPanel : HudPanel
     };
 
     /// <summary>"3.4" for tenths, "–" without a rating.</summary>
+    /// <summary>"green a · blue b · red c · black d" for the four ratings.</summary>
+    private static string PerColour(Func<int, string> value) =>
+        $"green {value(0)} · blue {value(1)} · red {value(2)} · black {value(3)}";
+
     internal static string StarsText(int? tenths) => tenths is { } t ? $"{t / 10}.{t % 10}" : "–";
 }
 

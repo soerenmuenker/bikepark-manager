@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -103,6 +103,16 @@ public static class SaveGame
                 crash["collisionMinSpeedCmPerS"] = defaults.CollisionMinSpeedCmPerS;
             }
             version = 5;
+        }
+
+        if (version == 5)
+        {
+            // v6: XP per km and per built feature by rating instead of per distinct rating / feature kind; feature types
+            // have a park level (existing parks keep everything unlocked: their level 0).
+            if (root["world"]?["reputationRules"] is JsonObject rep)
+                foreach (string old in new[] { "xpPerTrailKm", "xpPerRating", "xpPerFeatureKind" })
+                    rep.Remove(old);
+            version = 6;
         }
 
         root["version"] = version;

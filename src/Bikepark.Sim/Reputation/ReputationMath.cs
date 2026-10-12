@@ -158,39 +158,49 @@ public static class ReputationMath
     }
 }
 
-/// <summary>Park XP and level, derived from the park as it is now (built trails, their ratings and features, recent visitors).</summary>
+/// <summary>
+/// Park XP and level, derived from the park as it is now: built trail length per rating, built features per rating
+/// (their own difficulty band) and recent visitors.
+/// </summary>
 public static class ParkProgress
 {
+    public const int Ratings = 4;
+
+    /// <summary>Per rating (index = <see cref="TrailRating"/>): metres of trail and built features, and the XP of each.</summary>
     public sealed record XpBreakdown(
-        long TrailMeters, int TrailXp,
-        int Ratings, int RatingXp,
-        int FeatureKinds, int FeatureXp,
+        IReadOnlyList<long> TrailMeters, int TrailXp,
+        IReadOnlyList<int> Features, int FeatureXp,
         int AverageVisitors, int VisitorXp)
     {
-        public int Total => TrailXp + RatingXp + FeatureXp + VisitorXp;
+        public int Total => TrailXp + FeatureXp + VisitorXp;
+        public long TotalTrailMeters => TrailMeters.Sum();
+        public int TotalFeatures => Features.Sum();
     }
 
     public static XpBreakdown Xp(WorldState state, WayNetwork network)
     {
         var rules = state.ReputationRules;
-        long lengthCm = 0;
-        var ratings = new List<TrailRating>();
-        var kinds = new List<FeatureKind>();
+        var lengthCm = new long[Ratings];
+        var features = new int[Ratings];
         foreach (var trail in network.Trails)
         {
             if (!network.TryGetGeometry(trail.Id, out var geometry)) continue;
-            lengthCm += geometry.LengthCm;
-            if (!ratings.Contains(geometry.Rating)) ratings.Add(geometry.Rating);
+            lengthCm[(int)geometry.Rating] += geometry.LengthCm;
             foreach (var feature in network.FeaturesOn(trail.Id))
-                if (feature.Feature.Built && !kinds.Contains(feature.Type.Kind))
-                    kinds.Add(feature.Type.Kind);
+                if (feature.Feature.Built)
+                    features[(int)feature.Type.Rating]++;
+        }
+        long trailXp = 0, featureXp = 0;
+        for (int r = 0; r < Ratings; r++)
+        {
+            trailXp += lengthCm[r] * rules.XpPerKmByRating.For((TrailRating)r) / 100_000;
+            featureXp += (long)features[r] * rules.XpPerFeatureByRating.For((TrailRating)r);
         }
         var visitors = state.Reputation.DailyVisitors;
         int average = visitors.Count == 0 ? 0 : (int)(visitors.Sum(v => (long)v) / visitors.Count);
         return new XpBreakdown(
-            lengthCm / 100, (int)(lengthCm * rules.XpPerTrailKm / 100_000),
-            ratings.Count, ratings.Count * rules.XpPerRating,
-            kinds.Count, kinds.Count * rules.XpPerFeatureKind,
+            lengthCm.Select(cm => cm / 100).ToArray(), (int)trailXp,
+            features, (int)featureXp,
             average, average * rules.XpPerVisitor);
     }
 
@@ -204,6 +214,16 @@ public static class ParkProgress
         while (level < rules.LevelXp.Count && xp >= rules.LevelXp[level])
             level++;
         return level;
+    }
+
+    /// <summary>What reaching <paramref name="level"/> unlocks (features, lift types, land), for the level-up message.</summary>
+    public static List<string> UnlocksAt(WorldState state, int level)
+    {
+        var unlocks = new List<string>();
+        unlocks.AddRange(state.TrailFeatureTypes.Where(t => t.RequiredLevel == level).Select(t => $"{t.Name} ({t.Rating.ToString().ToLowerInvariant()})"));
+        unlocks.AddRange(state.LiftTypes.Where(t => t.RequiredLevel == level).Select(t => t.Name));
+        unlocks.AddRange(state.Parcels.Where(p => p.RequiredLevel == level && !state.OwnedParcelIds.Contains(p.Id)).Select(p => $"land: {p.Name}"));
+        return unlocks;
     }
 
     /// <summary>XP needed for the next level, or null at the top.</summary>

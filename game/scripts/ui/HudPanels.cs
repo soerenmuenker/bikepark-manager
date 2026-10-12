@@ -258,7 +258,7 @@ public partial class BuildPanel : HudPanel
 {
     private ToolCard _path = null!, _trail = null!, _parking = null!, _fell = null!, _platform = null!, _renaturalize = null!;
     private readonly List<(LiftType Type, ToolCard Card)> _lifts = [];
-    private readonly List<(string TypeId, ToolCard Card)> _features = [];
+    private readonly List<(TrailFeatureType Type, ToolCard Card)> _features = [];
     private Label _demoStatus = null!;
 
     public override string Title => "Build";
@@ -325,21 +325,20 @@ public partial class BuildPanel : HudPanel
         }
         var groups = Row(22);
         Body.AddChild(groups);
-        foreach (var (material, caption) in new[] { (FeatureMaterial.Dirt, "Dirt"), (FeatureMaterial.Wood, "Wood") })
+        foreach (var (rating, caption) in new[] { (TrailRating.Green, "Green"), (TrailRating.Blue, "Blue"), (TrailRating.Red, "Red"), (TrailRating.Black, "Black") })
         {
             var group = new VBoxContainer();
             group.AddThemeConstantOverride("separation", 4);
             group.AddChild(UiTheme.Label(caption, 12, UiTheme.TextDim, bold: true));
             var row = Row(8);
             group.AddChild(row);
-            foreach (var type in types.Where(t => t.Material == material))
+            foreach (var type in types.Where(t => t.Rating == rating).OrderBy(t => t.RequiredLevel))
             {
                 string id = type.Id;
-                string cost = type.Wood > 0 ? $" · {type.Wood} wood" : "";
-                var card = new ToolCard(FeatureIcon(type.Kind), type.Name, $"{type.LengthMeters} m · {DifficultyWord(type.Difficulty)}{cost}",
+                var card = new ToolCard(FeatureIcon(type.Kind), type.Name, FeatureHint(type),
                     FeatureTooltip(type), () => ToggleFeature(id)) { CustomMinimumSize = new Vector2(100, 104) };
                 row.AddChild(card);
-                _features.Add((id, card));
+                _features.Add((type, card));
             }
             if (row.GetChildCount() > 0) groups.AddChild(group);
         }
@@ -365,6 +364,9 @@ public partial class BuildPanel : HudPanel
         _ => "black",
     };
 
+    private static string FeatureHint(TrailFeatureType type) =>
+        $"{type.LengthMeters} m{(type.Wood > 0 ? $" · {type.Wood} wood" : "")}";
+
     private static string FeatureTooltip(TrailFeatureType type)
     {
         string where = type.MaxGradient < 0
@@ -373,7 +375,8 @@ public partial class BuildPanel : HudPanel
         string bend = type.MinTurn > 0 ? ", on a bend" : "";
         string build = type.Wood > 0 ? $"{HudContext.CrewTime(type.WorkMinutes)} and {type.Wood} wood" : HudContext.CrewTime(type.WorkMinutes);
         return $"{type.Name}: {type.LengthMeters} m, difficulty {type.Difficulty} ({DifficultyWord(type.Difficulty)}); {where}{bend}. " +
-               $"Flow riders {type.FlowAffinity / 10}%, technical riders {type.TechAffinity / 10}%. Building it takes {build}.";
+               $"Flow riders {type.FlowAffinity / 10}%, technical riders {type.TechAffinity / 10}%. Building it takes {build}." +
+               (type.RequiredLevel > 0 ? $" From park level {type.RequiredLevel}." : "");
     }
 
     private void ToggleTrailEdit(TrailEditTool.ToolMode mode)
@@ -430,15 +433,20 @@ public partial class BuildPanel : HudPanel
             card.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Lift && Ctx.Structures.LiftTypeId == type.Id;
             string? locked = Ctx.Host.InstantBuild ? null : LiftWorks.CannotBuild(Ctx.Sim.State, level, type);
             card.SetHint(locked is null ? $"{UiTheme.Money(type.BuildCostCents)} · {LiftMath.BikeRidersPerHour(type, 1000)}/h"
-                : level < type.RequiredLevel ? $"locked: level {type.RequiredLevel}" : $"{UiTheme.Money(type.BuildCostCents)} (can't afford)");
+                : Ctx.Sim.State.Rules.UnlockLevel(level) < type.RequiredLevel ? $"locked: level {type.RequiredLevel}" : $"{UiTheme.Money(type.BuildCostCents)} (can't afford)");
             card.Modulate = locked is null ? Colors.White : new Color(1, 1, 1, 0.55f);
         }
         _parking.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Parking;
         _platform.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Platform;
         _renaturalize.Active = Ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Renaturalize;
         _fell.Active = Ctx.Clearing.Active;
-        foreach (var (id, card) in _features)
-            card.Active = Ctx.Features.TypeId == id;
+        foreach (var (type, card) in _features)
+        {
+            card.Active = Ctx.Features.TypeId == type.Id;
+            bool locked = !Ctx.Host.InstantBuild && TrailFeatures.CannotPlace(Ctx.Sim.State, level, type) is not null;
+            card.SetHint(locked ? $"locked: level {type.RequiredLevel}" : FeatureHint(type));
+            card.Modulate = locked ? new Color(1, 1, 1, 0.55f) : Colors.White;
+        }
     }
 }
 

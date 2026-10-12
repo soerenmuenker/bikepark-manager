@@ -242,7 +242,7 @@ public static class LiftWorks
     /// <summary>Why the park can't have a contractor build this lift type now (level, money), or null.</summary>
     public static string? CannotBuild(State.WorldState state, int level, LiftType type)
     {
-        if (level < type.RequiredLevel) return $"A {type.Name} needs park level {type.RequiredLevel} (you are level {level}).";
+        if (state.Rules.UnlockLevel(level) < type.RequiredLevel) return $"A {type.Name} needs park level {type.RequiredLevel} (you are level {level}).";
         if (state.Finance.MoneyCents < type.BuildCostCents) return $"Not enough money: a {type.Name} costs {type.BuildCostCents / 100:N0} €.";
         return null;
     }

@@ -169,6 +169,12 @@ public sealed class ParkRules
     public long DailyUpkeepCents { get; set; } = 25_000;
     public long SnackPriceCents { get; set; } = 400;
 
+    /// <summary>Sandbox: no park-level gates (features, lifts, and later tools, loans and facilities need no level).</summary>
+    public bool UnlockAll { get; set; }
+
+    /// <summary>The park level counted for unlocks: the real level, or the top level in a sandbox.</summary>
+    public int UnlockLevel(int level) => UnlockAll ? Reputation.ReputationRules.MaxLevel : level;
+
     // ---- Daily rhythm (all off by default, so older saves and scenarios behave as before) ----
 
     /// <summary>

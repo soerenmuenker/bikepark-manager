@@ -7,12 +7,18 @@ namespace Bikepark.Sim.Commands;
 /// <summary>
 /// Plans a feature (berm, jump, wood feature) on a trail, starting at a distance along it, and queues the crew job
 /// that builds it (with the type's wood); <paramref name="Instant"/> (debug) builds it at once. <see cref="FeaturePlanner"/>
-/// validates. Shapes don't change, so riders on the trail keep their route.
+/// validates; the type's park level is checked here (not for debug instant builds). Shapes don't change, so riders on the trail keep their route.
 /// </summary>
 public sealed record PlaceTrailFeatureCommand(int WayId, string TypeId, long DistanceCm, bool Instant = false) : ICommand
 {
-    public string? Validate(SimContext ctx) =>
-        TypeId is null ? "No feature type given." : Plan(ctx).FirstError;
+    public string? Validate(SimContext ctx)
+    {
+        if (TypeId is null) return "No feature type given.";
+        if (!Instant && TrailFeatures.FindType(ctx.State.TrailFeatureTypes, TypeId) is { } type
+            && TrailFeatures.CannotPlace(ctx.State, Reputation.ParkProgress.CurrentLevel(ctx.State, ctx.Network), type) is { } locked)
+            return locked;
+        return Plan(ctx).FirstError;
+    }
 
     public void Apply(SimContext ctx)
     {

@@ -5,6 +5,7 @@ using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Scenarios;
 using Bikepark.Sim.State;
+using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Tests;
 
@@ -263,13 +264,18 @@ public class ReputationTests
     }
 
     [Fact]
-    public void Xp_ComesFromTrails_Diversity_AndVisitors_AndFallsWhenATrailGoes()
+    public void Xp_ComesFromTrailLengthPerRating_AndVisitors_AndFallsWhenATrailGoes()
     {
         var sim = TestWorlds.RunLift(1337, 1, TestWorlds.DemoLiftNetwork());
         var trails = ParkProgress.Xp(sim.State, sim.Network);
-        Assert.True(trails.TrailMeters > 1000, $"{trails.TrailMeters} m");
-        Assert.Equal(2, trails.Ratings);
-        Assert.Equal(0, trails.FeatureKinds);
+        var rules = sim.State.ReputationRules;
+        Assert.True(trails.TotalTrailMeters > 1000, $"{trails.TotalTrailMeters} m");
+        Assert.Equal(2, trails.TrailMeters.Count(m => m > 0));
+        long expected = 0;
+        for (int r = 0; r < ParkProgress.Ratings; r++)
+            expected += trails.TrailMeters[r] * 100 * rules.XpPerKmByRating.For((TrailRating)r) / 100_000;
+        Assert.InRange(trails.TrailXp, expected - 2, expected + 2); // metres are rounded down per rating
+        Assert.Equal(0, trails.TotalFeatures);
         Assert.Equal(0, trails.AverageVisitors);
 
         var levels = new List<LevelChanged>();
@@ -279,7 +285,7 @@ public class ReputationTests
         var busy = ParkProgress.Xp(sim.State, sim.Network);
         Assert.Equal(2, sim.State.Reputation.DailyVisitors.Count);
         Assert.True(busy.AverageVisitors > 50);
-        Assert.Equal(trails.TrailXp + trails.RatingXp + busy.VisitorXp, busy.Total);
+        Assert.Equal(trails.TrailXp + busy.VisitorXp, busy.Total);
         Assert.Equal(ParkProgress.Level(sim.State.ReputationRules, busy.Total), sim.State.Reputation.Level);
         Assert.NotEmpty(levels);
         Assert.Equal(sim.State.Reputation.Level, levels[^1].NewLevel);
@@ -287,8 +293,8 @@ public class ReputationTests
         sim.Commands.Enqueue(new DeleteWayCommand(RedRocket));
         sim.Step();
         var fewer = ParkProgress.Xp(sim.State, sim.Network);
-        Assert.True(fewer.TrailMeters < busy.TrailMeters);
-        Assert.Equal(1, fewer.Ratings);
+        Assert.True(fewer.TotalTrailMeters < busy.TotalTrailMeters);
+        Assert.Equal(1, fewer.TrailMeters.Count(m => m > 0));
         Assert.True(fewer.Total < busy.Total);
     }
 

@@ -2,6 +2,7 @@ using Bikepark.Game.Camera;
 using Bikepark.Game.Lifts;
 using Bikepark.Game.Terrain;
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Trails;
 using Godot;
 
@@ -144,7 +145,7 @@ public partial class FeatureTool : Node3D
         // Centre the feature on the cursor, in half-meter steps.
         long start = Math.Max(0, (h.DistanceCm - type.LengthCm / 2) / 50 * 50);
         Plan = FeaturePlanner.Plan(network, sim.State.TrailRules, sim.State.TrailFeatureTypes, h.WayId, type.Id, start);
-        _ghost.Mesh = FeatureMeshes.Build(grid, geometry, type, start, Plan.IsValid ? Valid : Invalid);
+        _ghost.Mesh = FeatureMeshes.Build(grid, geometry, type, start, Plan.IsValid && Locked(type) is null ? Valid : Invalid);
         _ghost.Visible = Hovered is null;
 
         if (Hovered is { } hovered)
@@ -170,6 +171,11 @@ public partial class FeatureTool : Node3D
             Status = "Point at a trail.";
             return;
         }
+        if (Locked(plan.Type!) is { } locked)
+        {
+            Status = locked;
+            return;
+        }
         if (!plan.IsValid)
         {
             Status = plan.FirstError ?? "Not valid here.";
@@ -179,6 +185,11 @@ public partial class FeatureTool : Node3D
         string trail = _host.Sim.Network.FindWay(plan.WayId)?.Name ?? "the trail";
         Status = $"{(_host.InstantBuild ? "Built" : "Planned")} a {plan.Type.Name.ToLowerInvariant()} on {trail} at {plan.StartCm / 100} m";
     }
+
+    /// <summary>Why the park can't place this type yet (its level), or null (always null for debug instant builds).</summary>
+    private string? Locked(TrailFeatureType type) =>
+        _host.InstantBuild ? null
+            : TrailFeatures.CannotPlace(_host.Sim.State, ParkProgress.CurrentLevel(_host.Sim.State, _host.Sim.Network), type);
 
     private PointCm? CursorPoint()
     {
