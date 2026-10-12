@@ -36,6 +36,9 @@ public enum UiIcon
     WallRide,
     Kicker,
     Drop,
+    RockGarden,
+    LongJump,
+    BigDrop,
     Crew,
     Wood,
     Felling,
@@ -204,6 +207,23 @@ internal static class UiIcons
                 Poly(0.08f, 0.82f, 0.30f, 0.38f, 0.62f, 0.38f, 0.62f, 0.82f);
                 Line(0.62f, 0.82f, 0.94f, 0.82f);
                 Polyline(0.70f, 0.30f, 0.80f, 0.40f, 0.84f, 0.62f);
+                break;
+            case UiIcon.RockGarden: // boulders strewn down a slope
+                Line(0.06f, 0.40f, 0.94f, 0.88f);
+                Circle(0.24f, 0.42f, 0.09f);
+                Circle(0.50f, 0.60f, 0.12f);
+                Circle(0.78f, 0.72f, 0.08f);
+                break;
+            case UiIcon.LongJump: // small takeoff, a wide gap, a long landing and the rider's arc
+                Poly(0.04f, 0.82f, 0.24f, 0.56f, 0.28f, 0.82f);
+                Poly(0.64f, 0.82f, 0.68f, 0.56f, 0.96f, 0.82f);
+                ci.DrawArc(P(0.46f, 0.66f), 0.24f * s, -Mathf.Pi * 0.92f, -Mathf.Pi * 0.08f, 14, color, w, true);
+                break;
+            case UiIcon.BigDrop: // high deck over a cliff, landing far below
+                Poly(0.06f, 0.30f, 0.44f, 0.30f, 0.44f, 0.40f, 0.06f, 0.40f);
+                Line(0.44f, 0.40f, 0.44f, 0.86f);
+                Line(0.44f, 0.86f, 0.94f, 0.86f);
+                Polyline(0.52f, 0.26f, 0.68f, 0.40f, 0.76f, 0.72f);
                 break;
             case UiIcon.Crew: // worker with a hard hat
                 Circle(0.5f, 0.40f, 0.14f);

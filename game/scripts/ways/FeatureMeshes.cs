@@ -14,7 +14,14 @@ internal static class FeatureMeshes
     public static readonly Color DirtColor = new Color(0.52f, 0.36f, 0.22f).SrgbToLinear();
     public static readonly Color WoodColor = new Color(0.74f, 0.56f, 0.33f).SrgbToLinear();
 
-    public static Color BaseColor(FeatureMaterial material) => material == FeatureMaterial.Wood ? WoodColor : DirtColor;
+    public static readonly Color StoneColor = new Color(0.55f, 0.55f, 0.53f).SrgbToLinear();
+
+    public static Color BaseColor(FeatureMaterial material) => material switch
+    {
+        FeatureMaterial.Wood => WoodColor,
+        FeatureMaterial.Stone => StoneColor,
+        _ => DirtColor,
+    };
 
     /// <summary>Lit material for built features (feature.gdshader: both sides, drawn over the trail ribbon).</summary>
     public static ShaderMaterial CreateMaterial() => new() { Shader = GD.Load<Shader>("res://shaders/feature.gdshader") };
@@ -47,6 +54,7 @@ internal static class FeatureMeshes
     /// <summary>The feature's mesh in world coordinates, from <paramref name="startCm"/> along the trail.</summary>
     public static ArrayMesh Build(TerrainGrid grid, WayGeometry g, TrailFeatureType type, long startCm, Color color)
     {
+        if (type.Kind == FeatureKind.RockGarden) return BuildRocks(grid, g, type, startCm, color);
         long lengthCm = type.LengthCm;
         int steps = Math.Max(6, type.LengthMeters * 3);
         float outside = OutsideSign(g, startCm, startCm + lengthCm);
@@ -57,18 +65,21 @@ internal static class FeatureMeshes
 
         Vector3[]? previous = null;
         Vector3[] first = [], last = [];
+        float startHeight = g.HeightAt(startCm) / 100f;
+        bool previousFlat = false;
         for (int i = 0; i <= steps; i++)
         {
             float t = (float)i / steps;
             long d = startCm + (long)(lengthCm * t);
             var p = g.PositionAt(d);
+            float fallen = startHeight - p.Y / 100f; // how far the trail has dropped since the start (level decks)
             var ahead = g.PositionAt(Math.Min(g.LengthCm, d + 50));
             var behind = g.PositionAt(Math.Max(0, d - 50));
             var dir = new Vector2(ahead.X - behind.X, ahead.Z - behind.Z).Normalized();
             var right = new Vector2(-dir.Y, dir.X);
             var center = new Vector2(p.X / 100f, p.Z / 100f);
 
-            var profile = Profile(type.Kind, t, outside);
+            var profile = Profile(type, t, outside, fallen);
             var section = new Vector3[profile.Length];
             for (int k = 0; k < profile.Length; k++)
             {
@@ -78,9 +89,12 @@ internal static class FeatureMeshes
                 section[k] = new Vector3(xz.X, ground + 0.05f + h, xz.Y);
             }
 
-            if (previous is not null)
+            // Nothing over a gap (both sections flat on the ground): the trail shows through.
+            bool flat = profile.All(q => q.H <= 0f);
+            if (previous is not null && !(flat && previousFlat))
                 for (int k = 0; k < section.Length - 1; k++)
                     Quad(st, previous[k], previous[k + 1], section[k + 1], section[k]);
+            previousFlat = flat;
             if (i == 0) first = section;
             last = section;
             previous = section;
@@ -96,11 +110,30 @@ internal static class FeatureMeshes
     /// Cross-section at <paramref name="t"/> (0..1 along the feature), from one side to the other: (lateral offset to the
     /// right of travel, height). The ends of each section are on the ground.
     /// </summary>
-    private static (float U, float H)[] Profile(FeatureKind kind, float t, float outside)
+    private static (float U, float H)[] Profile(TrailFeatureType type, float t, float outside, float fallen)
     {
         float ease = Mathf.Clamp(Math.Min(t, 1 - t) * 5f, 0f, 1f); // ramps in and out over the first/last 20 %
-        switch (kind)
+        // Where the gap is (after the takeoff); landings are the slope beyond it.
+        float gap = (float)type.GapMeters / Math.Max(1, type.LengthMeters);
+        switch (type.Kind)
         {
+            case FeatureKind.LongJump:
+            {
+                float takeoff = (1 - gap) * 0.4f, land = takeoff + gap;
+                float h = t < takeoff ? 1.8f * MathF.Pow(t / takeoff, 1.4f)
+                    : t < takeoff + 0.03f ? 1.8f * (takeoff + 0.03f - t) / 0.03f
+                    : t < land ? 0f
+                    : t < land + 0.05f ? 1.6f * (t - land) / 0.05f
+                    : 1.6f * (1 - t) / Math.Max(0.05f, 1 - land - 0.05f);
+                return Hump(h, 1.5f);
+            }
+            case FeatureKind.BigDrop:
+            {
+                // A wooden ramp up to a level deck that ends over the gap; the trail falls away below it.
+                float deckEnd = 1 - gap;
+                float h = t < 0.15f ? 1.0f * t / 0.15f : t <= deckEnd ? 1.0f + Math.Max(0f, fallen) : 0f;
+                return h <= 0f ? Hump(0f, 0.9f) : Hump(h, 0.9f);
+            }
             case FeatureKind.Berm:
             {
                 float h = 1.1f * ease;
@@ -137,6 +170,97 @@ internal static class FeatureMeshes
             default:
                 return Hump(0.3f, 1f);
         }
+    }
+
+    /// <summary>
+    /// A rock garden: low-poly boulders of different sizes strewn over the trail, placed deterministically (same feature,
+    /// same rocks), a little lighter or darker each.
+    /// </summary>
+    private static ArrayMesh BuildRocks(TerrainGrid grid, WayGeometry g, TrailFeatureType type, long startCm, Color color)
+    {
+        var st = new SurfaceTool();
+        st.Begin(Mesh.PrimitiveType.Triangles);
+        int count = type.LengthMeters * 2;
+        for (int i = 0; i < count; i++)
+        {
+            uint h = Hash((uint)i * 2654435761u ^ (uint)type.LengthMeters);
+            float along = (i + 0.5f + ((h & 0xFF) / 255f - 0.5f) * 0.8f) / count;
+            float lateral = (((h >> 8) & 0xFF) / 255f - 0.5f) * 2.6f;
+            float size = 0.25f + ((h >> 16) & 0xFF) / 255f * 0.45f;
+            float shade = 0.8f + ((h >> 24) & 0xFF) / 255f * 0.4f;
+            long d = startCm + (long)(type.LengthCm * along);
+            var p = g.PositionAt(d);
+            var ahead = g.PositionAt(Math.Min(g.LengthCm, d + 50));
+            var behind = g.PositionAt(Math.Max(0, d - 50));
+            var dir = new Vector2(ahead.X - behind.X, ahead.Z - behind.Z).Normalized();
+            var right = new Vector2(-dir.Y, dir.X);
+            var xz = new Vector2(p.X / 100f, p.Z / 100f) + right * lateral;
+            float ground = grid.HeightAt((long)MathF.Round(xz.X * 100), (long)MathF.Round(xz.Y * 100)) / 100f;
+            st.SetColor(new Color(color.R * shade, color.G * shade, color.B * shade, color.A));
+            Boulder(st, new Vector3(xz.X, ground - size * 0.25f, xz.Y), size, h);
+        }
+        st.GenerateNormals();
+        return st.Commit();
+    }
+
+    /// <summary>A squashed, slightly irregular octahedron (eight faces) standing on the ground.</summary>
+    private static void Boulder(SurfaceTool st, Vector3 at, float size, uint h)
+    {
+        float Jitter(int shift) => 0.75f + ((h >> shift) & 0x7) / 7f * 0.5f;
+        var top = at + new Vector3(0, size * 1.1f * Jitter(1), 0);
+        var bottom = at;
+        Vector3[] ring =
+        [
+            at + new Vector3(size * Jitter(3), size * 0.45f, 0),
+            at + new Vector3(0, size * 0.5f, size * Jitter(6)),
+            at + new Vector3(-size * Jitter(9), size * 0.4f, 0),
+            at + new Vector3(0, size * 0.45f, -size * Jitter(12)),
+        ];
+        for (int k = 0; k < 4; k++)
+        {
+            var a = ring[k];
+            var b = ring[(k + 1) % 4];
+            st.AddVertex(top); st.AddVertex(b); st.AddVertex(a);
+            st.AddVertex(bottom); st.AddVertex(a); st.AddVertex(b);
+        }
+    }
+
+    private static uint Hash(uint x)
+    {
+        x ^= x >> 16;
+        x *= 0x7feb352d;
+        x ^= x >> 15;
+        x *= 0x846ca68b;
+        x ^= x >> 16;
+        return x;
+    }
+
+    /// <summary>A flat see-through strip over the trail where a feature's landing must stay clear (placement preview).</summary>
+    public static ArrayMesh BuildLanding(TerrainGrid grid, WayGeometry g, long fromCm, long toCm, Color color)
+    {
+        var st = new SurfaceTool();
+        st.Begin(Mesh.PrimitiveType.Triangles);
+        st.SetColor(color);
+        Vector3? prevLeft = null, prevRight = null;
+        for (long d = fromCm; ; d = Math.Min(toCm, d + 100))
+        {
+            var p = g.PositionAt(Math.Min(d, g.LengthCm));
+            var ahead = g.PositionAt(Math.Min(g.LengthCm, d + 50));
+            var behind = g.PositionAt(Math.Max(0, d - 50));
+            var dir = new Vector2(ahead.X - behind.X, ahead.Z - behind.Z).Normalized();
+            var right = new Vector2(-dir.Y, dir.X) * 1.4f;
+            var center = new Vector2(p.X / 100f, p.Z / 100f);
+            Vector3 At(Vector2 xz) => new(xz.X, grid.HeightAt((long)MathF.Round(xz.X * 100), (long)MathF.Round(xz.Y * 100)) / 100f + 0.12f, xz.Y);
+            var left = At(center - right);
+            var rightPoint = At(center + right);
+            if (prevLeft is { } pl && prevRight is { } pr)
+                Quad(st, pl, pr, rightPoint, left);
+            prevLeft = left;
+            prevRight = rightPoint;
+            if (d >= toCm) break;
+        }
+        st.GenerateNormals();
+        return st.Commit();
     }
 
     /// <summary>A symmetric bump of the given height and half width with sloped sides.</summary>

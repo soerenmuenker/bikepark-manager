@@ -35,6 +35,7 @@ public partial class FeatureTool : Node3D
     private WayTool _ways = null!;
     private StructureTool _structures = null!;
     private MeshInstance3D _ghost = null!;
+    private MeshInstance3D _landing = null!;
     private MeshInstance3D _highlight = null!;
 
     /// <summary>The feature type being placed (null = tool off).</summary>
@@ -61,8 +62,10 @@ public partial class FeatureTool : Node3D
         var ghostMaterial = FeatureMeshes.CreateGhostMaterial();
         _ghost = new MeshInstance3D { Name = "Ghost", MaterialOverride = ghostMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         _highlight = new MeshInstance3D { Name = "Highlight", MaterialOverride = ghostMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        _landing = new MeshInstance3D { Name = "Landing", MaterialOverride = ghostMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_ghost);
         AddChild(_highlight);
+        AddChild(_landing);
     }
 
     /// <summary>Selects a feature type to place, or null to leave the tool. Ends the other build tools.</summary>
@@ -122,7 +125,7 @@ public partial class FeatureTool : Node3D
         var type = TypeId is null ? null : TrailFeatures.FindType(sim.State.TrailFeatureTypes, TypeId);
         if (type is null || grid is null)
         {
-            _ghost.Visible = _highlight.Visible = false;
+            _ghost.Visible = _highlight.Visible = _landing.Visible = false;
             Plan = null;
             Hovered = null;
             return;
@@ -132,7 +135,7 @@ public partial class FeatureTool : Node3D
         var hit = CursorPoint() is { } c ? network.NearestTrail(c.X, c.Z, (int)(PickRadiusMeters * 100)) : null;
         if (hit is not { } h)
         {
-            _ghost.Visible = _highlight.Visible = false;
+            _ghost.Visible = _highlight.Visible = _landing.Visible = false;
             Plan = null;
             Hovered = null;
             return;
@@ -147,6 +150,10 @@ public partial class FeatureTool : Node3D
         Plan = FeaturePlanner.Plan(network, sim.State.TrailRules, sim.State.TrailFeatureTypes, h.WayId, type.Id, start);
         _ghost.Mesh = FeatureMeshes.Build(grid, geometry, type, start, Plan.IsValid && Locked(type) is null ? Valid : Invalid);
         _ghost.Visible = Hovered is null;
+        _landing.Visible = Hovered is null && type.LandingMeters > 0 && Plan.LandingEndCm > Plan.EndCm;
+        if (_landing.Visible)
+            _landing.Mesh = FeatureMeshes.BuildLanding(grid, geometry, Plan.EndCm, Math.Min(geometry.LengthCm, Plan.LandingEndCm),
+                (Plan.IsValid && Locked(type) is null ? Valid : Invalid) with { A = 0.3f });
 
         if (Hovered is { } hovered)
         {

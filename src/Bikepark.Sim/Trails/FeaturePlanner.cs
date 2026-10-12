@@ -10,6 +10,9 @@ public sealed class FeaturePlan
     public long StartCm { get; init; }
     public long EndCm { get; init; }
 
+    /// <summary>Where its landing ends (= <see cref="EndCm"/> without a landing).</summary>
+    public long LandingEndCm { get; init; }
+
     public required List<WayIssue> Issues { get; init; }
 
     public bool IsValid => Issues.All(i => i.Severity != IssueSeverity.Error);
@@ -35,31 +38,41 @@ public static class FeaturePlanner
         if (way.Kind != WayKind.Trail)
             return Fail(wayId, type, "notATrail", "Features go on trails, not on gravel paths.");
 
-        long start = distanceCm, end = distanceCm + type.LengthCm;
+        long start = distanceCm, end = distanceCm + type.LengthCm, zoneEnd = distanceCm + type.ZoneCm;
         var issues = new List<WayIssue>();
         if (start < rules.FeatureStartMarginMeters * 100L)
             issues.Add(Error("tooCloseToStart", $"Leave {rules.FeatureStartMarginMeters} m after the trail start.", start, end));
-        if (end > geometry.LengthCm - rules.FeatureEndMarginMeters * 100L)
-            issues.Add(Error("tooCloseToEnd", $"Leave {rules.FeatureEndMarginMeters} m before the trail end.", start, end));
+        if (zoneEnd > geometry.LengthCm - rules.FeatureEndMarginMeters * 100L)
+            issues.Add(Error("tooCloseToEnd", type.LandingMeters > 0
+                ? $"Leave {rules.FeatureEndMarginMeters} m before the trail end, after the {type.LandingMeters} m landing."
+                : $"Leave {rules.FeatureEndMarginMeters} m before the trail end.", start, zoneEnd));
         if (way.Features.Count >= rules.MaxFeaturesPerTrail)
             issues.Add(Error("tooManyFeatures", $"At most {rules.MaxFeaturesPerTrail} features per trail."));
 
         long gap = rules.FeatureGapMeters * 100L;
         foreach (var other in TrailFeatures.Resolve(way, types))
         {
-            if (other.StartCm - gap >= end || other.EndCm + gap <= start) continue;
-            issues.Add(Error("overlaps",
-                $"Too close to the {other.Type.Name.ToLowerInvariant()} at {other.StartCm / 100} m (keep {rules.FeatureGapMeters} m apart).", start, end));
+            if (other.StartCm - gap >= zoneEnd || other.ZoneEndCm + gap <= start) continue;
+            string otherName = other.Type.Name.ToLowerInvariant();
+            string message = other.Type.LandingMeters > 0 && start >= other.EndCm
+                ? $"In the landing of the {otherName} at {other.StartCm / 100} m (keep its {other.Type.LandingMeters} m landing + {rules.FeatureGapMeters} m clear)."
+                : type.LandingMeters > 0 && other.StartCm >= end
+                    ? $"The {otherName} at {other.StartCm / 100} m is in the landing (keep {type.LandingMeters} m + {rules.FeatureGapMeters} m clear)."
+                    : $"Too close to the {otherName} at {other.StartCm / 100} m (keep {rules.FeatureGapMeters} m apart).";
+            issues.Add(Error("overlaps", message, start, zoneEnd));
             break;
         }
 
         if (issues.Count == 0)
             CheckTerrain(geometry, type, start, end, issues);
 
-        return new FeaturePlan { WayId = wayId, Type = type, StartCm = start, EndCm = end, Issues = issues };
+        return new FeaturePlan { WayId = wayId, Type = type, StartCm = start, EndCm = end, LandingEndCm = zoneEnd, Issues = issues };
     }
 
-    /// <summary>Every covered segment within the gradient window; at least one turning enough if the type needs a bend.</summary>
+    /// <summary>
+    /// Every covered segment within the gradient window; at least one turning enough if the type needs a bend; enough
+    /// height lost over it if it needs steep ground; a downhill landing right after it if it needs one.
+    /// </summary>
     private static void CheckTerrain(WayGeometry geometry, TrailFeatureType type, long start, long end, List<WayIssue> issues)
     {
         int steepest = int.MaxValue, flattest = int.MinValue, sharpest = 0;
@@ -81,6 +94,35 @@ public static class FeaturePlanner
                 : $"Climbs too much for a {name}: {Gradient.Format(flattest)} (limit {Gradient.Format(type.MaxGradient)}).", start, end));
         if (sharpest < type.MinTurn)
             issues.Add(Error("needsBend", $"A {name} needs a bend in the trail.", start, end));
+
+        if (type.MinDropMeters > 0)
+        {
+            long dropCm = geometry.HeightAt(start) - geometry.HeightAt(end);
+            if (dropCm < type.MinDropMeters * 100L)
+                issues.Add(Error("tooShallow",
+                    $"A {name} needs steep ground: at least {type.MinDropMeters} m down over its {type.LengthMeters} m (here {Math.Max(0, dropCm) / 100.0:0.0} m).", start, end));
+        }
+
+        if (type.LandingMeters > 0)
+        {
+            long landingEnd = end + type.LandingMeters * 100L;
+            int landSteepest = int.MaxValue, landFlattest = int.MinValue;
+            for (int i = geometry.SegmentIndexAt(end); i < geometry.Segments.Count; i++)
+            {
+                var segment = geometry.Segments[i];
+                if (segment.StartCm >= landingEnd) break;
+                if (segment.EndCm <= end) continue;
+                landSteepest = Math.Min(landSteepest, segment.GradientTenths);
+                landFlattest = Math.Max(landFlattest, segment.GradientTenths);
+            }
+            if (landSteepest < type.LandingMinGradient)
+                issues.Add(Error("noLanding",
+                    $"The landing is too steep: {Gradient.Format(landSteepest)} (limit {Gradient.Format(type.LandingMinGradient)}).", end, landingEnd));
+            else if (landFlattest > type.LandingMaxGradient)
+                issues.Add(Error("noLanding",
+                    $"A {name} needs a downhill landing of {type.LandingMeters} m, at least {Gradient.Format(type.LandingMaxGradient)} " +
+                    $"(here {Gradient.Format(landFlattest)}): a flat landing breaks wrists.", end, landingEnd));
+        }
     }
 
     private static FeaturePlan Fail(int wayId, TrailFeatureType? type, string code, string message) =>

@@ -25,9 +25,10 @@ public class FeatureTests
     {
         var state = ScenarioLoader.CreateWorld(TestWorlds.LiftScenario());
         var ids = state.TrailFeatureTypes.Select(t => t.Id).ToList();
-        Assert.Equal(["berm", "rollers", "table", "double", "wall_ride", "kicker", "drop"], ids);
+        Assert.Equal(["berm", "rollers", "table", "double", "wall_ride", "kicker", "drop", "rock_garden", "long_jump", "big_drop"], ids);
         Assert.All(state.TrailFeatureTypes, t => Assert.Empty(t.Validate()));
-        Assert.Equal(3, state.TrailFeatureTypes.Count(t => t.Material == FeatureMaterial.Wood));
+        Assert.Equal(4, state.TrailFeatureTypes.Count(t => t.Material == FeatureMaterial.Wood));
+        Assert.Equal(4, state.TrailFeatureTypes.Count(t => t.Rating == TrailRating.Black));
     }
 
     [Fact]
@@ -71,6 +72,46 @@ public class FeatureTests
         sim.Step();
         Assert.Equal("overlaps", Plan(FlowCountry, "kicker", 228)); // within 5 m of the table's end (232 m)
         Assert.Equal("ok", Plan(FlowCountry, "kicker", 237));
+    }
+
+    [Fact]
+    public void BlackFeatures_NeedSteepGround_AndAClearDownhillLanding()
+    {
+        var sim = DemoWorld();
+        string Plan(int way, string type, long meters) =>
+            FeaturePlanner.Plan(sim.Network, sim.State.TrailRules, sim.State.TrailFeatureTypes, way, type, meters * 100)
+                .Issues.FirstOrDefault(i => i.Severity == IssueSeverity.Error)?.Code ?? "ok";
+
+        Assert.Equal("ok", Plan(RedRocket, "rock_garden", 100));
+        Assert.Equal("ok", Plan(FlowCountry, "big_drop", 135));
+        Assert.Equal("noLanding", Plan(FlowCountry, "big_drop", 140)); // the landing runs out onto the flat
+        Assert.Equal("tooShallow", Plan(FlowCountry, "big_drop", 400)); // steep enough per segment, but under 3 m down
+        Assert.Equal("ok", Plan(RedRocket, "long_jump", 940 - 30));
+        Assert.Equal("tooCloseToEnd", Plan(RedRocket, "long_jump", 940)); // the 12 m landing doesn't fit before the end
+
+        var plan = FeaturePlanner.Plan(sim.Network, sim.State.TrailRules, sim.State.TrailFeatureTypes, RedRocket, "long_jump", 20_000);
+        Assert.True(plan.IsValid, plan.FirstError);
+        Assert.Equal(22_200, plan.EndCm);
+        Assert.Equal(23_400, plan.LandingEndCm);
+
+        // Nothing in the landing, and nothing whose landing reaches the new feature.
+        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "long_jump", 20_000, Instant: true));
+        sim.Step();
+        Assert.Equal("overlaps", Plan(RedRocket, "table", 228)); // in the jump's landing
+        Assert.Contains("landing", FeaturePlanner.Plan(sim.Network, sim.State.TrailRules, sim.State.TrailFeatureTypes, RedRocket, "table", 22_800).FirstError);
+        Assert.Equal("overlaps", Plan(RedRocket, "rock_garden", 180)); // ends at 200 m: no 5 m gap before the jump
+        Assert.Equal("ok", Plan(RedRocket, "rock_garden", 240)); // after landing + gap
+        Assert.Equal(TrailRating.Black, sim.Network.Geometry(RedRocket).Rating);
+    }
+
+    [Fact]
+    public void BigJumps_CountAsJumps_RockGardensDont()
+    {
+        Assert.True(Reputation.ReviewMath.IsJump(FeatureKind.LongJump));
+        Assert.True(Reputation.ReviewMath.IsJump(FeatureKind.BigDrop));
+        Assert.False(Reputation.ReviewMath.IsJump(FeatureKind.RockGarden));
+        var stone = TestWorlds.FeatureCatalog().Single(t => t.Id == "rock_garden");
+        Assert.Equal(Crew.WorkType.Digging, Crew.WorkCosts.FeatureWorkType(stone));
     }
 
     [Fact]

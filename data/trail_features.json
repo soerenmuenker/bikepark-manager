@@ -3,10 +3,13 @@
 // gradient window (tenths of the -10..+10 score along the direction of travel: -50 = -5.0 = 45° down), and at least one
 // must turn by minTurn (segment turn permille: 100 ≈ 37°). Difficulty (0..1000) raises the covered segments and sets a
 // floor for the trail's rating (green < 250 <= blue < 480 <= red < 700 <= black): berms fit a green trail, rollers and
-// tables a blue one; wooden kickers, wall-rides and small drops make it red; doubles (later rock gardens, long jumps) black.
+// tables a blue one; wooden kickers, wall-rides and small drops make it red; doubles, rock gardens, long jumps and big
+// drops black. minDropMeters: the trail must lose that much height over the feature (steep ground). gapMeters: the gap
+// riders fly over (part of the length). landingMeters: right after the feature that much trail must lie within
+// landingMinGradient..landingMaxGradient (a downhill landing) and stay free of other features.
 // requiredLevel: the park level needed to place it (careers only; the Demo has everything). Affinities (0..1000) say how much
 // flow and technical riders enjoy it; funWeight is how many fun samples one pass counts as (a segment counts one).
-// Building one is a crew job: workMinutes crew-minutes at base speed (digging for dirt, carpentry for wood) and wood
+// Building one is a crew job: workMinutes crew-minutes at base speed (digging for dirt and stone, carpentry for wood) and wood
 // units taken from the stock when work starts.
 [
   {
@@ -122,5 +125,62 @@
     "workMinutes": 200,
     "wood": 25,
     "requiredLevel": 5
+  },
+  {
+    "id": "rock_garden",
+    "name": "Rock garden",
+    "material": "stone",
+    "kind": "rockGarden",
+    "lengthMeters": 20,
+    "difficulty": 740,
+    "minGradient": -60,
+    "maxGradient": -10,
+    "flowAffinity": 300,
+    "techAffinity": 1000,
+    "funWeight": 4,
+    "workMinutes": 600,
+    "wood": 0,
+    "requiredLevel": 8
+  },
+  {
+    "id": "long_jump",
+    "name": "Long jump",
+    "material": "dirt",
+    "kind": "longJump",
+    "lengthMeters": 22,
+    "difficulty": 780,
+    "minGradient": -35,
+    "maxGradient": -5,
+    "gapMeters": 10,
+    "landingMeters": 12,
+    "landingMinGradient": -40,
+    "landingMaxGradient": -10,
+    "flowAffinity": 900,
+    "techAffinity": 800,
+    "funWeight": 5,
+    "workMinutes": 700,
+    "wood": 0,
+    "requiredLevel": 10
+  },
+  {
+    "id": "big_drop",
+    "name": "Big drop",
+    "material": "wood",
+    "kind": "bigDrop",
+    "lengthMeters": 8,
+    "difficulty": 850,
+    "minGradient": -70,
+    "maxGradient": -20,
+    "minDropMeters": 3,
+    "gapMeters": 4,
+    "landingMeters": 10,
+    "landingMinGradient": -60,
+    "landingMaxGradient": -15,
+    "flowAffinity": 350,
+    "techAffinity": 1000,
+    "funWeight": 4,
+    "workMinutes": 400,
+    "wood": 60,
+    "requiredLevel": 12
   }
 ]

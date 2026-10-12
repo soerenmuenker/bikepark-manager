@@ -6,6 +6,9 @@ public enum FeatureMaterial : byte
 {
     Dirt = 0,
     Wood = 1,
+
+    /// <summary>Rocks set into the trail (dug in: digging work).</summary>
+    Stone = 2,
 }
 
 /// <summary>The shape of a feature; decides how the view draws it.</summary>
@@ -18,6 +21,9 @@ public enum FeatureKind : byte
     WallRide = 4,
     Kicker = 5,
     Drop = 6,
+    RockGarden = 7,
+    LongJump = 8,
+    BigDrop = 9,
 }
 
 /// <summary>
@@ -63,7 +69,24 @@ public sealed class TrailFeatureType
     /// <summary>Park level needed to place it (a sandbox has everything).</summary>
     public int RequiredLevel { get; set; }
 
+    /// <summary>The trail must lose at least this much height over the feature (steep terrain only; 0 = no check).</summary>
+    public int MinDropMeters { get; set; }
+
+    /// <summary>The gap riders fly over (part of the length; shown in the view and the tooltip).</summary>
+    public int GapMeters { get; set; }
+
+    /// <summary>
+    /// A clear landing right after the feature: this many meters of trail within the landing gradient window, kept free
+    /// of other features (0 = no landing needed).
+    /// </summary>
+    public int LandingMeters { get; set; }
+    public int LandingMinGradient { get; set; } = -60;
+    public int LandingMaxGradient { get; set; }
+
     public long LengthCm => LengthMeters * 100L;
+
+    /// <summary>The feature plus its landing: the stretch of trail it takes up.</summary>
+    public long ZoneCm => (LengthMeters + LandingMeters) * 100L;
 
     /// <summary>The rating band its difficulty falls in (a trail with it is rated at least this).</summary>
     public TrailRating Rating => WayGeometry.RatingFor(Difficulty);
@@ -83,6 +106,11 @@ public sealed class TrailFeatureType
         if (FunWeight is < 1 or > 10) errors.Add($"{p}.funWeight must be within 1..10");
         if (WorkMinutes is < 1 or > 100_000) errors.Add($"{p}.workMinutes must be within 1..100000");
         if (Wood is < 0 or > 1000) errors.Add($"{p}.wood must be within 0..1000");
+        if (MinDropMeters is < 0 or > 100) errors.Add($"{p}.minDropMeters must be within 0..100");
+        if (GapMeters < 0 || GapMeters >= LengthMeters) errors.Add($"{p}.gapMeters must be within 0..lengthMeters-1");
+        if (LandingMeters is < 0 or > 100) errors.Add($"{p}.landingMeters must be within 0..100");
+        if (LandingMinGradient < -Gradient.MaxTenths || LandingMaxGradient > Gradient.MaxTenths || LandingMinGradient > LandingMaxGradient)
+            errors.Add($"{p}: landing gradient window must satisfy -{Gradient.MaxTenths} <= landingMinGradient <= landingMaxGradient <= {Gradient.MaxTenths}");
         if (RequiredLevel is < 0 or > Reputation.ReputationRules.MaxLevel)
             errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
         return errors;
@@ -115,6 +143,9 @@ public sealed class TrailFeature
 public readonly record struct PlacedFeature(TrailFeature Feature, TrailFeatureType Type, long StartCm, long EndCm)
 {
     public bool Covers(long distanceCm) => distanceCm >= StartCm && distanceCm < EndCm;
+
+    /// <summary>Where its landing ends (= <see cref="EndCm"/> without a landing).</summary>
+    public long ZoneEndCm => EndCm + Type.LandingMeters * 100L;
 }
 
 public static class TrailFeatures

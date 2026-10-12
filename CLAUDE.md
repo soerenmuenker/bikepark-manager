@@ -132,7 +132,10 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 13. **Trail features** store only `{typeId, distanceCm}` on `Way.Features`; their effect (segment difficulty, rating
     floor) is derived in `WayGeometry`/`WayNetwork`. Rating = hardest of overall steepness (median gradient), steep
     sections (90th-percentile terrain) and features (blue: berms/rollers/tables, red: kickers/wall-rides/small drops,
-    black: doubles). All placement validation lives in `FeaturePlanner`.
+    black: doubles, rock gardens, long jumps, big drops). All placement validation lives in `FeaturePlanner`: margins,
+    spacing, gradient window, bend, `MinDropMeters` (height lost over it: steep ground) and a landing (`LandingMeters`
+    within `LandingMin/MaxGradient` right after it, kept free of other features: `PlacedFeature.ZoneEndCm`,
+    `FeaturePlan.LandingEndCm`). Long jumps and big drops are jumps (`ReviewMath.IsJump`); stone features are dug.
 14. **Crew jobs build things.** Player ways and features are planned (`Built = false`) and built by a `Job` (unless the
     debug `instant` flag is set; scenario ways are always built). Only built ways are routed/ridden and only built
     features count. All work, wood and speed numbers come from `WorkCosts`; which trees stand comes only from `Forest`

@@ -33,7 +33,7 @@ public class CrewTests
         Assert.Empty(state.CrewRules.Validate());
         Assert.Equal(20, state.WoodStock);
         Assert.All(state.TrailFeatureTypes, t => Assert.True(t.WorkMinutes > 0));
-        Assert.Equal(70, state.TrailFeatureTypes.Sum(t => t.Wood)); // wall-ride 30, kicker 15, drop 25
+        Assert.Equal(130, state.TrailFeatureTypes.Sum(t => t.Wood)); // wall-ride 30, kicker 15, drop 25, big drop 60
 
         var sim = new Simulation(state);
         sim.Step();

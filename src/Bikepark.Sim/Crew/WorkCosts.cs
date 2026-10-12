@@ -44,7 +44,7 @@ public static class WorkCosts
 
     public static long FellMinutes(CrewRules crew, int trees) => (long)trees * crew.FellMinutesPerTree;
 
-    /// <summary>Dirt features are dug, wood features built by carpentry.</summary>
+    /// <summary>Dirt and stone features are dug, wood features built by carpentry.</summary>
     public static WorkType FeatureWorkType(TrailFeatureType type) =>
         type.Material == FeatureMaterial.Wood ? WorkType.Carpentry : WorkType.Digging;
 

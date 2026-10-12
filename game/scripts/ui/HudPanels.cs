@@ -357,6 +357,9 @@ public partial class BuildPanel : HudPanel
         FeatureKind.Double => UiIcon.Double,
         FeatureKind.WallRide => UiIcon.WallRide,
         FeatureKind.Kicker => UiIcon.Kicker,
+        FeatureKind.RockGarden => UiIcon.RockGarden,
+        FeatureKind.LongJump => UiIcon.LongJump,
+        FeatureKind.BigDrop => UiIcon.BigDrop,
         _ => UiIcon.Drop,
     };
 
@@ -376,7 +379,12 @@ public partial class BuildPanel : HudPanel
         string where = type.MaxGradient < 0
             ? $"needs a drop between {Gradient.Format(type.MaxGradient)} and {Gradient.Format(type.MinGradient)}"
             : $"gradient {Gradient.Format(type.MinGradient)} to {Gradient.Format(type.MaxGradient)}";
-        string bend = type.MinTurn > 0 ? ", on a bend" : "";
+        string bend = (type.MinTurn > 0 ? ", on a bend" : "")
+                      + (type.MinDropMeters > 0 ? $", at least {type.MinDropMeters} m down over it (steep ground)" : "")
+                      + (type.GapMeters > 0 ? $", a {type.GapMeters} m gap" : "")
+                      + (type.LandingMeters > 0
+                          ? $"; needs a clear {type.LandingMeters} m landing after it, {Gradient.Format(type.LandingMaxGradient)} to {Gradient.Format(type.LandingMinGradient)} down"
+                          : "");
         string build = type.Wood > 0 ? $"{HudContext.CrewTime(type.WorkMinutes)} and {type.Wood} wood" : HudContext.CrewTime(type.WorkMinutes);
         return $"{type.Name}: {type.LengthMeters} m, difficulty {type.Difficulty} ({DifficultyWord(type.Difficulty)}); {where}{bend}. " +
                $"Flow riders {type.FlowAffinity / 10}%, technical riders {type.TechAffinity / 10}%. Building it takes {build}." +
