@@ -75,6 +75,7 @@ public partial class Hud : CanvasLayer
     private RepairDialog _repairDialog = null!;
     private LiftStopDialog _liftStopDialog = null!;
     private NoticeDialog _notice = null!;
+    private WelcomeDialog _welcome = null!;
 
     /// <summary>Where the last rider on a T-bar was hit (trail and cm), for the lift-stop pop-up that follows.</summary>
     private (int WayId, long Cm) _lastTowedCrash;
@@ -245,6 +246,8 @@ public partial class Hud : CanvasLayer
         _root.AddChild(_liftStopDialog);
         _notice = new NoticeDialog(_ctx);
         _root.AddChild(_notice);
+        _welcome = new WelcomeDialog(_ctx);
+        _root.AddChild(_welcome);
         _ctx.OpenMenu = menu => ShowMenu(menu, null);
 
         _nameDialog = new NameDialog();
@@ -419,6 +422,13 @@ public partial class Hud : CanvasLayer
             var size = _notice.GetCombinedMinimumSize();
             _notice.Size = size;
             _notice.Position = new Vector2(MathF.Round((view.X - size.X) / 2), MathF.Round((view.Y - size.Y) / 3));
+        }
+
+        if (_welcome.Visible)
+        {
+            var size = _welcome.GetCombinedMinimumSize();
+            _welcome.Size = size;
+            _welcome.Position = new Vector2(MathF.Round((view.X - size.X) / 2), MathF.Max(14, MathF.Round((view.Y - size.Y) / 3)));
         }
 
         float top = 14;
@@ -745,6 +755,9 @@ public partial class Hud : CanvasLayer
         _notice.Clear();
         _ctx.ClearWarningPauses();
         if (sim.State.Park.Bankrupt) _notice.Request(BankruptNotice(sim.State.Finance.DaysInDebt));
+        // A new world: the scenario's welcome, once the host has set the speed (deferred, so it can pause the game).
+        _welcome.Clear();
+        Callable.From(_welcome.OpenIfNew).CallDeferred();
         var events = sim.Events;
         _subscriptions.Add(events.Subscribe<FacilityBuilt>(e => Toast(
             $"{_ctx.Sim.State.Facilities.FirstOrDefault(f => f.Id == e.FacilityId)?.Name ?? e.TypeName} is open", UiTheme.Good)));
@@ -796,7 +809,8 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<TrailRenaturalized>(e =>
         {
             var way = _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId);
-            Toast(way is null ? "Renaturalized: nature takes it back"
+            // The scenario's own set-up at tick 0 (Starter Valley's unfinished trail) isn't news.
+            if (e.Tick > 0) Toast(way is null ? "Renaturalized: nature takes it back"
                 : e.NewWayId != 0 && way.Kind == WayKind.Trail ? $"Renaturalized {(e.ToCm - e.FromCm) / 100} m: {way.Name} and {TrailName(e.NewWayId)} are left"
                 : $"Renaturalized {(e.ToCm - e.FromCm) / 100} m of {way.Label}", UiTheme.Accent);
             WarnUnconnected();

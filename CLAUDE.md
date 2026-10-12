@@ -50,7 +50,9 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
 - `data/` – JSON content (`scenarios/`: `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
   rented; tests and demo scripts use it) and `starter_valley.json` = the career (25,000 € start, bank loans, bankruptcy after 14 days in the red; old ski hill with
-  a derelict T-bar, parcels to buy, company gondola locked); `lift_types.json` (T-bar, chairlift, gondola with costs, levels, build days),
+  a derelict T-bar, the unfinished blue Easy Peasy (built, then its bottom quarter renaturalized at tick 0: loose end,
+  closed until the player connects it), parcels to buy, company gondola locked; a `welcome` note (`Scenarios/WelcomeNote`,
+  copied to `WorldState.Welcome`, presentation only) that the HUD's `WelcomeDialog` shows at tick 0); `lift_types.json` (T-bar, chairlift, gondola with costs, levels, build days),
   `trail_features.json`, `tools.json`, `facility_types.json` (snack bar, merch shop, bike café), `scripts/` command scripts such as `demo_lift_network.json`, `demo_features.json`,
   `demo_crew.json`, `career_opening.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
@@ -80,7 +82,7 @@ python3 tools/scenario-editor/server.py data/scenarios/starter_valley.json
 # Crashes: the output's "safety" block (crashes, serious, collisions, evacuations, average helicopter wait, insurance,
 # crossings found, a crash log) and per trail crashes / serious / collisions / per 1000 runs (crashes per feature in
 # featureConditions); --daily adds crashes, serious crashes and insurance per day
-# Career: the first weeks (take the starter loan, restore the T-bar, two trails on the ski hill, try to buy the South slope
+# Career: the first weeks (take the starter loan, restore the T-bar, finish Easy Peasy, plan the Old Piste, try to buy the South slope
 # (level 3)); the "land" block lists parcels (owned / level / price), money spent on land and lifts, upkeep and a log; lifts
 # show their status; the "loans" block lists offers, running loans, payments, days in the red and a log
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter_valley.json --days 20 --commands data/scripts/career_opening.json --daily
@@ -254,7 +256,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 ## Game controls (debug build)
 
 Start screen (when run without world-setting debug args): start a new career (park name), continue or delete a saved
-career, or play the Demo (sandbox, demo trails built, never saved). Careers are saved automatically, one file each
+career, or play the Demo (sandbox, demo trails built, never saved). A new career opens with the scenario's welcome
+(pauses; "Show me Easy Peasy" points the camera at the trail's loose end). Careers are saved automatically, one file each
 (`game/scripts/CareerStore.cs`: `user://careers/<id>.json` + `<id>.meta.json`, on macOS in
 `~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`), when the window closes / the game quits
 (`SimHost._ExitTree`, WM close) and on System menu → Save & back to menu; there is no manual save. Saves are written

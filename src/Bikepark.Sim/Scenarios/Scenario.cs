@@ -76,6 +76,9 @@ public sealed class ScenarioDefinition
     /// <summary>Land the park can buy (none: all land is the park's from the start).</summary>
     public List<Land.Parcel> Parcels { get; set; } = [];
 
+    /// <summary>What the player reads when the game starts (null: no welcome).</summary>
+    public WelcomeNote? Welcome { get; set; }
+
     /// <summary>Optional scripted commands (e.g. tutorial events), queued when the scenario starts.</summary>
     public List<TimedCommand> Commands { get; set; } = [];
 }
@@ -159,6 +162,7 @@ public static class ScenarioLoader
             OwnedParcelIds = scenario.Parcels.Where(p => p.OwnedAtStart).Select(p => p.Id).ToList(),
             Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
             LoanRules = scenario.LoanRules,
+            Welcome = scenario.Welcome,
         };
 
         var queue = new CommandQueue(state);
@@ -207,6 +211,8 @@ public static class ScenarioLoader
         foreach (var parcel in s.Parcels) errors.AddRange(parcel.Validate());
         if (s.Parcels.Select(p => p.Id).Distinct().Count() != s.Parcels.Count) errors.Add("parcels: ids must be unique");
         if (s.Parcels.Count > 0 && !s.Parcels.Any(p => p.OwnedAtStart)) errors.Add("parcels: at least one must be owned at start");
+
+        if (s.Welcome is { } welcome) errors.AddRange(welcome.Validate());
 
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid scenario '{s.Id}': {string.Join("; ", errors)}");

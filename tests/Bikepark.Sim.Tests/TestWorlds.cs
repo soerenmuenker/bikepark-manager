@@ -67,8 +67,8 @@ internal static class TestWorlds
 
     /// <summary>
     /// The Starter Valley career (data/scenarios/starter_valley.json): the old ski hill with the derelict T-bar (lift 1),
-    /// its parking (6) and track (way 8); the company gondola (lift 9, tier 0) with its parking and the hiking route (16).
-    /// The terrain is pinned to seed 1337.
+    /// its parking (6) and track (way 8); the company gondola (lift 9, tier 0) with its parking and the hiking route (16);
+    /// the unfinished blue Easy Peasy (way 17, its bottom quarter renaturalized: loose end, closed). The terrain is pinned to seed 1337.
     /// </summary>
     public static ScenarioDefinition CareerScenario(ulong seed = 1337)
     {
@@ -78,7 +78,7 @@ internal static class TestWorlds
         return scenario;
     }
 
-    /// <summary>data/scripts/career_opening.json: restore the T-bar, hire two, plan two trails, try to buy the South slope.</summary>
+    /// <summary>data/scripts/career_opening.json: restore the T-bar, hire two, finish Easy Peasy, plan the Old Piste, try to buy the South slope.</summary>
     public static IReadOnlyList<TimedCommand> CareerOpening() =>
         JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(Path.Combine(RepoRoot(), "data", "scripts", "career_opening.json")), SimJson.Indented)!;
 

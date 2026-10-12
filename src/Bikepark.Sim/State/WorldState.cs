@@ -30,6 +30,9 @@ public sealed class WorldState
 
     public ParkState Park { get; set; } = new();
 
+    /// <summary>The scenario's welcome (content, presentation only: the HUD shows it at tick 0), or null.</summary>
+    public Scenarios.WelcomeNote? Welcome { get; set; }
+
     public ParkRules Rules { get; set; } = new();
 
     /// <summary>

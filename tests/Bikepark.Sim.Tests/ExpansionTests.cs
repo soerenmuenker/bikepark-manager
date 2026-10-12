@@ -124,10 +124,10 @@ public class ExpansionTests
         // A chairlift on the ski hill: level 5 needed.
         Assert.Contains("needs park level 5", Reject(sim, new BuildLiftCommand("chairlift_4", "Chair", M(760, 890), M(745, 700))));
 
-        // A second T-bar on the hill (level 0): paid now, ready after its build days, upkeep from then on.
+        // A second T-bar on the hill, west of Easy Peasy (level 0): paid now, ready after its build days, upkeep from then on.
         var type = LiftNetwork.FindType(sim.State, "tbar")!;
         long money = sim.State.Finance.MoneyCents;
-        Assert.Null(Reject(sim, new BuildLiftCommand("tbar", "New T-bar", M(700, 890), M(705, 730))));
+        Assert.Null(Reject(sim, new BuildLiftCommand("tbar", "New T-bar", M(692, 905), M(690, 800))));
         var lift = sim.State.Lifts[^1];
         Assert.Equal(money - type.BuildCostCents, sim.State.Finance.MoneyCents);
         Assert.False(lift.InService);
