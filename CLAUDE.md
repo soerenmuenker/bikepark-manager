@@ -35,9 +35,10 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     level thresholds), `ReputationState` (reviews window, posts, visitor history), `ReviewMath` (a visit → aspects →
     stars), `ReputationMath` (rating, demand), `ParkProgress` (derived XP and level); `Systems/ReputationSystem.cs`
     books influencers and announces level changes
-  - `Safety/` – `CrashRules` (content: crash chances, severity, helicopter, insurance), `CrashMath` (pure chances in
-    parts per billion, premium), `SafetyState` (counts, accident history); crash rolls live in `RiderSystem` (`Crash`),
-    `Systems/SafetySystem.cs` books the daily insurance; `Trails/Crossings.cs` finds where ways cross (derived in
+  - `Safety/` – `CrashRules` (content: crash chances, severity, helicopter, crash closures, expected crash rates),
+    `CrashMath` (pure chances in parts per billion, trail crash rate, review safety loss), `SafetyState` (counts, accident
+    history); crash rolls live in `RiderSystem` (`Crash`), `Systems/SafetySystem.cs` closes the day's accident book (park and
+    per trail); `Trails/Crossings.cs` finds where ways cross (derived in
     `WayNetwork.Crossings`, warned about in `WayPlanner`)
   - `Systems/ParkSchedule.cs` – the daily timetable (opening hours, which guests, lifts and crew keep, then the last rides
     until the last rider is down; quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
@@ -79,9 +80,10 @@ dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios
 python3 tools/scenario-editor/server.py data/scenarios/starter_valley.json
 # Reputation: the output's "reputation" block (stars overall/per group, demand parts, XP parts, level, influencer posts,
 # a log of influencer visits and level changes); --daily adds reviews, rating, demand, XP and level per day
-# Crashes: the output's "safety" block (crashes, serious, collisions, evacuations, average helicopter wait, insurance,
-# crossings found, a crash log) and per trail crashes / serious / collisions / per 1000 runs (crashes per feature in
-# featureConditions); --daily adds crashes, serious crashes and insurance per day
+# Crashes: the output's "safety" block (crashes, serious, collisions, evacuations, average helicopter wait,
+# crossings found, a crash log) and per trail crashes / serious / collisions / per 1000 runs, the recent rate against the
+# expected one (recent/expectedCrashesPer10kRuns) and closed minutes (crashes per feature in featureConditions);
+# --daily adds crashes and serious crashes per day
 # Career: the first weeks (take the starter loan, restore the T-bar, finish Easy Peasy, plan the Old Piste, try to buy the South slope
 # (level 3)); the "land" block lists parcels (owned / level / price), money spent on land and lifts, upkeep and a log; lifts
 # show their status; the "loans" block lists offers, running loans, payments, days in the red and a log
@@ -147,8 +149,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     then id; derived, never saved); a worker without one works at base speed. Tools wear per worked minute and are gone at
     `ToolType.LifeMinutes` (`ToolWornOut`). Estimates: `WorkCosts.CrewSpeedPermille`. `BuyToolCommand` buys one more
     (`ToolType.RequiredLevel`).
-14b. **Running costs grow with the park:** `FinanceSystem` charges each building's upkeep (there is no trail upkeep: the
-    crew's wages pay for keeping the trails up); the insurance adds `CrashRules.InsurancePerFeatureByRating` per built feature (`TrailFeatures.BuiltByRating`).
+14b. **Running costs grow with the park:** `FinanceSystem` charges each building's upkeep. There is no trail upkeep (the
+    crew's wages pay for keeping the trails up) and no accident insurance (crashes cost mood, closures and reviews, rule 18).
 14c. **Bars and shops** (`Facilities/`): placed next to a valley station (`StructurePlanner.PlanFacility`: pad, land, within
     `StationReachMeters`; serves that lift's base), paid at once, no network hub (`FacilityMath.AtPoint` for picking and
     renaturalizing; `StructureRemoval` tears them down for `RemovalPermille`). A guest is at a lift's base when idle at its
@@ -198,8 +200,13 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     `MinorSpeedCmPerS` and leaves (`GuestLeaveReason.Injured`). A serious one: `RiderActivity.Injured`, the rider stays
     where they fell and `TrailTraffic` tracks them, so nobody passes, until `RescueAtTick` (public-service helicopter,
     no staff), then `Evacuated` (even after closing). Crossings are derived geometry, never junctions. Crashes count on
-    `WayStats`, `TrailFeature.Crashes` and `SafetyState`; reviews: a serious crash makes safety 0. Insurance =
-    base + per accident of the last `InsuranceDays`, charged by `SafetySystem` (before `FinanceSystem`).
+    `WayStats`, `TrailFeature.Crashes` and `SafetyState`. Crashes cost no money (no insurance): they cost mood
+    (`Minor/SeriousMoodLoss`), close the trail to new riders (`Way.CrashClosedUntilTick`, a filter in `IsRideable`: minor
+    `MinorCloseMinutes`, serious until the rescue; reopened by `TrailCareSystem`) and cost reviews: a serious crash makes
+    safety 0, a minor one caps it, crashes seen cost a bit, and a trail crashing above its rating's
+    `ExpectedCrashesPer10kRunsByRating` (`CrashMath.TrailRatePer10k`: today + `WayStats.History` of the last `RateDays`,
+    over at least `RateMinRuns`) lowers the safety of every guest who rode it (`CrashMath.UnsafeTrailLoss`, worst trail,
+    capped; passed into `ReviewMath.Write`). `SafetySystem` (before `FinanceSystem`) closes the day's book.
 19b. **Loans and bankruptcy** (`Banking/Loans.cs`): `LoanRules` (content: offers with principal, weeks, flat interest,
     level; late fee) and `WorldState.Loans` (state). `TakeLoanCommand` (money via `Finance.Borrow`, not revenue; one per
     offer, level via `LoanMath.CannotTake`), `RepayLoanCommand` (everything still owed). `LoanSystem` (before

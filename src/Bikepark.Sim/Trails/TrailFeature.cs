@@ -162,17 +162,6 @@ public static class TrailFeatures
             ? $"The {type.Name.ToLowerInvariant()} needs park level {type.RequiredLevel} (you are level {level})."
             : null;
 
-    /// <summary>Built features on built trails, per rating of the feature itself (index = <see cref="TrailRating"/>).</summary>
-    public static int[] BuiltByRating(WayNetwork network)
-    {
-        var counts = new int[4];
-        foreach (var trail in network.Trails)
-            foreach (var feature in network.FeaturesOn(trail.Id))
-                if (feature.Feature.Built)
-                    counts[(int)feature.Type.Rating]++;
-        return counts;
-    }
-
     /// <summary>The way's features that resolve to a known type, in distance order.</summary>
     public static List<PlacedFeature> Resolve(Way way, IReadOnlyList<TrailFeatureType> types)
     {

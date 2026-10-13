@@ -9,7 +9,7 @@ public sealed record AccidentDay(long Day, int Minor, int Serious);
 /// </summary>
 public sealed record CrossingPassage(long TimeMs, int GuestId, int WayId, long Cm, int SpeedCmPerS);
 
-/// <summary>Crash counts and the accident history the insurance premium is based on. Saved with the game.</summary>
+/// <summary>Crash counts and the accident history. Saved with the game.</summary>
 public sealed class SafetyState
 {
     /// <summary>
@@ -25,13 +25,10 @@ public sealed class SafetyState
     public int MinorToday { get; set; }
     public int SeriousToday { get; set; }
 
-    /// <summary>Closed days, oldest first, at most <see cref="CrashRules.InsuranceDays"/>.</summary>
+    /// <summary>Closed days, oldest first, at most <see cref="CrashRules.RateDays"/>.</summary>
     public List<AccidentDay> History { get; set; } = [];
 
     /// <summary>Sum of minutes seriously injured riders waited for the helicopter (divide by <see cref="Evacuations"/>).</summary>
     public long SumRescueMinutes { get; set; }
     public long Evacuations { get; set; }
-
-    public long TotalInsuranceCents { get; set; }
-    public long InsuranceTodayCents { get; set; }
 }

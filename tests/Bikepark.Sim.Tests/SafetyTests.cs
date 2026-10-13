@@ -57,7 +57,6 @@ public class SafetyTests
         var sim = TestWorlds.Run(1337, 2, TestWorlds.DemoNetwork());
         Assert.False(sim.State.CrashRules.Enabled);
         Assert.Equal(0, sim.State.Safety.TotalCrashes);
-        Assert.Equal(0, sim.State.Safety.TotalInsuranceCents);
         Assert.True(sim.State.Ways.Sum(w => w.Stats.Runs) > 100);
     }
 
@@ -67,7 +66,9 @@ public class SafetyTests
         Assert.Empty(ValleyRules().Validate());
         Assert.NotEmpty(new CrashRules { HelicopterMinMinutes = 30, HelicopterMaxMinutes = 10 }.Validate());
         Assert.NotEmpty(new CrashRules { FeatureBasePpm = -1 }.Validate());
-        Assert.NotEmpty(new CrashRules { InsuranceDays = 0 }.Validate());
+        Assert.NotEmpty(new CrashRules { RateDays = 0 }.Validate());
+        Assert.NotEmpty(new CrashRules { MinorCloseMinutes = -1 }.Validate());
+        Assert.NotEmpty(new CrashRules { RateMinRuns = 0 }.Validate());
     }
 
     [Fact]
@@ -108,12 +109,35 @@ public class SafetyTests
     }
 
     [Fact]
-    public void Premium_IsABasePlusRecentAccidents()
+    public void TrailRate_CountsTodayAndTheLastDays_OverAtLeastTheMinimumRuns()
     {
-        var rules = ValleyRules();
-        var safety = new SafetyState { History = [new(0, 2, 1), new(1, 0, 0), new(2, 1, 0)] };
-        Assert.Equal(rules.InsuranceBaseCents + 3 * rules.InsurancePerMinorCents + rules.InsurancePerSeriousCents, CrashMath.Premium(rules, safety));
-        Assert.Equal(rules.InsuranceBaseCents, CrashMath.Premium(rules, new SafetyState()));
+        var rules = new CrashRules { Enabled = true, RateMinRuns = 100 };
+        var trail = new Way { Kind = WayKind.Trail };
+        trail.Stats.History = [new(300, 3), new(200, 1)];
+        trail.Stats.RunsToday = 500;
+        trail.Stats.CrashesToday = 6;
+        Assert.Equal(100, CrashMath.TrailRatePer10k(rules, trail)); // 10 crashes in 1000 runs
+
+        var quiet = new Way { Kind = WayKind.Trail };
+        quiet.Stats.RunsToday = 10;
+        quiet.Stats.CrashesToday = 1;
+        Assert.Equal(100, CrashMath.TrailRatePer10k(rules, quiet)); // one crash in 10 runs counts over 100
+    }
+
+    [Fact]
+    public void RateSafetyLoss_IsZeroUpToTheExpectedRate_ThenGrows_UpToTheCap()
+    {
+        var rules = new CrashRules
+        {
+            ExpectedCrashesPer10kRunsByRating = new() { Green = 10, Blue = 20, Red = 40, Black = 60 },
+            SafetyLossPerExtraCrashPer10k = 4,
+            MaxRateSafetyLoss = 500,
+        };
+        Assert.Equal(0, CrashMath.RateSafetyLoss(rules, 15, TrailRating.Blue));
+        Assert.Equal(0, CrashMath.RateSafetyLoss(rules, 20, TrailRating.Blue));
+        Assert.Equal(40, CrashMath.RateSafetyLoss(rules, 30, TrailRating.Blue));
+        Assert.Equal(0, CrashMath.RateSafetyLoss(rules, 30, TrailRating.Red)); // a red trail may crash more
+        Assert.Equal(500, CrashMath.RateSafetyLoss(rules, 1000, TrailRating.Blue));
     }
 
     // ---------------------------------------------------------------- crossings
@@ -181,7 +205,11 @@ public class SafetyTests
         Assert.Equal(RiderActivity.Injured, victim.Activity);
         Assert.Equal(InjurySeverity.Serious, victim.Injury);
         Assert.InRange(call.RescueAtTick - call.Tick, sim.State.CrashRules.HelicopterMinMinutes, sim.State.CrashRules.HelicopterMaxMinutes);
-        Assert.Equal(1, sim.Network.FindWay(call.WayId)!.Stats.SeriousCrashes);
+        var crashed = sim.Network.FindWay(call.WayId)!;
+        Assert.Equal(1, crashed.Stats.SeriousCrashes);
+        Assert.Equal(call.RescueAtTick, crashed.CrashClosedUntilTick);
+        Assert.False(sim.Network.IsRideable(crashed));
+        var onTrail = sim.State.Guests.Where(g => RiderSystem.PositionOnWay(g, out int w, out _) && w == call.WayId).Select(g => g.Id).ToHashSet();
         long progress = victim.RouteProgressCm;
 
         // Ten minutes later: still lying there, and nobody got past on that trail.
@@ -192,7 +220,10 @@ public class SafetyTests
         foreach (var other in sim.State.Guests.Where(g => g != victim && g.Activity == RiderActivity.Descending))
             if (RiderSystem.PositionOnWay(other, out int way, out long pos) && way == call.WayId)
                 Assert.True(pos < at, $"rider {other.Id} at {pos} passed the crash at {at}");
-        Assert.True(sim.Network.FindWay(call.WayId)!.Stats.HeldUpSeconds > 0);
+        // Closed: nobody new dropped in (so nobody piles up behind the rider either).
+        foreach (var other in sim.State.Guests)
+            if (RiderSystem.PositionOnWay(other, out int way, out _) && way == call.WayId)
+                Assert.Contains(other.Id, onTrail);
 
         // The helicopter: the rider leaves, the trail is free.
         sim.RunTicks(call.RescueAtTick - sim.State.Tick + 1);
@@ -201,6 +232,7 @@ public class SafetyTests
         Assert.Contains(left, l => l.GuestId == victim.Id && l.Reason == GuestLeaveReason.Evacuated);
         Assert.DoesNotContain(victim, sim.State.Guests);
         Assert.True(sim.State.Safety.Evacuations >= 1);
+        Assert.True(crashed.CrashClosedUntilTick == 0 || crashed.CrashClosedUntilTick > call.RescueAtTick); // open again (unless a new crash)
     }
 
     [Fact]
@@ -220,6 +252,9 @@ public class SafetyTests
         var rider = sim.State.Guests.Single(g => g.Id == first.GuestId);
         Assert.Equal(InjurySeverity.Minor, rider.Injury);
         Assert.Equal(RiderActivity.Descending, rider.Activity);
+        var trail = sim.Network.FindWay(first.WayId)!;
+        Assert.Equal(first.Tick + sim.State.CrashRules.MinorCloseMinutes, trail.CrashClosedUntilTick);
+        Assert.False(trail.IsRideable);
 
         long before = rider.RouteProgressCm;
         sim.Step();
@@ -277,10 +312,36 @@ public class SafetyTests
         Assert.Equal(0, ReviewMath.Score(rules, Visit(InjurySeverity.Serious), 180).Safety);
         Assert.InRange(ReviewMath.Score(rules, Visit(InjurySeverity.Minor), 180).Safety, 0, 200);
         Assert.Equal(700, ReviewMath.Score(rules, Visit(InjurySeverity.None, seen: 2), 180).Safety);
+
+        // A trail that crashes more than its rating allows: everybody who rode it feels it, the injured still rate 0.
+        Assert.Equal(800, ReviewMath.Score(rules, Visit(InjurySeverity.None), 180, unsafeTrailLoss: 200).Safety);
+        Assert.Equal(500, ReviewMath.Score(rules, Visit(InjurySeverity.None, seen: 2), 180, unsafeTrailLoss: 200).Safety);
+        Assert.Equal(0, ReviewMath.Score(rules, Visit(InjurySeverity.Serious), 180, unsafeTrailLoss: 200).Safety);
+        Assert.Equal(0, ReviewMath.Score(rules, Visit(InjurySeverity.None), 180, unsafeTrailLoss: 1000).Safety);
     }
 
     [Fact]
-    public void Insurance_IsChargedDaily_FromTheLastDaysAccidents()
+    public void UnsafeTrailLoss_ComesFromTheWorstTrailTheGuestRode()
+    {
+        var sim = Valley(ValleyRules());
+        sim.Step();
+        var rules = sim.State.CrashRules;
+        var flow = sim.Network.FindWay(FlowCountry)!;
+        var rocket = sim.Network.FindWay(RedRocket)!;
+        flow.Stats.History = [new(1000, 100)]; // far above any rating
+        rocket.Stats.History = [new(1000, 0)];
+
+        var guest = new Guest { TrailsRidden = [RedRocket] };
+        Assert.Equal(0, CrashMath.UnsafeTrailLoss(sim.State, sim.Network, guest));
+        guest.TrailsRidden.Add(FlowCountry);
+        Assert.Equal(rules.MaxRateSafetyLoss, CrashMath.UnsafeTrailLoss(sim.State, sim.Network, guest));
+
+        rules.Enabled = false;
+        Assert.Equal(0, CrashMath.UnsafeTrailLoss(sim.State, sim.Network, guest));
+    }
+
+    [Fact]
+    public void AccidentBook_KeepsTheLastDays_PerParkAndPerTrail()
     {
         var sim = Valley(ValleyRules());
         var days = new List<DayReport>();
@@ -288,9 +349,13 @@ public class SafetyTests
         sim.RunDays(9);
         sim.Events.Dispatch();
         var rules = sim.State.CrashRules;
-        Assert.Equal(rules.InsuranceDays, sim.State.Safety.History.Count);
-        Assert.Equal(days.Sum(d => d.InsuranceCents), sim.State.Safety.TotalInsuranceCents);
-        Assert.All(days, d => Assert.True(d.InsuranceCents >= rules.InsuranceBaseCents));
+        Assert.Equal(rules.RateDays, sim.State.Safety.History.Count);
+        foreach (var trail in sim.Network.Trails)
+        {
+            Assert.Equal(rules.RateDays, trail.Stats.History.Count);
+            Assert.Equal(0, trail.Stats.CrashesToday);
+        }
+        Assert.True(sim.Network.Trails.Sum(t => t.Stats.History.Sum(d => d.Runs)) > 100);
         Assert.Equal(sim.State.Safety.TotalCrashes, days.Sum(d => (long)d.Crashes) + sim.State.Safety.MinorToday + sim.State.Safety.SeriousToday);
         Assert.True(sim.State.Safety.TotalCrashes > 0);
     }

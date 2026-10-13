@@ -136,9 +136,25 @@ public static class SaveGame
 
         if (version == 7)
         {
-            // v8: no trail upkeep (the crew's wages already pay for keeping the trails up).
+            // v8: no trail upkeep (the crew's wages already pay for keeping the trails up) and no accident insurance (crashes
+            // close their trail for a while and trails crashing above their rating's rate cost reviews instead).
             if (root["world"] is JsonObject world)
             {
+                if (world["crashRules"] is JsonObject crash)
+                {
+                    foreach (string old in new[] { "insuranceBaseCents", "insurancePerMinorCents", "insurancePerSeriousCents", "insurancePerFeatureByRating" })
+                        crash.Remove(old);
+                    if (crash["insuranceDays"] is { } days)
+                    {
+                        crash.Remove("insuranceDays");
+                        crash["rateDays"] = days.GetValue<int>();
+                    }
+                }
+                if (world["safety"] is JsonObject safety)
+                {
+                    safety.Remove("totalInsuranceCents");
+                    safety.Remove("insuranceTodayCents");
+                }
                 world["trailRules"]?.AsObject().Remove("upkeepCentsPerKm");
                 if (world["trailFeatureTypes"] is JsonArray types)
                     foreach (var type in types.OfType<JsonObject>())
@@ -148,9 +164,12 @@ public static class SaveGame
                     finance.Remove("totalTrailUpkeepCents");
                     finance.Remove("trailUpkeepTodayCents");
                 }
-                if (world["dayHistory"] is JsonArray days)
-                    foreach (var day in days.OfType<JsonObject>())
+                if (world["dayHistory"] is JsonArray history)
+                    foreach (var day in history.OfType<JsonObject>())
+                    {
                         day.Remove("trailUpkeepCents");
+                        day.Remove("insuranceCents");
+                    }
             }
             version = 8;
         }

@@ -216,7 +216,6 @@ public static class Program
         return new SafetyReport(
             s.TotalCrashes, s.TotalSerious, s.TotalCollisions, s.Evacuations,
             s.Evacuations == 0 ? null : (int)(s.SumRescueMinutes / s.Evacuations),
-            s.TotalInsuranceCents, CrashMath.Premium(state.CrashRules, s, Bikepark.Sim.Trails.TrailFeatures.BuiltByRating(sim.Network)),
             sim.Network.Crossings.Select(c =>
                 $"{state.Ways.First(w => w.Id == c.WayA).Name} {c.CmA / 100} m x {state.Ways.First(w => w.Id == c.WayB).Name} {c.CmB / 100} m")
                 .Concat(state.Ways.SelectMany(w => sim.Network.TowCrossingsOn(w.Id).Select(t =>
@@ -271,6 +270,7 @@ public static class Program
     {
         var geometry = sim.Network.Geometry(w.Id);
         bool trail = w.Kind == WayKind.Trail;
+        bool crashes = sim.State.CrashRules.Enabled;
         return new WayReport(
             w.Id, w.Name, w.Kind,
             w.Built ? null : true,
@@ -284,7 +284,7 @@ public static class Program
             w.Stats.Runs,
             w.Stats.Runs == 0 ? null : Math.Round((double)w.Stats.SumRunMinutes / w.Stats.Runs, 1),
             w.Stats.Runs == 0 ? null : (int)(w.Stats.SumFun / w.Stats.Runs),
-            trail && w.Built ? !w.IsRideable ? w.WornOut ? "worn out" : "closed" : "open" : null,
+            trail && w.Built ? !w.IsRideable ? w.WornOut ? "worn out" : w.CrashClosedUntilTick != 0 ? "closed (crash)" : "closed" : "open" : null,
             trail ? w.Features.Where(f => f.Built).Select(f => $"{f.TypeId}@{f.DistanceCm / 100}m {TrailCondition.Permille(f) / 10.0:0.#} %"
                                                                  + (f.Crashes > 0 ? $", {f.Crashes} crashes" : "")).ToList() : null,
             trail ? TrailCondition.WorstPermille(w) : null,
@@ -294,7 +294,9 @@ public static class Program
             trail ? w.Stats.Crashes : null,
             trail ? w.Stats.SeriousCrashes : null,
             trail ? w.Stats.Collisions : null,
-            trail && w.Stats.Runs > 0 ? Math.Round(w.Stats.Crashes * 1000.0 / w.Stats.Runs, 1) : null);
+            trail && w.Stats.Runs > 0 ? Math.Round(w.Stats.Crashes * 1000.0 / w.Stats.Runs, 1) : null,
+            trail && crashes ? CrashMath.TrailRatePer10k(sim.State.CrashRules, w) : null,
+            trail && crashes ? CrashMath.ExpectedPer10k(sim.State.CrashRules, geometry.Rating) : null);
     }).ToList();
 
     private static CrewReport? CrewReport(Simulation sim, List<string> completed)
@@ -437,7 +439,9 @@ internal sealed record WayReport(
     int? Crashes,
     int? SeriousCrashes,
     int? Collisions,
-    double? CrashesPer1000Runs);
+    double? CrashesPer1000Runs,
+    int? RecentCrashesPer10kRuns,
+    int? ExpectedCrashesPer10kRuns);
 
 internal sealed record SafetyReport(
     long Crashes,
@@ -445,8 +449,6 @@ internal sealed record SafetyReport(
     long Collisions,
     long Evacuations,
     int? AverageRescueMinutes,
-    long InsuranceCents,
-    long PremiumTomorrowCents,
     List<string> Crossings,
     List<string> Log);
 

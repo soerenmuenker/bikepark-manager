@@ -71,8 +71,14 @@ public sealed class Way
     /// <summary>Last tick the crew was seen at work on a feature of this trail (-1 = never); bridges the gap between two jobs.</summary>
     public long LastWorkTick { get; set; } = -1;
 
+    /// <summary>
+    /// Closed after a crash until this tick (0 = open): a minor crash for <see cref="Safety.CrashRules.MinorCloseMinutes"/>,
+    /// a serious one until the helicopter has flown the rider out. Reopened by <see cref="Systems.TrailCareSystem"/>.
+    /// </summary>
+    public long CrashClosedUntilTick { get; set; }
+
     /// <summary>A built trail riders may start runs on.</summary>
-    public bool IsRideable => Built && !Closed && !WornOut && !Repairing;
+    public bool IsRideable => Built && !Closed && !WornOut && !Repairing && CrashClosedUntilTick == 0;
 }
 
 /// <summary>Usage counters of a trail.</summary>
@@ -97,7 +103,15 @@ public sealed class WayStats
     public int Crashes { get; set; }
     public int SeriousCrashes { get; set; }
     public int Collisions { get; set; }
+
+    /// <summary>Crashes today, and the runs and crashes of the last closed days (oldest first, at most
+    /// <see cref="Safety.CrashRules.RateDays"/>): the trail's crash rate (<see cref="Safety.CrashMath.TrailRatePer10k"/>).</summary>
+    public int CrashesToday { get; set; }
+    public List<TrailDay> History { get; set; } = [];
 }
+
+/// <summary>Runs and crashes of a trail on one closed day.</summary>
+public sealed record TrailDay(int Runs, int Crashes);
 
 /// <summary>Building rules and rider tuning, loaded from the scenario and saved with the game.</summary>
 public sealed class TrailRules

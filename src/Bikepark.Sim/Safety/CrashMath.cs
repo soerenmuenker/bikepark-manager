@@ -81,17 +81,40 @@ public static class CrashMath
     }
 
     /// <summary>
-    /// The daily insurance premium: a base, the accidents in the history and, with <paramref name="featuresByRating"/>
-    /// (built features per rating, see <see cref="Trails.TrailFeatures.BuiltByRating"/>), a charge per feature.
+    /// The trail's crashes per 10 000 runs over today and the last closed days, taken over at least
+    /// <see cref="CrashRules.RateMinRuns"/> runs.
     /// </summary>
-    public static long Premium(CrashRules rules, SafetyState safety, IReadOnlyList<int>? featuresByRating = null)
+    public static int TrailRatePer10k(CrashRules rules, Way trail)
     {
-        long premium = rules.InsuranceBaseCents
-                       + safety.History.Sum(d => d.Minor * rules.InsurancePerMinorCents + d.Serious * rules.InsurancePerSeriousCents);
-        if (featuresByRating is not null)
-            for (int r = 0; r < featuresByRating.Count; r++)
-                premium += (long)featuresByRating[r] * rules.InsurancePerFeatureByRating.For((Trails.TrailRating)r);
-        return premium;
+        long runs = trail.Stats.RunsToday, crashes = trail.Stats.CrashesToday;
+        foreach (var day in trail.Stats.History)
+        {
+            runs += day.Runs;
+            crashes += day.Crashes;
+        }
+        return (int)(crashes * 10_000 / Math.Max(runs, rules.RateMinRuns));
+    }
+
+    /// <summary>The crashes per 10 000 runs guests accept on a trail of this rating.</summary>
+    public static int ExpectedPer10k(CrashRules rules, TrailRating rating) => rules.ExpectedCrashesPer10kRunsByRating.For(rating);
+
+    /// <summary>Safety (permille) a review loses for a trail crashing at <paramref name="ratePer10k"/> (0 at or below expected).</summary>
+    public static int RateSafetyLoss(CrashRules rules, int ratePer10k, TrailRating rating) =>
+        (int)Math.Min(rules.MaxRateSafetyLoss, Math.Max(0L, ratePer10k - ExpectedPer10k(rules, rating)) * rules.SafetyLossPerExtraCrashPer10k);
+
+    /// <summary>
+    /// Safety a guest's review loses for the worst trail they rode this visit whose crash rate is above what its rating
+    /// allows (badly placed crossings, a wrong rating, worn features). 0 without crashes.
+    /// </summary>
+    public static int UnsafeTrailLoss(WorldState state, WayNetwork network, Guest guest)
+    {
+        var rules = state.CrashRules;
+        if (!rules.Enabled) return 0;
+        int loss = 0;
+        foreach (int id in guest.TrailsRidden)
+            if (network.FindWay(id) is { } trail && network.TryGetGeometry(id, out var geometry))
+                loss = Math.Max(loss, RateSafetyLoss(rules, TrailRatePer10k(rules, trail), geometry.Rating));
+        return loss;
     }
 
     /// <summary>True with the given chance in parts per billion.</summary>

@@ -60,7 +60,7 @@ internal sealed class ReputationSystem : ISimSystem
         if (!guest.IsInfluencer && ((guest.RunsCompleted == 0 && !injured) || !ctx.Rng.ChancePermille(chance)))
             return;
 
-        var review = ReviewMath.Write(rules, guest, ctx.Tick);
+        var review = ReviewMath.Write(rules, guest, ctx.Tick, Safety.CrashMath.UnsafeTrailLoss(state, ctx.Network, guest));
         ReputationMath.Add(state, review);
         ctx.Publish(new ReviewWritten(ctx.Tick, guest.Id, review.Group, review.StarsTenths, guest.IsInfluencer));
         if (!guest.IsInfluencer) return;

@@ -292,8 +292,10 @@
   // seriousBase + extras (jumps, collisions, over skill): the rider lies on the trail, blocking it, until the rescue
   // helicopter (public service) has flown them out; otherwise they ride down slowly and go home. A rider hurt while
   // being pulled up a T-bar stops the whole lift: for towStopMinutes (minor: they get off the track and go home) or
-  // until the helicopter has flown them out (serious). The insurance premium
-  // is charged daily: a base plus a charge per accident of the last insuranceDays days and per built feature (by its rating).
+  // until the helicopter has flown them out (serious). Crashes cost no money: a crash closes its trail to new riders
+  // (minorCloseMinutes, a serious one until the rescue). Each trail's crashes per 10 000 runs over the last rateDays
+  // (counted over at least rateMinRuns) are compared with expectedCrashesPer10kRunsByRating: a guest who rode a trail
+  // above it rates safety safetyLossPerExtraCrashPer10k permille lower per extra crash (worst trail, at most maxRateSafetyLoss).
   "crashRules": {
     "enabled": true,
     "featureBasePpm": 40,
@@ -318,11 +320,12 @@
     "helicopterMinMinutes": 25,
     "helicopterMaxMinutes": 50,
     "injuredReviewChancePermille": 900,
-    "insuranceBaseCents": 5000,
-    "insurancePerMinorCents": 1500,
-    "insurancePerSeriousCents": 15000,
-    "insuranceDays": 7,
-    "insurancePerFeatureByRating": { "green": 0, "blue": 100, "red": 400, "black": 1200 }
+    "minorCloseMinutes": 5,
+    "rateDays": 7,
+    "expectedCrashesPer10kRunsByRating": { "green": 10, "blue": 20, "red": 40, "black": 60 },
+    "rateMinRuns": 1000,
+    "safetyLossPerExtraCrashPer10k": 4,
+    "maxRateSafetyLoss": 500
   },
   // Lift models come from the shared catalog.
   "liftTypesFile": "../lift_types.json",

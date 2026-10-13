@@ -280,8 +280,10 @@ public class FeatureTests
     [Fact]
     public void Riders_ScoreFeatures_AndAvoidTheHardenedTrail()
     {
-        var without = TestWorlds.RunLift(1337, 1440, TestWorlds.DemoLiftNetwork());
-        var with = TestWorlds.RunLift(1337, 1440, [.. TestWorlds.DemoLiftNetwork(), .. DemoFeatures()]);
+        // Without crashes: crash closures (collisions at the demo crossing) would blur which trail riders choose.
+        static void NoCrashes(Scenarios.ScenarioDefinition s) => s.CrashRules.Enabled = false;
+        var without = TestWorlds.RunLift(1337, 1440, TestWorlds.DemoLiftNetwork(), NoCrashes);
+        var with = TestWorlds.RunLift(1337, 1440, [.. TestWorlds.DemoLiftNetwork(), .. DemoFeatures()], NoCrashes);
 
         Assert.Equal(19, with.State.Ways.Sum(w => w.Features.Count));
         long Runs(Simulation s, int id) => s.State.Ways.Single(w => w.Id == id).Stats.Runs;

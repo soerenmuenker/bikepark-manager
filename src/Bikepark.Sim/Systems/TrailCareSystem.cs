@@ -11,6 +11,7 @@ namespace Bikepark.Sim.Systems;
 ///   <item>a trail with a feature at 0 closes (<see cref="Way.WornOut"/>) until repairs leave none at 0 — the warning is
 ///   raised again then, so the player can send the crew;</item>
 ///   <item>a trail is closed while the crew is assigned to building or repairing one of its features (<see cref="Way.Repairing"/>);</item>
+///   <item>a trail closed after a crash (<see cref="Way.CrashClosedUntilTick"/>) reopens when its time is up;</item>
 ///   <item>minutes a trail is closed while the park is open are counted.</item>
 /// </list>
 /// Nothing is repaired on its own: the player sends the crew (<see cref="Commands.RepairFeatureCommand"/>).
@@ -24,6 +25,8 @@ internal sealed class TrailCareSystem : ISimSystem
         foreach (var trail in state.Ways)
         {
             if (trail.Kind != WayKind.Trail || !trail.Built) continue;
+            if (trail.CrashClosedUntilTick != 0 && ctx.Tick >= trail.CrashClosedUntilTick)
+                trail.CrashClosedUntilTick = 0; // the crash is cleared up
             if (trail.Features.Count > 0)
                 UpdateTrail(ctx, trail);
             if (open && !trail.IsRideable) trail.Stats.ClosedMinutes++;
@@ -46,7 +49,7 @@ internal sealed class TrailCareSystem : ISimSystem
             }
             if (feature.Condition <= 0 && !trail.WornOut)
             {
-                bool wasRideable = trail.IsRideable;
+                bool wasRideable = trail is { Closed: false, Repairing: false }; // a crash closure is only for a while
                 trail.WornOut = true;
                 if (wasRideable) ctx.Publish(new TrailClosed(ctx.Tick, trail.Id, TrailClosedReason.WornOut));
                 ctx.Publish(new FeatureWarning(ctx.Tick, trail.Id, feature.Id, 0)); // pop up again: the trail is closed now

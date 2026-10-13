@@ -98,16 +98,35 @@ public sealed class CrashRules
     /// <summary>Chance that a guest who crashed writes a review (others: <see cref="Reputation.ReputationRules.ReviewChancePermille"/>).</summary>
     public int InjuredReviewChancePermille { get; set; } = 900;
 
-    // ---- Insurance ----
+    /// <summary>
+    /// A crash closes its trail to new riders: a minor one for this long, a serious one until the helicopter has flown
+    /// the rider out. Riders already on the trail finish their run.
+    /// </summary>
+    public int MinorCloseMinutes { get; set; } = 5;
 
-    /// <summary>Daily premium: a base plus a charge per accident in the last <see cref="InsuranceDays"/> days.</summary>
-    public long InsuranceBaseCents { get; set; } = 5_000;
-    public long InsurancePerMinorCents { get; set; } = 1_500;
-    public long InsurancePerSeriousCents { get; set; } = 15_000;
-    public int InsuranceDays { get; set; } = 7;
+    // ---- Crash rate (reviews) ----
 
-    /// <summary>Added to the daily premium per built feature, by the feature's rating (big features, big claims).</summary>
-    public Reputation.PerRating InsurancePerFeatureByRating { get; set; } = new();
+    /// <summary>Closed days kept in the accident book and in each trail's crash rate.</summary>
+    public int RateDays { get; set; } = 7;
+
+    /// <summary>
+    /// Crashes per 10 000 runs a trail of each rating may have before guests feel it is unsafe. Crossings, a wrong rating
+    /// or worn features push a trail above it.
+    /// </summary>
+    public Reputation.PerRating ExpectedCrashesPer10kRunsByRating { get; set; } = new() { Green = 10, Blue = 20, Red = 40, Black = 60 };
+
+    /// <summary>
+    /// The rate is never taken over fewer runs than this, so a single crash on a quiet trail is no pattern (1000: one crash
+    /// is at most 10 per 10 000 runs, which every rating allows).
+    /// </summary>
+    public int RateMinRuns { get; set; } = 1000;
+
+    /// <summary>
+    /// Safety (permille) a guest takes off their review per crash per 10 000 runs above the expected rate, for the worst
+    /// trail they rode, up to <see cref="MaxRateSafetyLoss"/>.
+    /// </summary>
+    public int SafetyLossPerExtraCrashPer10k { get; set; } = 4;
+    public int MaxRateSafetyLoss { get; set; } = 500;
 
     public List<string> Validate()
     {
@@ -129,9 +148,12 @@ public sealed class CrashRules
         if (HelicopterMinMinutes < 1 || HelicopterMaxMinutes < HelicopterMinMinutes || HelicopterMaxMinutes > 600)
             errors.Add($"{p}: 1 <= helicopterMinMinutes <= helicopterMaxMinutes <= 600");
         if (InjuredReviewChancePermille is < 0 or > 1000) errors.Add($"{p}.injuredReviewChancePermille must be within 0..1000");
-        if (InsuranceBaseCents < 0 || InsurancePerMinorCents < 0 || InsurancePerSeriousCents < 0) errors.Add($"{p}: insurance must be >= 0");
-        if (InsuranceDays is < 1 or > 365) errors.Add($"{p}.insuranceDays must be within 1..365");
-        if (InsurancePerFeatureByRating.Any(v => v < 0)) errors.Add($"{p}.insurancePerFeatureByRating must be >= 0");
+        if (MinorCloseMinutes is < 0 or > 600) errors.Add($"{p}.minorCloseMinutes must be within 0..600");
+        if (RateDays is < 1 or > 365) errors.Add($"{p}.rateDays must be within 1..365");
+        if (ExpectedCrashesPer10kRunsByRating.Any(v => v is < 0 or > 10_000)) errors.Add($"{p}.expectedCrashesPer10kRunsByRating must be within 0..10000");
+        if (RateMinRuns is < 1 or > 1_000_000) errors.Add($"{p}.rateMinRuns must be within 1..1000000");
+        if (SafetyLossPerExtraCrashPer10k is < 0 or > 1000) errors.Add($"{p}.safetyLossPerExtraCrashPer10k must be within 0..1000");
+        if (MaxRateSafetyLoss is < 0 or > 1000) errors.Add($"{p}.maxRateSafetyLoss must be within 0..1000");
         return errors;
     }
 }

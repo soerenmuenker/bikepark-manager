@@ -576,6 +576,7 @@ internal sealed class RiderSystem : ISimSystem
         if (network.FindWay(wayId) is { } way)
         {
             way.Stats.Crashes++;
+            way.Stats.CrashesToday++;
             if (serious) way.Stats.SeriousCrashes++;
             if (cause == CrashCause.Collision) way.Stats.Collisions++;
         }
@@ -606,7 +607,11 @@ internal sealed class RiderSystem : ISimSystem
             traffic.Track(guest);
             ctx.Publish(new HelicopterCalled(ctx.Tick, guest.Id, wayId, guest.RescueAtTick));
         }
-        if (towedOn is null) return;
+        if (towedOn is null)
+        {
+            CloseAfterCrash(ctx, network, wayId, serious ? guest.RescueAtTick : ctx.Tick + rules.MinorCloseMinutes);
+            return;
+        }
         // Serious: until the helicopter has flown them out. Minor: they let go, get off the track and go home.
         long until = serious ? guest.RescueAtTick : ctx.Tick + rules.TowStopMinutes;
         if (!serious) PlaceAtBase(state, guest, network);
@@ -615,6 +620,15 @@ internal sealed class RiderSystem : ISimSystem
             towedOn.StoppedUntilTick = until;
             ctx.Publish(new LiftStopped(ctx.Tick, towedOn.Id, until, guest.Id));
         }
+    }
+
+    /// <summary>A crash closes its trail to new riders until <paramref name="until"/> (riders on it finish their run).</summary>
+    private static void CloseAfterCrash(SimContext ctx, WayNetwork network, int wayId, long until)
+    {
+        if (network.FindWay(wayId) is not { Kind: WayKind.Trail } trail || until <= ctx.Tick || until <= trail.CrashClosedUntilTick) return;
+        bool wasRideable = trail.IsRideable;
+        trail.CrashClosedUntilTick = until;
+        if (wasRideable) ctx.Publish(new TrailClosed(ctx.Tick, trail.Id, TrailClosedReason.Crash));
     }
 
     /// <summary>Where a rider riding a way (dropped in, on a trail or path) is on it.</summary>

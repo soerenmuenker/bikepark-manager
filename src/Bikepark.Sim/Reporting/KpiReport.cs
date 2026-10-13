@@ -56,7 +56,6 @@ public sealed record KpiReport(
     long SeriousCrashes,
     int CrashesPer1000Runs,
     int GuestsInjured,
-    long TotalInsuranceCents,
     string? StateHash)
 {
     /// <param name="network">The way network, for the park XP (without it: XP from visitors only).</param>
@@ -112,7 +111,6 @@ public sealed record KpiReport(
             SeriousCrashes: state.Safety.TotalSerious,
             CrashesPer1000Runs: runs == 0 ? 0 : (int)(state.Safety.TotalCrashes * 1000 / runs),
             GuestsInjured: state.Guests.Count(g => g.Activity == RiderActivity.Injured),
-            TotalInsuranceCents: state.Safety.TotalInsuranceCents,
             StateHash: includeHash ? Persistence.StateHash.Compute(state) : null);
     }
 }

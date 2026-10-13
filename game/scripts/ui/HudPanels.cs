@@ -12,6 +12,7 @@ using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reporting;
+using Bikepark.Sim.Safety;
 using Bikepark.Sim.State;
 using Bikepark.Sim.Systems;
 using Bikepark.Sim.Trails;
@@ -560,7 +561,7 @@ public partial class TrailsPanel : HudPanel
             string avg = s.Runs == 0 ? "no runs yet" : $"{(double)s.SumRunMinutes / s.Runs:F1} min · fun {s.SumFun / s.Runs / 10}%";
             bool connected = network.IsConnected(way);
             main.Text = !connected ? $"{way.Name}  · NOT CONNECTED (closed)"
-                : way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Repairing ? $"{way.Name}  · CLOSED (crew at work)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
+                : way.WornOut ? $"{way.Name}  · CLOSED (worn out)" : way.Repairing ? $"{way.Name}  · CLOSED (crew at work)" : way.CrashClosedUntilTick != 0 ? $"{way.Name}  · CLOSED (crash)" : way.Closed ? $"{way.Name}  · CLOSED" : way.Name;
             main.AddThemeColorOverride("font_color", network.IsRideable(way) ? UiTheme.Text : UiTheme.Bad);
             if (!connected)
                 main.TooltipText = "A loose end: riders can't reach its start or can't get away from its end. Draw a trail from its loose end (or onto its loose start) to connect it.";
@@ -587,6 +588,7 @@ public partial class TrailsPanel : HudPanel
         var type = TrailFeatures.FindType(state.TrailFeatureTypes, worst.TypeId);
         string next = way.WornOut ? "worn out: closed until repaired"
             : way.Repairing ? "closed while the crew works on a feature"
+            : way.CrashClosedUntilTick != 0 ? "closed after a crash"
             : TrailCondition.Permille(worst) < state.WearRules.WarnBelowPermille ? "needs a repair!"
             : TrailCondition.Permille(worst) < 1000 ? "worn" : "like new";
         return $"Worst feature: {type?.Name} at {worst.DistanceCm / 100} m, {TrailCondition.Permille(worst) / 10} % · {next}";
@@ -599,10 +601,21 @@ public partial class TrailsPanel : HudPanel
         int down = state.Guests.Count(g => g.Activity == RiderActivity.Injured && g.CrashWayId == way.Id);
         string now = down > 0 ? $" · {down} injured on it now, helicopter coming" : "";
         if (s.Crashes == 0) return "No crashes yet" + now;
-        string rate = s.Runs == 0 ? "" : $" · {s.Crashes * 1000.0 / s.Runs:0.0} per 1000 runs";
         var worst = network.FeaturesOn(way.Id).Where(f => f.Feature.Crashes > 0).OrderByDescending(f => f.Feature.Crashes).FirstOrDefault();
         string where = worst.Type is null ? "" : $" · most at the {worst.Type.Name} ({worst.Feature.Crashes})";
-        return $"{s.Crashes} crash{(s.Crashes == 1 ? "" : "es")} ({s.SeriousCrashes} serious, {s.Collisions} collisions){rate}{where}{now}";
+        return $"{s.Crashes} crash{(s.Crashes == 1 ? "" : "es")} ({s.SeriousCrashes} serious, {s.Collisions} collisions){where}{now}\n" +
+               RateSummary(state, way, network);
+    }
+
+    /// <summary>The recent crash rate against what the trail's rating allows: above it, guests rate the park less safe.</summary>
+    private static string RateSummary(WorldState state, Way way, WayNetwork network)
+    {
+        if (!network.TryGetGeometry(way.Id, out var g)) return "";
+        var rules = state.CrashRules;
+        int rate = CrashMath.TrailRatePer10k(rules, way), expected = CrashMath.ExpectedPer10k(rules, g.Rating);
+        int loss = CrashMath.RateSafetyLoss(rules, rate, g.Rating);
+        string text = $"Last {rules.RateDays} days: {rate / 10.0:0.0} crashes per 1000 runs (ok up to {expected / 10.0:0.0})";
+        return loss > 0 ? $"{text} · TOO MANY: riders rate safety {loss / 10} % lower — check crossings, rating and worn features" : text;
     }
 
     /// <summary>"2 berms · Tabletop · Drop" (in the order types first appear along the trail).</summary>
@@ -1247,7 +1260,7 @@ public partial class FinancePanel : HudPanel
 {
     private Label _money = null!, _revenue = null!, _expenses = null!, _net = null!;
     private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _food = null!, _fee = null!, _liftTicket = null!, _tickets = null!;
-    private Label _insurance = null!, _landAndLifts = null!, _liftUpkeep = null!, _loanPayments = null!, _debtStatus = null!;
+    private Label _landAndLifts = null!, _liftUpkeep = null!, _loanPayments = null!, _debtStatus = null!;
     private VBoxContainer _loans = null!;
     private VBoxContainer? _buildings;
     private readonly Dictionary<int, (PanelContainer Row, Label Text)> _buildingRows = [];
@@ -1273,7 +1286,6 @@ public partial class FinancePanel : HudPanel
         totals.AddChild(UiTheme.StatTile("Lift fees paid", out _liftFees, 16));
         totals.AddChild(UiTheme.StatTile("Crew wages", out _wages, 16));
         totals.AddChild(UiTheme.StatTile("Tools & wood", out _materials, 16));
-        totals.AddChild(UiTheme.StatTile("Insurance", out _insurance, 16));
         Body.AddChild(totals);
         totals = Row(24);
         totals.AddChild(UiTheme.StatTile("Land bought", out _landAndLifts, 16));
@@ -1352,12 +1364,6 @@ public partial class FinancePanel : HudPanel
         _landAndLifts.TooltipText = $"Land {UiTheme.Money(f.TotalLandCents)} · lifts built or restored {UiTheme.Money(f.TotalLiftBuildCents)}";
         _liftUpkeep.Text = UiTheme.Money(f.TotalLiftUpkeepCents);
         _liftUpkeep.TooltipText = $"Built and restored lifts: {UiTheme.Money(f.TotalLiftBuildCents)}";
-        var safety = Ctx.Sim.State.Safety;
-        _insurance.Text = UiTheme.Money(safety.TotalInsuranceCents);
-        _insurance.TooltipText = Ctx.Sim.State.CrashRules.Enabled
-            ? $"Accident insurance, charged daily: {UiTheme.Money(Bikepark.Sim.Safety.CrashMath.Premium(Ctx.Sim.State.CrashRules, safety, TrailFeatures.BuiltByRating(Ctx.Sim.Network)))} at the moment " +
-              $"(a base, every accident of the last {Ctx.Sim.State.CrashRules.InsuranceDays} days and every built feature: the bigger, the dearer)"
-            : "No accident insurance in this scenario";
         _fee.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.EntryFeeCents);
         _liftTicket.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.LiftTicketCents);
         _tickets.Text = UiTheme.Money(f.TotalLiftTicketsCents);

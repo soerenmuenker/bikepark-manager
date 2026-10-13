@@ -124,7 +124,6 @@ public sealed record DayReport(
     int Level = 0,
     int Crashes = 0,
     int SeriousCrashes = 0,
-    long InsuranceCents = 0,
     long LiftUpkeepCents = 0,
     long LiftTicketsCents = 0,
     long LoanPaymentsCents = 0,
@@ -156,9 +155,12 @@ public enum TrailClosedReason
 
     /// <summary>The crew started building a new feature.</summary>
     Building,
+
+    /// <summary>A rider crashed on it (minor: for a few minutes; serious: until the helicopter has flown them out).</summary>
+    Crash,
 }
 
-/// <summary>A trail closed: by the player, worn out (a feature at 0) or while the crew repairs a feature.</summary>
+/// <summary>A trail closed: by the player, worn out (a feature at 0), while the crew works on a feature or after a crash.</summary>
 public sealed record TrailClosed(long Tick, int WayId, TrailClosedReason Reason) : ISimEvent;
 
 /// <summary>A feature's condition fell below the warning level: the player should send the crew (at 0 the trail closes).</summary>

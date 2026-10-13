@@ -81,7 +81,7 @@ public class PersistenceTests
     }
 
     [Fact]
-    public void Load_MigratesVersion7_DropsTrailUpkeep()
+    public void Load_MigratesVersion7_DropsTrailUpkeepAndInsurance()
     {
         var sim = new Simulation(TestWorlds.Create());
         sim.RunDays(1);
@@ -94,10 +94,23 @@ public class PersistenceTests
             type!.AsObject()["upkeepCentsPerDay"] = 500;
         world["finance"]!.AsObject()["totalTrailUpkeepCents"] = 1234;
         world["finance"]!.AsObject()["trailUpkeepTodayCents"] = 0;
+        var crash = world["crashRules"]!.AsObject();
+        int rateDays = crash["rateDays"]!.GetValue<int>();
+        crash.Remove("rateDays");
+        crash["insuranceDays"] = rateDays;
+        crash["insuranceBaseCents"] = 5000;
+        crash["insurancePerMinorCents"] = 1500;
+        crash["insurancePerSeriousCents"] = 15000;
+        crash["insurancePerFeatureByRating"] = new JsonObject { ["green"] = 0, ["blue"] = 100, ["red"] = 400, ["black"] = 1200 };
+        world["safety"]!.AsObject()["totalInsuranceCents"] = 5000;
+        world["safety"]!.AsObject()["insuranceTodayCents"] = 0;
         var days = world["dayHistory"]!.AsArray();
         Assert.NotEmpty(days);
         foreach (var day in days)
+        {
             day!.AsObject()["trailUpkeepCents"] = 1234;
+            day.AsObject()["insuranceCents"] = 5000;
+        }
         string v7 = root.ToJsonString();
 
         var loaded = SaveGame.Deserialize(v7);

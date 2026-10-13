@@ -373,7 +373,6 @@ internal sealed class FinanceSystem : ISimSystem
             Level: state.Reputation.Level,
             Crashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick)) is { } accidents ? accidents.Minor + accidents.Serious : 0,
             SeriousCrashes: state.Safety.History.LastOrDefault(d => d.Day == GameTime.Day(ctx.Tick))?.Serious ?? 0,
-            InsuranceCents: state.Safety.InsuranceTodayCents,
             LiftUpkeepCents: state.Finance.LiftUpkeepTodayCents,
             LiftTicketsCents: state.Finance.LiftTicketsTodayCents,
             LoanPaymentsCents: state.Finance.LoanPaymentsTodayCents,
@@ -404,7 +403,6 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.WagesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
         state.Reputation.ReviewsToday = 0;
-        state.Safety.InsuranceTodayCents = 0;
         state.Finance.LiftUpkeepTodayCents = 0;
         state.Stats.TurnedAwayToday = 0;
         state.Finance.RevenueTodayCents = 0;

@@ -19,15 +19,18 @@ public static class ReviewMath
     public static bool IsJump(FeatureKind kind) =>
         kind is FeatureKind.Table or FeatureKind.Double or FeatureKind.Kicker or FeatureKind.Drop or FeatureKind.LongJump or FeatureKind.BigDrop;
 
-    /// <summary>The visit so far, judged on each aspect against what the guest's group looks for.</summary>
-    public static ReviewScores Score(ReputationRules rules, Guest guest, long tick)
+    /// <summary>
+    /// The visit so far, judged on each aspect against what the guest's group looks for. <paramref name="unsafeTrailLoss"/>:
+    /// safety lost to a trail that crashes more than its rating allows (<see cref="Safety.CrashMath.UnsafeTrailLoss"/>).
+    /// </summary>
+    public static ReviewScores Score(ReputationRules rules, Guest guest, long tick, int unsafeTrailLoss = 0)
     {
         if (guest.RunsCompleted == 0)
             return new ReviewScores(0, Safe(guest, 1000), 0, 0, 0, 0, guest.PaidEntryCents == 0 ? 1000 : 0);
         var values = rules.Values(GroupOf(rules, guest.Skill));
         int runFun = (int)(guest.VisitFunSum / guest.RunsCompleted);
         int fun = (Stretch(rules, runFun) * 2 + guest.Happiness) / 3;
-        int safety = Safe(guest, 1000 - guest.ScaredRuns * 1000 / guest.RunsCompleted);
+        int safety = Safe(guest, Math.Max(0, 1000 - guest.ScaredRuns * 1000 / guest.RunsCompleted - unsafeTrailLoss));
         long visitSeconds = Math.Max(30, tick - guest.ArrivedTick) * 60L;
         long waitedSeconds = guest.QueueMinutes * 60L + (long)guest.HeldUpSeconds * rules.HeldUpWeight;
         int smoothness = (int)Math.Clamp(1000 - waitedSeconds * rules.WaitPenaltyPermille / visitSeconds, 0, 1000);
@@ -49,10 +52,10 @@ public static class ReviewMath
     }
 
     /// <summary>The guest's review, as of <paramref name="tick"/>.</summary>
-    public static Review Write(ReputationRules rules, Guest guest, long tick)
+    public static Review Write(ReputationRules rules, Guest guest, long tick, int unsafeTrailLoss = 0)
     {
         var group = GroupOf(rules, guest.Skill);
-        var s = Score(rules, guest, tick);
+        var s = Score(rules, guest, tick, unsafeTrailLoss);
         int stars = guest.RunsCompleted == 0 ? 10 : Stars(rules, group, s);
         return new Review(GameTime.Day(tick), guest.Id, group, stars, s.Fun, s.Safety, s.Smoothness, s.Challenge, s.Jumps, s.Variety,
             guest.IsInfluencer, s.Value);

@@ -141,7 +141,7 @@ public sealed class WorldState
 
     public ReputationState Reputation { get; set; } = new();
 
-    /// <summary>Crashes, helicopter rescues and insurance (off by default).</summary>
+    /// <summary>Crashes, helicopter rescues, crash closures and crash rates (off by default).</summary>
     public CrashRules CrashRules { get; set; } = new();
 
     public SafetyState Safety { get; set; } = new();
