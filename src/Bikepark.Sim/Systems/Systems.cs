@@ -335,13 +335,6 @@ internal sealed class FinanceSystem : ISimSystem
             state.Finance.Spend(facilityUpkeep);
             state.Finance.TotalFacilityUpkeepCents += facilityUpkeep;
         }
-        long trailUpkeep = Trails.TrailFeatures.DailyUpkeepCents(state, ctx.Network);
-        if (trailUpkeep > 0)
-        {
-            state.Finance.Spend(trailUpkeep);
-            state.Finance.TotalTrailUpkeepCents += trailUpkeep;
-            state.Finance.TrailUpkeepTodayCents += trailUpkeep;
-        }
         foreach (var lift in state.Lifts)
         {
             if (lift.OperatorId is null && lift.InService && LiftNetwork.FindType(state, lift.TypeId) is { UpkeepPerDayCents: > 0 } own)
@@ -386,7 +379,6 @@ internal sealed class FinanceSystem : ISimSystem
             LoanPaymentsCents: state.Finance.LoanPaymentsTodayCents,
             DebtCents: Banking.LoanMath.DebtCents(state),
             DaysInDebt: CountDebtDays(ctx),
-            TrailUpkeepCents: state.Finance.TrailUpkeepTodayCents,
             FoodCents: state.Finance.FoodTodayCents,
             MerchCents: state.Finance.MerchTodayCents,
             FacilityUpkeepCents: facilityUpkeep);
@@ -405,7 +397,6 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.LiftFeesTodayCents = 0;
         state.Finance.LiftTicketsTodayCents = 0;
         state.Finance.LoanPaymentsTodayCents = 0;
-        state.Finance.TrailUpkeepTodayCents = 0;
         state.Finance.FoodTodayCents = 0;
         state.Finance.MerchTodayCents = 0;
         foreach (var facility in state.Facilities)

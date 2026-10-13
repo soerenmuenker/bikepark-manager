@@ -6,7 +6,7 @@ using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Tests;
 
-/// <summary>Running costs that grow with the park: trail and feature upkeep, insurance per feature.</summary>
+/// <summary>Running costs that grow with the park: insurance per feature.</summary>
 public class UpkeepTests
 {
     private const int FlowCountry = 11, RedRocket = 12; // demo_lift_network.json on the Demo
@@ -20,32 +20,6 @@ public class UpkeepTests
             sim.Commands.Enqueue(c.Command, 0);
         sim.Step();
         return sim;
-    }
-
-    [Fact]
-    public void TrailUpkeep_IsPerKm_PlusEachBuiltFeature()
-    {
-        var sim = World(s => s.TrailRules.UpkeepCentsPerKm = 10_000);
-        long km = sim.Network.Trails.Sum(t => sim.Network.Geometry(t.Id).LengthCm);
-        long trails = km * 10_000 / 100_000;
-        Assert.Equal(trails, TrailFeatures.DailyUpkeepCents(sim.State, sim.Network));
-
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(RedRocket, "double", 30_000, Instant: true));
-        sim.Commands.Enqueue(new PlaceTrailFeatureCommand(FlowCountry, "rollers", 40_000)); // planned: costs nothing yet
-        sim.Step();
-        long doubleUpkeep = sim.State.TrailFeatureTypes.Single(t => t.Id == "double").UpkeepCentsPerDay;
-        Assert.True(doubleUpkeep > 0);
-        Assert.Equal(trails + doubleUpkeep, TrailFeatures.DailyUpkeepCents(sim.State, sim.Network));
-
-        // The crew builds the rollers during the day: charged in the evening as well.
-        var days = new List<DayReport>();
-        sim.Events.Subscribe<DayEnded>(e => days.Add(e.Report));
-        sim.RunDays(1);
-        sim.Events.Dispatch();
-        long evening = TrailFeatures.DailyUpkeepCents(sim.State, sim.Network);
-        Assert.Equal(trails + doubleUpkeep + sim.State.TrailFeatureTypes.Single(t => t.Id == "rollers").UpkeepCentsPerDay, evening);
-        Assert.Equal(evening, days.Single().TrailUpkeepCents);
-        Assert.Equal(evening, sim.State.Finance.TotalTrailUpkeepCents);
     }
 
     [Fact]

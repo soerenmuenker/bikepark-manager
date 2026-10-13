@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -132,6 +132,27 @@ public static class SaveGame
                 world["tools"] = tools;
             }
             version = 7;
+        }
+
+        if (version == 7)
+        {
+            // v8: no trail upkeep (the crew's wages already pay for keeping the trails up).
+            if (root["world"] is JsonObject world)
+            {
+                world["trailRules"]?.AsObject().Remove("upkeepCentsPerKm");
+                if (world["trailFeatureTypes"] is JsonArray types)
+                    foreach (var type in types.OfType<JsonObject>())
+                        type.Remove("upkeepCentsPerDay");
+                if (world["finance"] is JsonObject finance)
+                {
+                    finance.Remove("totalTrailUpkeepCents");
+                    finance.Remove("trailUpkeepTodayCents");
+                }
+                if (world["dayHistory"] is JsonArray days)
+                    foreach (var day in days.OfType<JsonObject>())
+                        day.Remove("trailUpkeepCents");
+            }
+            version = 8;
         }
 
         root["version"] = version;

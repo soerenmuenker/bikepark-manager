@@ -130,7 +130,6 @@ public sealed record DayReport(
     long LoanPaymentsCents = 0,
     long DebtCents = 0,
     int DaysInDebt = 0,
-    long TrailUpkeepCents = 0,
     long FoodCents = 0,
     long MerchCents = 0,
     long FacilityUpkeepCents = 0);

@@ -89,7 +89,7 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 # Riders on the demo trails: per-trail runs, per-lift riders/queue/wait/tier/fee, why guests left or were turned away
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 3 --commands data/scripts/demo_lift_network.json [--commands data/scripts/demo_facilities.json]
 # Bars, shops and tools: the output's "facilities" block (buildings with customers and revenue, lunch/snack/merch sales,
-# building and upkeep costs, trail upkeep, tools owned); --daily adds foodCents, merchCents, facilityUpkeepCents, trailUpkeepCents
+# building and upkeep costs, tools owned); --daily adds foodCents, merchCents, facilityUpkeepCents
 # ... with the demo trail features (planned, built by the crew: per-trail feature list, crew block with completed jobs, wood, wages)
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json
 # Godot (from game/): compile, then run headless with the demo trails at 60x, printing KPIs (incl. queues) every game hour
@@ -147,9 +147,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     then id; derived, never saved); a worker without one works at base speed. Tools wear per worked minute and are gone at
     `ToolType.LifeMinutes` (`ToolWornOut`). Estimates: `WorkCosts.CrewSpeedPermille`. `BuyToolCommand` buys one more
     (`ToolType.RequiredLevel`).
-14b. **Running costs grow with the park:** `FinanceSystem` charges `TrailFeatures.DailyUpkeepCents` (per km of built trail,
-    `TrailRules.UpkeepCentsPerKm`, plus each built feature's `UpkeepCentsPerDay`) and each building's upkeep; the insurance
-    adds `CrashRules.InsurancePerFeatureByRating` per built feature (`TrailFeatures.BuiltByRating`).
+14b. **Running costs grow with the park:** `FinanceSystem` charges each building's upkeep (there is no trail upkeep: the
+    crew's wages pay for keeping the trails up); the insurance adds `CrashRules.InsurancePerFeatureByRating` per built feature (`TrailFeatures.BuiltByRating`).
 14c. **Bars and shops** (`Facilities/`): placed next to a valley station (`StructurePlanner.PlanFacility`: pad, land, within
     `StationReachMeters`; serves that lift's base), paid at once, no network hub (`FacilityMath.AtPoint` for picking and
     renaturalizing; `StructureRemoval` tears them down for `RemovalPermille`). A guest is at a lift's base when idle at its

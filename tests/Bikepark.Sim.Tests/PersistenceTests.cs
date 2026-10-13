@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Bikepark.Sim.Commands;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Scenarios;
@@ -75,6 +76,31 @@ public class PersistenceTests
         Assert.Contains("overtimeMinutes", v3);
 
         var loaded = SaveGame.Deserialize(v3);
+
+        Assert.Equal(StateHash.Compute(SaveGame.Deserialize(current)), StateHash.Compute(loaded));
+    }
+
+    [Fact]
+    public void Load_MigratesVersion7_DropsTrailUpkeep()
+    {
+        var sim = new Simulation(TestWorlds.Create());
+        sim.RunDays(1);
+        string current = SaveGame.Serialize(sim.State);
+        var root = JsonNode.Parse(current)!.AsObject();
+        root["version"] = 7;
+        var world = root["world"]!.AsObject();
+        world["trailRules"]!.AsObject()["upkeepCentsPerKm"] = 5000;
+        foreach (var type in world["trailFeatureTypes"]!.AsArray())
+            type!.AsObject()["upkeepCentsPerDay"] = 500;
+        world["finance"]!.AsObject()["totalTrailUpkeepCents"] = 1234;
+        world["finance"]!.AsObject()["trailUpkeepTodayCents"] = 0;
+        var days = world["dayHistory"]!.AsArray();
+        Assert.NotEmpty(days);
+        foreach (var day in days)
+            day!.AsObject()["trailUpkeepCents"] = 1234;
+        string v7 = root.ToJsonString();
+
+        var loaded = SaveGame.Deserialize(v7);
 
         Assert.Equal(StateHash.Compute(SaveGame.Deserialize(current)), StateHash.Compute(loaded));
     }

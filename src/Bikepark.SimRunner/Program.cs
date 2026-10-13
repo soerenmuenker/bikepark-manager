@@ -192,7 +192,7 @@ public static class Program
             state.Facilities.Select(x => new FacilityReport(x.Id, x.Name, x.TypeId, state.Lifts.FirstOrDefault(l => l.Id == x.LiftId)?.Name,
                 x.Customers, x.TotalRevenueCents)).ToList(),
             f.TotalFoodCents, f.TotalSnackCents, f.TotalMerchCents, f.TotalMerchCostCents, f.TotalFacilityBuildCents, f.TotalFacilityUpkeepCents,
-            f.TotalTrailUpkeepCents, state.Tools.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.Count()));
+            state.Tools.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.Count()));
     }
 
     private static LoansReport? LoansReport(Simulation sim, List<string> log)
@@ -369,7 +369,7 @@ internal sealed record ParcelReport(string Id, string Name, bool Owned, int Requ
 internal sealed record FacilityReport(int Id, string Name, string TypeId, string? ServesLift, int Customers, long RevenueCents);
 
 internal sealed record FacilitiesReport(List<FacilityReport> Buildings, long LunchCents, long SnackCents, long MerchCents, long MerchCostCents,
-    long BuildCents, long UpkeepCents, long TrailUpkeepCents, Dictionary<string, int> Tools);
+    long BuildCents, long UpkeepCents, Dictionary<string, int> Tools);
 
 internal sealed record LoanOfferReport(string Id, string Name, long PrincipalCents, int Weeks, int InterestPermille,
     long InstallmentCents, long TotalRepayCents, int RequiredLevel, string? Locked);

@@ -303,10 +303,6 @@ public sealed class FinanceState
     public long TotalFacilityUpkeepCents { get; set; }
     public long TotalMerchCostCents { get; set; }
 
-    /// <summary>Trail and feature upkeep (included in the expenses).</summary>
-    public long TotalTrailUpkeepCents { get; set; }
-    public long TrailUpkeepTodayCents { get; set; }
-
     /// <summary>Money borrowed (not revenue) and installments paid back (included in the expenses).</summary>
     public long TotalBorrowedCents { get; set; }
     public long TotalLoanPaymentsCents { get; set; }

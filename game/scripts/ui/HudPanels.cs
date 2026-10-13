@@ -1247,7 +1247,7 @@ public partial class FinancePanel : HudPanel
 {
     private Label _money = null!, _revenue = null!, _expenses = null!, _net = null!;
     private Label _totalRevenue = null!, _totalExpenses = null!, _liftFees = null!, _wages = null!, _materials = null!, _food = null!, _fee = null!, _liftTicket = null!, _tickets = null!;
-    private Label _insurance = null!, _landAndLifts = null!, _liftUpkeep = null!, _loanPayments = null!, _debtStatus = null!, _trailUpkeep = null!;
+    private Label _insurance = null!, _landAndLifts = null!, _liftUpkeep = null!, _loanPayments = null!, _debtStatus = null!;
     private VBoxContainer _loans = null!;
     private VBoxContainer? _buildings;
     private readonly Dictionary<int, (PanelContainer Row, Label Text)> _buildingRows = [];
@@ -1278,7 +1278,6 @@ public partial class FinancePanel : HudPanel
         totals = Row(24);
         totals.AddChild(UiTheme.StatTile("Land bought", out _landAndLifts, 16));
         totals.AddChild(UiTheme.StatTile("Own lifts: upkeep", out _liftUpkeep, 16));
-        totals.AddChild(UiTheme.StatTile("Trail upkeep", out _trailUpkeep, 16));
         totals.AddChild(UiTheme.StatTile("Loan installments", out _loanPayments, 16));
         Body.AddChild(totals);
         Body.AddChild(UiTheme.Separator());
@@ -1363,9 +1362,6 @@ public partial class FinancePanel : HudPanel
         _liftTicket.Text = UiTheme.MoneyExact(Ctx.Sim.State.Park.LiftTicketCents);
         _tickets.Text = UiTheme.Money(f.TotalLiftTicketsCents);
         _loanPayments.Text = UiTheme.Money(f.TotalLoanPaymentsCents);
-        _trailUpkeep.Text = UiTheme.Money(f.TotalTrailUpkeepCents);
-        _trailUpkeep.TooltipText = $"Trails and built features cost {UiTheme.Money(TrailFeatures.DailyUpkeepCents(Ctx.Sim.State, Ctx.Sim.Network))} a day right now " +
-                                   "(per km of trail, and each feature: the harder, the dearer)";
         _loanPayments.TooltipText = $"Borrowed so far: {UiTheme.Money(f.TotalBorrowedCents)}";
         RefreshLoans();
         RefreshBuildings();
