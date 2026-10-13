@@ -1,6 +1,7 @@
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Trails;
+using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Commands;
 
@@ -62,7 +63,7 @@ public sealed record BuyToolCommand(string ToolId) : ICommand
     {
         var state = ctx.State;
         var tool = state.ToolTypes.First(t => t.Id == ToolId);
-        state.Finance.Spend(tool.PriceCents);
+        state.Finance.Invest(MoneyCategory.Tools, tool.PriceCents, ctx.Tick, $"Bought a {tool.Name.ToLowerInvariant()}");
         state.Finance.TotalToolsCents += tool.PriceCents;
         state.Tools.Add(new OwnedTool { Id = state.AllocateEntityId(), TypeId = ToolId });
         ctx.Publish(new ToolBought(ctx.Tick, ToolId));
@@ -85,7 +86,7 @@ public sealed record BuyWoodCommand(int Amount) : ICommand
     {
         var state = ctx.State;
         long price = Amount * state.CrewRules.WoodPriceCents;
-        state.Finance.Spend(price);
+        state.Finance.Invest(MoneyCategory.Wood, price, ctx.Tick, $"Bought {Amount} wood");
         state.Finance.TotalWoodCents += price;
         state.WoodStock += Amount;
         state.CrewStats.WoodBought += Amount;

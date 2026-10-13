@@ -311,24 +311,58 @@ public sealed class FinanceState
     /// <summary>Days in a row the books closed below zero (see <see cref="ParkRules.BankruptcyDays"/>).</summary>
     public int DaysInDebt { get; set; }
 
-    public void Borrow(long cents)
+    /// <summary>Today's money per <see cref="MoneyCategory"/> (index = category; grows on demand, cleared at the day's end).</summary>
+    public List<long> TodayCents { get; set; } = [];
+
+    /// <summary>The latest one-off bookings (land, lifts, buildings, tools, wood, removals, loans), oldest first.</summary>
+    public List<MoneyTransaction> Transactions { get; set; } = [];
+
+    public const int MaxTransactions = 40;
+
+    /// <summary>Money borrowed: in at once, a transaction but not revenue.</summary>
+    public void Borrow(long cents, long tick, string label)
     {
         MoneyCents += cents;
         TotalBorrowedCents += cents;
+        Book(MoneyCategory.LoanTaken, cents);
+        Log(tick, MoneyCategory.LoanTaken, cents, label);
     }
 
-    public void Earn(long cents)
+    public void Earn(MoneyCategory category, long cents)
     {
         MoneyCents += cents;
         TotalRevenueCents += cents;
         RevenueTodayCents += cents;
+        Book(category, cents);
     }
 
-    public void Spend(long cents)
+    public void Spend(MoneyCategory category, long cents)
     {
         MoneyCents -= cents;
         TotalExpensesCents += cents;
         ExpensesTodayCents += cents;
+        Book(category, cents);
+    }
+
+    /// <summary>A one-off expense: spent and listed in <see cref="Transactions"/>.</summary>
+    public void Invest(MoneyCategory category, long cents, long tick, string label)
+    {
+        Spend(category, cents);
+        Log(tick, category, -cents, label);
+    }
+
+    public long Today(MoneyCategory category) => Ledger.Get(TodayCents, category);
+
+    private void Book(MoneyCategory category, long cents)
+    {
+        while (TodayCents.Count < Ledger.Count) TodayCents.Add(0);
+        TodayCents[(int)category] += cents;
+    }
+
+    private void Log(long tick, MoneyCategory category, long cents, string label)
+    {
+        Transactions.Add(new MoneyTransaction(tick, category, cents, label));
+        if (Transactions.Count > MaxTransactions) Transactions.RemoveRange(0, Transactions.Count - MaxTransactions);
     }
 }
 

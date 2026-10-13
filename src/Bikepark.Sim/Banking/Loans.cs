@@ -105,10 +105,14 @@ public static class LoanMath
     /// <summary>The installments due at the end of <paramref name="day"/>.</summary>
     public static long DueCents(WorldState state, long day) => state.Loans.Where(l => l.NextDueDay == day).Sum(l => l.NextPaymentCents);
 
-    /// <summary>Pays <paramref name="cents"/> off a loan (an expense: loan payments).</summary>
-    public static void Pay(WorldState state, Loan loan, long cents)
+    /// <summary>
+    /// Pays <paramref name="cents"/> off a loan (an expense: loan payments): a weekly installment, or everything at once
+    /// (<paramref name="early"/>: a one-off transaction).
+    /// </summary>
+    public static void Pay(WorldState state, Loan loan, long cents, long tick, bool early = false)
     {
-        state.Finance.Spend(cents);
+        if (early) state.Finance.Invest(MoneyCategory.LoanRepaid, cents, tick, $"Repaid the {loan.Name.ToLowerInvariant()}");
+        else state.Finance.Spend(MoneyCategory.LoanInstallments, cents);
         state.Finance.TotalLoanPaymentsCents += cents;
         state.Finance.LoanPaymentsTodayCents += cents;
         loan.RemainingCents -= cents;

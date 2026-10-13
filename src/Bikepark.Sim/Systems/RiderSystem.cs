@@ -101,7 +101,7 @@ internal sealed class RiderSystem : ISimSystem
             {
                 paid = rules.LunchPriceCents;
                 guest.CashCents -= paid;
-                state.Finance.Earn(paid);
+                state.Finance.Earn(MoneyCategory.Food, paid);
                 state.Finance.TotalFoodCents += paid;
                 state.Finance.FoodTodayCents += paid;
             }
@@ -109,7 +109,7 @@ internal sealed class RiderSystem : ISimSystem
         else if (FacilityMath.FreeBar(state, ctx.Network, guest) is { } bar && guest.CashCents >= bar.Type.LunchPriceCents)
         {
             paid = bar.Type.LunchPriceCents;
-            FacilityMath.Sell(state, bar.Facility, guest, paid);
+            FacilityMath.Sell(state, bar.Facility, guest, paid, MoneyCategory.Food);
             bar.Facility.Customers++;
             state.Finance.TotalFoodCents += paid;
             state.Finance.FoodTodayCents += paid;
@@ -740,7 +740,7 @@ internal sealed class RiderSystem : ISimSystem
         guest.HasLiftPass = true;
         if (ticket > 0)
         {
-            ctx.State.Finance.Earn(ticket);
+            ctx.State.Finance.Earn(MoneyCategory.LiftPasses, ticket);
             ctx.State.Finance.TotalLiftTicketsCents += ticket;
             ctx.State.Finance.LiftTicketsTodayCents += ticket;
         }

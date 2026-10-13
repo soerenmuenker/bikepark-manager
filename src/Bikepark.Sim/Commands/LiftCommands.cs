@@ -2,6 +2,7 @@ using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
+using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Commands;
 
@@ -68,7 +69,7 @@ public sealed record BuildLiftCommand(
         {
             // The contractor builds it; until then it carries nobody.
             cost = plan.Type!.BuildCostCents;
-            state.Finance.Spend(cost);
+            state.Finance.Invest(MoneyCategory.LiftBuild, cost, ctx.Tick, $"Ordered {plan.Type.Name.ToLowerInvariant()} {lift.Name}");
             state.Finance.TotalLiftBuildCents += cost;
             lift.ReadyTick = LiftWorks.ReadyTick(state, ctx.Tick, plan.Type.BuildDays);
             lift.BikeCarrierPermille = 0;
@@ -159,7 +160,7 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
         });
         if (Origin != WayOrigin.Scenario && type.BuildCostCents > 0)
         {
-            state.Finance.Spend(type.BuildCostCents);
+            state.Finance.Invest(MoneyCategory.Buildings, type.BuildCostCents, ctx.Tick, $"Built {state.Facilities[^1].Name}");
             state.Finance.TotalFacilityBuildCents += type.BuildCostCents;
         }
         ctx.Publish(new FacilityBuilt(ctx.Tick, id, type.Name));
@@ -270,7 +271,7 @@ public sealed record RestoreLiftCommand(int LiftId) : ICommand
         var state = ctx.State;
         var lift = state.Lifts.First(l => l.Id == LiftId);
         var type = LiftNetwork.FindType(state, lift.TypeId)!;
-        state.Finance.Spend(type.RestoreCostCents);
+        state.Finance.Invest(MoneyCategory.LiftBuild, type.RestoreCostCents, ctx.Tick, $"Restored {lift.Name}");
         state.Finance.TotalLiftBuildCents += type.RestoreCostCents;
         lift.ReadyTick = LiftWorks.ReadyTick(state, ctx.Tick, type.RestoreDays);
         ctx.Publish(new LiftConstructionStarted(ctx.Tick, lift.Id, lift.ReadyTick, type.RestoreCostCents, Restoration: true));

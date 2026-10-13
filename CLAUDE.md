@@ -45,7 +45,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tools/scenario-editor/` – local browser editor for a scenario's parcels, tick-0 structures and terrain sculpting (Python stdlib server + one HTML page)
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
-- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel`, drawn icons, theme in code),
+- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel` and `FinancePanel` (the budget), drawn icons, theme in code),
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
@@ -215,6 +215,14 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     black) and at `ParkRules.BankruptcyDays` (0 = off; Starter 14) sets `Park.Bankrupt` (game over: `ParkSchedule.IsOpen`
     is false for good). HUD: Finances menu Loans section, `NoticeDialog` (missed installment, debt warnings, the final
     bankruptcy notice → back to the menu); bankrupt careers can't be continued (`CareerInfo.Bankrupt`).
+19c. **The ledger** (`State/Ledger.cs`): every booking has a `MoneyCategory` (`Finance.Earn`/`Spend` for regular money,
+    `Invest` for one-offs, `Borrow` for loans; append new categories, never reorder). Regular categories (`Ledger.IsRegular`:
+    guests' fees, food, merch, wages, staff, lift fees and upkeep, building upkeep, merch goods, loan installments) feed the
+    daily budget: `Finance.TodayCents` per category, copied into `DayReport.ByCategory` (`MoneyByCategory`, value equality)
+    when `FinanceSystem` closes the day. One-offs (land, lifts built or restored, buildings, tools, wood, removals, loans
+    taken or repaid early) are also listed in `Finance.Transactions` (labelled, signed, the last `MaxTransactions`). The
+    Finances menu shows yesterday's (or today's) budget per area, loan installments per day, the levers (entrance fee, lift
+    pass), loans, recent transactions and the balance; the runner's `--daily` adds `dailyBudget` and always lists `transactions`.
 19a. **Entrance fee and lift pass:** `Park.EntryFeeCents` is paid on arrival (drives demand); `Park.LiftTicketCents` (0 = free
     lifts, the Demo) is a day pass bought once per visit when a guest first boards a lift (`RiderSystem.BuyLiftPass`,
     `Guest.HasLiftPass`, revenue in `Finance.TotalLiftTicketsCents`). `BestRoute` adds the unbought pass to the lift cost

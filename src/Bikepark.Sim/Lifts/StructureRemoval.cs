@@ -84,7 +84,7 @@ public static class StructureRemoval
         state.WaysRevision++;
         if (cost > 0)
         {
-            state.Finance.Spend(cost);
+            state.Finance.Invest(MoneyCategory.Removal, cost, ctx.Tick, $"Removed {name}");
             state.Finance.TotalRemovalCents += cost;
         }
         Systems.RiderSystem.ResetRidersUsing(ctx, [.. hubs]);

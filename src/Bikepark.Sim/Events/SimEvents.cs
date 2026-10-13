@@ -131,7 +131,8 @@ public sealed record DayReport(
     int DaysInDebt = 0,
     long FoodCents = 0,
     long MerchCents = 0,
-    long FacilityUpkeepCents = 0);
+    long FacilityUpkeepCents = 0,
+    State.MoneyByCategory? ByCategory = null);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
 

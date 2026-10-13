@@ -155,10 +155,10 @@ public static class FacilityMath
         state.Facilities.FirstOrDefault(f => LiftNetwork.Pad(state, f.TerrainEditId) is { } pad && pad.DistanceOutside(x, z) <= marginCm);
 
     /// <summary>Takes money from a guest at a facility: revenue for the park and the facility.</summary>
-    public static void Sell(WorldState state, Facility facility, Guest guest, long cents)
+    public static void Sell(WorldState state, Facility facility, Guest guest, long cents, MoneyCategory category)
     {
         guest.CashCents -= cents;
-        state.Finance.Earn(cents);
+        state.Finance.Earn(category, cents);
         facility.TotalRevenueCents += cents;
         facility.RevenueTodayCents += cents;
     }

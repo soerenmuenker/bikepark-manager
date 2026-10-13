@@ -19,7 +19,7 @@ public sealed record TakeLoanCommand(string OfferId) : ICommand
         var offer = ctx.State.LoanRules.Find(OfferId)!;
         var loan = LoanMath.Open(ctx.State, offer, ctx.Tick);
         ctx.State.Loans.Add(loan);
-        ctx.State.Finance.Borrow(offer.PrincipalCents);
+        ctx.State.Finance.Borrow(offer.PrincipalCents, ctx.Tick, $"Took the {loan.Name.ToLowerInvariant()}");
         ctx.Publish(new LoanTaken(ctx.Tick, loan.Id, loan.Name, loan.PrincipalCents));
     }
 }
@@ -39,7 +39,7 @@ public sealed record RepayLoanCommand(int LoanId) : ICommand
     {
         var loan = ctx.State.Loans.First(l => l.Id == LoanId);
         long owed = loan.RemainingCents;
-        LoanMath.Pay(ctx.State, loan, owed);
+        LoanMath.Pay(ctx.State, loan, owed, ctx.Tick, early: true);
         ctx.Publish(new LoanPaid(ctx.Tick, loan.Id, loan.Name, owed, 0));
         ctx.State.Loans.Remove(loan);
         ctx.Publish(new LoanRepaid(ctx.Tick, loan.Id, loan.Name));

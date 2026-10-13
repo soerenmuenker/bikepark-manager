@@ -1,6 +1,7 @@
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Land;
 using Bikepark.Sim.Reputation;
+using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Commands;
 
@@ -17,7 +18,7 @@ public sealed record BuyParcelCommand(string ParcelId) : ICommand
     public void Apply(SimContext ctx)
     {
         var parcel = ctx.State.Parcels.First(p => p.Id == ParcelId);
-        ctx.State.Finance.Spend(parcel.PriceCents);
+        ctx.State.Finance.Invest(MoneyCategory.Land, parcel.PriceCents, ctx.Tick, $"Bought {parcel.Name}");
         ctx.State.Finance.TotalLandCents += parcel.PriceCents;
         ctx.State.OwnedParcelIds.Add(parcel.Id);
         ctx.Publish(new ParcelBought(ctx.Tick, parcel.Id, parcel.PriceCents));

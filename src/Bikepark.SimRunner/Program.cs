@@ -10,6 +10,7 @@ using Bikepark.Sim.Reporting;
 using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Safety;
 using Bikepark.Sim.Scenarios;
+using Bikepark.Sim.State;
 using Bikepark.Sim.Trails;
 using Bikepark.SimRunner.Terrain;
 
@@ -140,11 +141,19 @@ public static class Program
             GuestsLeft: leaveReasons,
             TurnedAway: turnedAway.GroupBy(r => r).OrderBy(g => g.Key).ToDictionary(g => g.Key.ToString(), g => g.Count()),
             RejectedCommands: rejections.Select(r => new RejectedCommand(r.Tick, r.Command, r.Reason)).ToList(),
-            Daily: options.IncludeDaily ? dailyReports : null,
+            Daily: options.IncludeDaily ? dailyReports.Select(r => r with { ByCategory = null }).ToList() : null,
+            DailyBudget: options.IncludeDaily ? dailyReports.Select(r => Budget(r)).ToList() : null,
+            Transactions: state.Finance.Transactions
+                .Select(t => $"{GameTime.Format(t.Tick)} {t.Label}: {t.Cents / 100.0:+#,##0.##;-#,##0.##} € ({t.Category})").ToList(),
             Hourly: options.IncludeHourly ? hourly : null);
 
         Console.WriteLine(JsonSerializer.Serialize(output, RunnerJson.Options));
     }
+
+    /// <summary>A closed day's money per category (only the ones that moved), in cents.</summary>
+    private static Dictionary<string, long> Budget(DayReport report) =>
+        Enum.GetValues<MoneyCategory>().Where(c => Ledger.Get(report.ByCategory, c) != 0)
+            .ToDictionary(c => JsonNamingPolicy.CamelCase.ConvertName(c.ToString()), c => Ledger.Get(report.ByCategory, c));
 
     private static ReputationReport? ReputationReport(Simulation sim, List<string> log)
     {
@@ -485,6 +494,8 @@ internal sealed record RunnerOutput(
     Dictionary<string, int> TurnedAway,
     List<RejectedCommand> RejectedCommands,
     List<DayReport>? Daily,
+    List<Dictionary<string, long>>? DailyBudget,
+    List<string> Transactions,
     List<HourReport>? Hourly);
 
 internal static class RunnerJson

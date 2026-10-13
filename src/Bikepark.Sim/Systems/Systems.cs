@@ -135,7 +135,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
             guest.PlannedStayMinutes = state.ReputationRules.InfluencerStayMinutes;
         }
 
-        state.Finance.Earn(fee);
+        state.Finance.Earn(MoneyCategory.EntryFees, fee);
         state.Guests.Add(guest);
         state.Stats.TotalVisitors++;
         state.Stats.VisitorsToday++;
@@ -219,14 +219,14 @@ internal sealed class GuestSystem : ISimSystem
         {
             if (guest.CashCents < state.Rules.SnackPriceCents || !ctx.Rng.ChancePermille(SnackChancePermille)) return;
             guest.CashCents -= state.Rules.SnackPriceCents;
-            state.Finance.Earn(state.Rules.SnackPriceCents);
+            state.Finance.Earn(MoneyCategory.Food, state.Rules.SnackPriceCents);
             guest.Happiness += SnackHappinessBoost;
             return;
         }
         var bar = FacilityMath.At(state, FacilityMath.BaseLiftOf(state, ctx.Network, guest), FacilityKind.Bar).FirstOrDefault();
         if (bar.Facility is null || bar.Type.SnackPriceCents <= 0 || guest.CashCents < bar.Type.SnackPriceCents) return;
         if (!ctx.Rng.ChancePermille(SnackChancePermille)) return;
-        FacilityMath.Sell(state, bar.Facility, guest, bar.Type.SnackPriceCents);
+        FacilityMath.Sell(state, bar.Facility, guest, bar.Type.SnackPriceCents, MoneyCategory.Food);
         state.Finance.TotalSnackCents += bar.Type.SnackPriceCents;
         state.Finance.FoodTodayCents += bar.Type.SnackPriceCents;
         guest.Happiness += SnackHappinessBoost;
@@ -247,12 +247,12 @@ internal sealed class GuestSystem : ISimSystem
         if (shop.Facility is null || guest.CashCents < shop.Type.MerchPriceCents || shop.Type.MerchPriceCents <= 0) return;
         if (!ctx.Rng.ChancePermille(shop.Type.BuyChancePermille * Math.Clamp(guest.Happiness, 0, 1000) / 1000)) return;
         long price = shop.Type.MerchPriceCents;
-        FacilityMath.Sell(state, shop.Facility, guest, price);
+        FacilityMath.Sell(state, shop.Facility, guest, price, MoneyCategory.Merch);
         shop.Facility.Customers++;
         state.Finance.TotalMerchCents += price;
         state.Finance.MerchTodayCents += price;
         long cost = price * shop.Type.MerchCostPermille / 1000;
-        state.Finance.Spend(cost);
+        state.Finance.Spend(MoneyCategory.MerchGoods, cost);
         state.Finance.TotalMerchCostCents += cost;
         ctx.Publish(new MerchSold(ctx.Tick, guest.Id, shop.Facility.Id, price));
     }
@@ -321,32 +321,34 @@ internal sealed class FinanceSystem : ISimSystem
             return;
 
         var state = ctx.State;
-        state.Finance.Spend(state.Rules.DailyUpkeepCents);
+        state.Finance.Spend(MoneyCategory.ParkStaff, state.Rules.DailyUpkeepCents);
         long wages = state.Crew.Count * state.CrewRules.WagePerDayCents;
         if (wages > 0)
         {
-            state.Finance.Spend(wages);
+            state.Finance.Spend(MoneyCategory.Wages, wages);
             state.Finance.TotalWagesCents += wages;
             state.Finance.WagesTodayCents += wages;
         }
-        long facilityUpkeep = state.Facilities.Sum(f => FacilityMath.FindType(state, f.TypeId)?.UpkeepPerDayCents ?? 0);
-        if (facilityUpkeep > 0)
+        long facilityUpkeep = 0;
+        foreach (var facility in state.Facilities)
         {
-            state.Finance.Spend(facilityUpkeep);
-            state.Finance.TotalFacilityUpkeepCents += facilityUpkeep;
+            if (FacilityMath.FindType(state, facility.TypeId) is not { UpkeepPerDayCents: > 0 } type) continue;
+            state.Finance.Spend(type.Kind == FacilityKind.Bar ? MoneyCategory.BarUpkeep : MoneyCategory.ShopUpkeep, type.UpkeepPerDayCents);
+            facilityUpkeep += type.UpkeepPerDayCents;
         }
+        state.Finance.TotalFacilityUpkeepCents += facilityUpkeep;
         foreach (var lift in state.Lifts)
         {
             if (lift.OperatorId is null && lift.InService && LiftNetwork.FindType(state, lift.TypeId) is { UpkeepPerDayCents: > 0 } own)
             {
-                state.Finance.Spend(own.UpkeepPerDayCents);
+                state.Finance.Spend(MoneyCategory.LiftUpkeep, own.UpkeepPerDayCents);
                 state.Finance.TotalLiftUpkeepCents += own.UpkeepPerDayCents;
                 state.Finance.LiftUpkeepTodayCents += own.UpkeepPerDayCents;
             }
             if (lift.BikeAccess is not { } access || LiftNetwork.FindOperator(state, lift.OperatorId) is not { } op) continue;
             if (access.TierIndex < 0 || access.TierIndex >= op.BikeAccessTiers.Count) continue;
             long fee = op.BikeAccessTiers[access.TierIndex].DailyFeeCents;
-            state.Finance.Spend(fee);
+            state.Finance.Spend(MoneyCategory.LiftFees, fee);
             state.Finance.TotalLiftFeesCents += fee;
             state.Finance.LiftFeesTodayCents += fee;
         }
@@ -380,7 +382,8 @@ internal sealed class FinanceSystem : ISimSystem
             DaysInDebt: CountDebtDays(ctx),
             FoodCents: state.Finance.FoodTodayCents,
             MerchCents: state.Finance.MerchTodayCents,
-            FacilityUpkeepCents: facilityUpkeep);
+            FacilityUpkeepCents: facilityUpkeep,
+            ByCategory: new MoneyByCategory(state.Finance.TodayCents));
         ctx.Publish(new DayEnded(ctx.Tick, report));
         state.DayHistory.Add(report);
         if (state.DayHistory.Count > WorldState.DayHistoryDays)
@@ -398,6 +401,7 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.LoanPaymentsTodayCents = 0;
         state.Finance.FoodTodayCents = 0;
         state.Finance.MerchTodayCents = 0;
+        state.Finance.TodayCents.Clear();
         foreach (var facility in state.Facilities)
             facility.RevenueTodayCents = 0;
         state.Finance.WagesTodayCents = 0;

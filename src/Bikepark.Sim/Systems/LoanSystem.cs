@@ -30,7 +30,7 @@ internal sealed class LoanSystem : ISimSystem
                 ctx.Publish(new LoanPaymentMissed(ctx.Tick, loan.Id, loan.Name, due, fee));
                 continue;
             }
-            LoanMath.Pay(state, loan, due);
+            LoanMath.Pay(state, loan, due, ctx.Tick);
             loan.PaymentsMade++;
             ctx.Publish(new LoanPaid(ctx.Tick, loan.Id, loan.Name, due, loan.RemainingCents));
             if (loan.RemainingCents <= 0)
