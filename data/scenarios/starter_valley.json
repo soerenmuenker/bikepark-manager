@@ -11,6 +11,7 @@
   // Arrivals follow the profile (permille of baseArrivalPermille): a morning rush, tapering off in the afternoon.
   // Guests take one lunch break between 11:00 and 13:00. bankruptcyDays: game over after this many days in a row with the
   // books closing below zero. dailyUpkeepCents: the base staff (ticket office, first aid, cleaning), every day.
+  // Parking: a fee per car (Finances menu, shared by its guests and counted with the entry fee); free is the fair price.
   "rules": {
     "openMinute": 540,
     "closeMinute": 1080,
@@ -32,6 +33,8 @@
     "capacity": 150,
     "dailyUpkeepCents": 300000,
     "snackPriceCents": 400,
+    "referenceParkingFeeCents": 0,
+    "maxParkingFeeCents": 2000,
     "bankruptcyDays": 14
   },
   // Building rules and rider tuning (TrailRules). Gradients in tenths of the -10..+10 gradient score

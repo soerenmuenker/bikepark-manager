@@ -55,10 +55,22 @@ a better shop buy chance or longer après-bike stays:
 Saves: version 9 turns the old per-building prices into products and drops `Facility.LiftId`. Old careers keep what
 their buildings sold, at their old prices; the new buildings and upgrades come with new careers.
 
+## 9.2 Parking fee and campers (built)
+
+- **Parking fee** per car (Finances → Levers), only where there are parking lots. Each guest pays their share (fee /
+  guests per car) on arrival; the share counts with the entrance fee as one arrival cost against the fair one
+  (reference entry fee + reference parking share, free in Starter Valley), so a dearer car park means fewer guests,
+  like a dearer entrance, and a lower value score.
+- **Campground** (level 3: 40 pitches; Showers → More pitches → Glamping huts). Some arriving guests camp 1–3 nights
+  (15 % at the fair night price of 15 €, fewer when dearer, only with a free pitch). They pay their nights on arrival,
+  park at the camp (no parking fee, not counted against the lots), and when they are done for the day (closing, their
+  stay, tired, drunk; après-bike first) they go to sleep instead of home. Asleep they are not in the park, so the night
+  is still skipped. At the opening they wake rested (energy, mood + showers), buy a new day ticket and ride again.
+  They review the whole stay once, when they finally leave.
+- The Demo has a campground with showers next to the valley parking.
+
 ## Roadmap
 
-- **9.2 Fees and overnight:** a parking fee per car (a demand factor like the entrance fee); a campground for overnight
-  guests and multi-day visits (an exception to "the park is empty at night").
 - **9.3 Bikes:** `Guest.OwnBike` and bike condition. A rental station (buy a fleet at a discount, rent bikes with gear,
   attracts guests without a bike, the fleet wears), a pro shop (parts and gear; merch generalised) and a service shop
   (repairs guests' bikes after crashes and wear, else they leave early).

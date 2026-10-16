@@ -163,7 +163,7 @@ public class FacilityTests
         var sim = Demo(s => s.StartingMoneyCents = 100_000_000);
         foreach (var c in TestWorlds.DemoFacilities()) sim.Commands.Enqueue(c.Command);
         sim.RunTicks(12 * 60);
-        Assert.Equal(3, sim.State.Facilities.Count);
+        Assert.Equal(4, sim.State.Facilities.Count);
         var loaded = new Simulation(SaveGame.Clone(sim.State));
         sim.RunTicks(300);
         loaded.RunTicks(300);

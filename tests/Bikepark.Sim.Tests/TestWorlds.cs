@@ -164,6 +164,10 @@ internal static class TestWorlds
         new(770, new SetProductPriceCommand("beer", 600)), // rejected: unknown product
         new(770, new UpgradeFacilityCommand(99)), // rejected: no such building
         new(770, new SetBeerHoursCommand(15 * 60)),
+        // Parking (no lots in the test world: the fee is set but charged to nobody) and a campground that isn't there.
+        new(780, new SetParkingFeeCommand(500)),
+        new(780, new SetParkingFeeCommand(99_999)), // rejected: above max
+        new(780, new BuildFacilityCommand("campground", new PointCm(0, 0), new PointCm(100, 0))), // rejected: no such building
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

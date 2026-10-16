@@ -17,7 +17,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     `ProductType`/`FacilityRules` (content: `data/products.json`, reach, alcohol, après-bike), `Facility` (state), `FacilityMath`
     (prices, buy factor, upgrades, who is in reach, gravel access, selling); `BuildFacilityCommand` in `Commands/LiftCommands.cs`,
     price / upgrade / beer-hours commands in `Commands/FacilityCommands.cs`; `Systems/Catering.cs` (guests buying: lunch, impulse
-    buys, stops on the way, après-bike, merch)
+    buys, stops on the way, après-bike, merch); `Systems/Camping.cs` (campers going to sleep and waking up)
   - `Banking/` – `LoanOffer`/`LoanRules` (content), `Loan` (state), `LoanMath`; `Commands/LoanCommands.cs`, `Systems/LoanSystem.cs`
   - `Land/` – `Parcel` (content: named land outlines with price and required level), `LandMath` (who owns which point,
     the only land check, used by every planner); `Commands/LandCommands.cs` (`BuyParcelCommand`)
@@ -57,8 +57,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   a derelict T-bar, the unfinished blue Easy Peasy (built, then its bottom quarter renaturalized at tick 0: loose end,
   closed until the player connects it), parcels to buy, company gondola locked; a `welcome` note (`Scenarios/WelcomeNote`,
   copied to `WorldState.Welcome`, presentation only) that the HUD's `WelcomeDialog` shows at tick 0); `lift_types.json` (T-bar, chairlift, gondola with costs, levels, build days),
-  `trail_features.json`, `tools.json`, `facility_types.json` (snack bar, merch shop, beer rondel, bike café, each with upgrades),
-  `products.json` (lunch, coffee, beer, radler, snack, merch), `scripts/` command scripts such as `demo_lift_network.json`, `demo_features.json`,
+  `trail_features.json`, `tools.json`, `facility_types.json` (snack bar, merch shop, beer rondel, bike café, campground, each with upgrades),
+  `products.json` (lunch, coffee, beer, radler, snack, merch, campground night), `scripts/` command scripts such as `demo_lift_network.json`, `demo_features.json`,
   `demo_crew.json`, `career_opening.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
@@ -96,7 +96,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/starter
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 3 --commands data/scripts/demo_lift_network.json [--commands data/scripts/demo_facilities.json]
 # Bars, shops and tools: the output's "facilities" block (buildings with level, upgrades, seats, products, customers and revenue;
 # food/snack/drinks/merch sales, per-product price and sales, beer hours, après-bike guests, building and upkeep costs, tools owned);
-# "safety" has crashesUnderInfluence; --daily adds foodCents, drinksCents, merchCents, facilityUpkeepCents
+# "safety" has crashesUnderInfluence; facilities.camping: parking fee and money, campers (now, asleep, total), nights, camping money;
+# --daily adds foodCents, drinksCents, merchCents, parkingCents, campingCents, facilityUpkeepCents
 # ... with the demo trail features (planned, built by the crew: per-trail feature list, crew block with completed jobs, wood, wages)
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json
 # Godot (from game/): compile, then run headless with the demo trails at 60x, printing KPIs (incl. queues) every game hour
@@ -181,6 +182,19 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     **Après-bike** (`FacilityRules.ApresEndMinute`, 0 = off; both scenarios 19:30): a guest going home (stay over, tired, closing)
     near a bar serving alcohol with a free seat may stay (`RiderActivity.Apres`, a drink every `ApresDrinkEveryMinutes`, served
     regardless of beer hours) until `BusyUntilTick`, at the latest `ApresEndMinute`; then the park empties and the night is skipped.
+14e. **Parking fee and campers** (Phase 9.2): `Park.ParkingFeeCents` per car (`SetParkingFeeCommand`, ≤ `MaxParkingFeeCents`),
+    only with parking lots; a day guest pays their share (`LiftMath.ParkingShareCents`: fee / guests per car) on arrival, counted
+    with the entry fee as one arrival cost against `ReferenceEntryFeeCents` + the reference share (`GuestArrivalSystem.ArrivalCents`:
+    demand and arrival mood) and in `PaidEntryCents`. Campgrounds (`FacilityKind.Campground`: `Pitches`, `MorningMood`, upgrades)
+    sell nights (`ProductType.Overnight`, price lever like any product). On arrival, with a free pitch (`FacilityMath.FreeCampground`;
+    a pitch is booked for the whole stay, `PitchesTaken`), a guest camps with `CampChancePermille` × the night's buy factor for
+    `MinNights..MaxNights`, pays all nights at once (`MoneyCategory.Camping`), brings money for them and pays no parking (campers
+    don't count against the lots: `LiftMath.DayGuests`). Done for the day (closing, stay over, tired, drunk; après-bike first),
+    a camper with nights left sleeps (`RiderActivity.Camping`, `Camping.TryGoToSleep`, until `Guest.WakeTick` = next opening);
+    sleeping campers are not in the park (`ParkSchedule.AwakeGuests`: `IsQuiet`, `Phase`, crowding, KPIs), so the night skip works.
+    At the opening they wake (`Camping.Night`): a night less, energy `CampEnergyMin..Max`, mood `CampMood` + the campground's,
+    a new day ticket (entry fee, lift pass), a new day plan and lunch; counted in today's visitors, not as new visitors. They leave
+    (one review) after their last night, when the campground is gone, the park is bankrupt or they can't pay the day ticket.
 14. **Crew jobs build things.** Player ways and features are planned (`Built = false`) and built by a `Job` (unless the
     debug `instant` flag is set; scenario ways are always built). Only built ways are routed/ridden and only built
     features count. All work, wood and speed numbers come from `WorkCosts`; which trees stand comes only from `Forest`
@@ -305,7 +319,7 @@ scroll to and highlight the item (`HudPanel.Focus`) · Space pause, 1–4 speed 
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter finishes it: a trail asks for its name
 in a pop-up (not when it continues a trail), then it is planned for the crew; Esc cancel; preview colored by gradient, tool
-panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's ends onto loose trail ends, joined in line) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) · Build → Gravel platform (centre, then direction; link paths and trails) · Build → Buildings: snack bar, merch shop, beer rondel, bike café (centre near a gravel path, platform, station or parking lot, then direction, Enter builds; click one in the world → Finances menu, which lists them with their Upgrade button) · Finances menu → Prices: one price per product (− / +), beer hours for riders (all day / from 15:00 / après-bike only / never) · Build → Renaturalize (click where a section of a trail or gravel path starts and ends: it's removed, a trail cut in two becomes Part 1 / Part 2 and the pieces stay closed until connected; draw a trail from a loose end to join it again, or put a gravel path or platform between them; click a lift station, parking lot or platform to tear it down, lifts and parking lots for a fee) · a warning lists unconnected trails when you leave the Build menu, the Trails menu marks them ·
+panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's ends onto loose trail ends, joined in line) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) · Build → Gravel platform (centre, then direction; link paths and trails) · Build → Buildings: snack bar, merch shop, beer rondel, bike café, campground (centre near a gravel path, platform, station or parking lot, then direction, Enter builds; click one in the world → Finances menu, which lists them with their Upgrade button) · Finances menu → Levers: entrance fee, lift pass, parking fee per car · Prices: one price per product (− / +, incl. a campground night), beer hours for riders (all day / from 15:00 / après-bike only / never) · Build → Renaturalize (click where a section of a trail or gravel path starts and ends: it's removed, a trail cut in two becomes Part 1 / Part 2 and the pieces stay closed until connected; draw a trail from a loose end to join it again, or put a gravel path or platform between them; click a lift station, parking lot or platform to tear it down, lifts and parking lots for a fee) · a warning lists unconnected trails when you leave the Build menu, the Trails menu marks them ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
 Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu (trails only, gravel paths aren't listed) per trail: worst feature, click the trail (or Features…) for the feature overview + repairs, Rename, Close/Open ·
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →

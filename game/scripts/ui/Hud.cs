@@ -264,6 +264,7 @@ public partial class Hud : CanvasLayer
         _toasts = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Alignment = BoxContainer.AlignmentMode.End };
         _toasts.AddThemeConstantOverride("separation", 6);
         _root.AddChild(_toasts);
+        _root.MoveChild(_toasts, 0); // drawn under the menus and dialogs: a toast never hides a menu's close button
     }
 
     private Control ClockBlock()
@@ -389,9 +390,12 @@ public partial class Hud : CanvasLayer
 
         if (_open != Menu.None && _panels[_open] is { } panel)
         {
+            // Never taller or wider than the window above the bar: the menu's body scrolls instead.
+            panel.FitInto(new Vector2(view.X - 2 * UiTheme.Gap, view.Y - UiTheme.BarHeight - 2 * UiTheme.Gap));
             var size = panel.GetCombinedMinimumSize();
             panel.Size = size;
-            panel.Position = new Vector2(MathF.Round((view.X - size.X) / 2), view.Y - UiTheme.BarHeight - UiTheme.Gap - size.Y);
+            panel.Position = new Vector2(Math.Max(UiTheme.Gap, MathF.Round((view.X - size.X) / 2)),
+                Math.Max(UiTheme.Gap, view.Y - UiTheme.BarHeight - UiTheme.Gap - size.Y));
         }
 
         if (_toolChip.Visible)

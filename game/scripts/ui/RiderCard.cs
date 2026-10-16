@@ -132,6 +132,8 @@ internal sealed partial class RiderCard : PanelContainer
                 return $"Stopped for lunch on the way to {target}, until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
             case RiderActivity.Eating:
                 return $"Having lunch until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
+            case RiderActivity.Camping:
+                return $"Asleep at the campground until {Clock(GameTime.MinuteOfDay(guest.WakeTick))}";
             case RiderActivity.Apres:
                 string bar = state.Facilities.FirstOrDefault(f => f.Id == guest.FacilityId)?.Name ?? "the bar";
                 return $"Après-bike at {bar} until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}, then home";
@@ -150,6 +152,8 @@ internal sealed partial class RiderCard : PanelContainer
         if (guest.CaffeineUntilTick > state.Tick) parts.Add($"caffeine boost until {Clock(GameTime.MinuteOfDay(guest.CaffeineUntilTick))}");
         if (guest.Alcohol >= state.FacilityRules.TipsyAlcohol) parts.Add("tipsy: bolder, more likely to crash");
         else if (guest.Alcohol > 0) parts.Add("had a drink");
+        if (guest.CampgroundId != 0)
+            parts.Add(guest.NightsLeft > 0 ? $"camper: {guest.NightsLeft} more night(s)" : "camper: last day");
         return parts.Count == 0 ? "" : "\n" + string.Join(" · ", parts);
     }
 

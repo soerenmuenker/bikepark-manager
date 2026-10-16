@@ -28,8 +28,9 @@ internal sealed class ParkHoursSystem : ISimSystem
 }
 
 /// <summary>
-/// Spawns guests while the park is open, following the day's arrival profile and weather. Arrival rate drops as the entry fee rises
-/// above the reference fee. With parking lots, guests arrive by car and are turned away when the lots are full.
+/// Spawns guests while the park is open, following the day's arrival profile and weather. Arrival rate drops as the arrival cost
+/// (entry fee plus the guest's share of the parking fee) rises above the reference. With parking lots, guests arrive by car and are
+/// turned away when the lots are full. With a campground, some come to camp a few nights (they park there and pay their nights).
 /// </summary>
 internal sealed class GuestArrivalSystem : ISimSystem
 {
@@ -49,14 +50,22 @@ internal sealed class GuestArrivalSystem : ISimSystem
     internal static int ExpectedArrivalsPermille(WorldState state, int minuteOfDay)
     {
         var rules = state.Rules;
-        long reference = Math.Max(1, rules.ReferenceEntryFeeCents);
-        long feeFactor = 1000 + (reference - state.Park.EntryFeeCents) * 500 / reference;
+        long reference = Math.Max(1, ReferenceArrivalCents(state));
+        long feeFactor = 1000 + (reference - ArrivalCents(state)) * 500 / reference;
         feeFactor = Math.Clamp(feeFactor, 100, 1500);
         long weather = state.WeatherRules.ArrivalPermille(state.Weather.Today.Kind);
         long reputation = ReputationMath.DemandPermille(state);
         return (int)(rules.BaseArrivalPermille * feeFactor / 1000 * ProfilePermille(rules.ArrivalProfile, minuteOfDay) / 1000 * weather / 1000
                      * reputation / 1000);
     }
+
+    /// <summary>What a day guest pays to get in: the entry fee and their share of the parking fee.</summary>
+    internal static long ArrivalCents(WorldState state) =>
+        state.Park.EntryFeeCents + LiftMath.ParkingShareCents(state, state.Park.ParkingFeeCents);
+
+    /// <summary>What guests find fair to pay to get in (reference entry fee and parking share).</summary>
+    internal static long ReferenceArrivalCents(WorldState state) =>
+        state.Rules.ReferenceEntryFeeCents + LiftMath.ParkingShareCents(state, state.Rules.ReferenceParkingFeeCents);
 
     /// <summary>The arrival profile at a minute of the day (1000 without a profile).</summary>
     public static int ProfilePermille(List<ArrivalPoint> profile, int minuteOfDay)
@@ -73,7 +82,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
     }
 
     /// <summary>A lunch minute in what is left of the lunch window (triangular, peaked in its middle), or -1.</summary>
-    private static int PlanLunch(SimContext ctx, int arrivalMinute)
+    internal static int PlanLunch(SimContext ctx, int arrivalMinute)
     {
         var rules = ctx.State.Rules;
         if (!rules.HasLunch || arrivalMinute >= rules.LunchEndMinute) return -1;
@@ -89,7 +98,19 @@ internal sealed class GuestArrivalSystem : ISimSystem
         long fee = state.Park.EntryFeeCents;
         long cash = ctx.Rng.Range(2_000, 8_001);
 
-        if (LiftMath.ParkingCapacity(state) is { } capacity && state.Guests.Count >= capacity)
+        // Campers: a free pitch, the camping chance at the night's price; they bring money for their nights and park at the camp.
+        var camp = FacilityMath.FreeCampground(state);
+        int nights = 0;
+        if (camp is { } c && ctx.Rng.ChancePermille((int)((long)state.FacilityRules.CampChancePermille
+                * FacilityMath.BuyFactorPermille(c.Night, FacilityMath.PriceOf(state, c.Night)) / 1000)))
+        {
+            nights = ctx.Rng.Range(state.FacilityRules.MinNights, state.FacilityRules.MaxNights + 1);
+            cash += nights * (long)ctx.Rng.Range(3_000, 6_001);
+        }
+        long parking = nights > 0 ? 0 : LiftMath.ParkingShareCents(state, state.Park.ParkingFeeCents);
+        long nightsCents = nights > 0 ? nights * FacilityMath.PriceOf(state, camp!.Value.Night) : 0;
+
+        if (nights == 0 && LiftMath.ParkingCapacity(state) is { } capacity && LiftMath.DayGuests(state) >= capacity)
         {
             state.Stats.TotalTurnedAway++;
             state.Stats.TurnedAwayToday++;
@@ -98,7 +119,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
             return;
         }
 
-        if (cash < fee)
+        if (cash < fee + parking + nightsCents)
         {
             state.Stats.TotalTurnedAway++;
             state.Stats.TurnedAwayToday++;
@@ -106,16 +127,16 @@ internal sealed class GuestArrivalSystem : ISimSystem
             return;
         }
 
-        long reference = Math.Max(1, state.Rules.ReferenceEntryFeeCents);
-        int feePenalty = (int)Math.Max(0, (fee - reference) * 200 / reference);
+        long reference = Math.Max(1, ReferenceArrivalCents(state));
+        int feePenalty = (int)Math.Max(0, (fee + parking - reference) * 200 / reference);
 
         int lunchMinute = PlanLunch(ctx, GameTime.MinuteOfDay(ctx.Tick));
         var guest = new Guest
         {
             LunchMinute = lunchMinute,
             Id = state.AllocateEntityId(),
-            CashCents = cash - fee,
-            PaidEntryCents = fee,
+            CashCents = cash - fee - parking,
+            PaidEntryCents = fee + parking,
             Happiness = Math.Clamp(ctx.Rng.Range(550, 801) - feePenalty, 0, 1000),
             ArrivedTick = ctx.Tick,
             PlannedStayMinutes = ctx.Rng.Range(60, 361),
@@ -136,6 +157,23 @@ internal sealed class GuestArrivalSystem : ISimSystem
         }
 
         state.Finance.Earn(MoneyCategory.EntryFees, fee);
+        if (parking > 0)
+        {
+            state.Finance.Earn(MoneyCategory.ParkingFees, parking);
+            state.Finance.TotalParkingCents += parking;
+            state.Finance.ParkingTodayCents += parking;
+        }
+        if (nights > 0)
+        {
+            var (campground, _, night) = camp!.Value;
+            for (int n = 0; n < nights; n++)
+                FacilityMath.Sell(state, ctx.Tick, campground, guest, night);
+            guest.CampgroundId = campground.Id;
+            guest.NightsLeft = nights;
+            // Campers ride the whole day.
+            guest.PlannedStayMinutes = Math.Max(guest.PlannedStayMinutes, state.Rules.CloseMinute - GameTime.MinuteOfDay(ctx.Tick));
+            state.Stats.TotalCampers++;
+        }
         state.Guests.Add(guest);
         state.Stats.TotalVisitors++;
         state.Stats.VisitorsToday++;
@@ -167,7 +205,7 @@ internal sealed class GuestSystem : ISimSystem
 
         bool closed = !ParkSchedule.GuestsAllowed(state, ctx.Tick);
         bool lastRides = ParkSchedule.IsLastRides(state, ctx.Tick);
-        bool crowded = guests.Count > state.Rules.Capacity;
+        bool crowded = ParkSchedule.AwakeGuests(state) > state.Rules.Capacity;
         bool raining = Weather.WeatherMath.IsRaining(state, ctx.Tick);
 
         // Iterate in list order and compact in place: deterministic and allocation-free.
@@ -177,16 +215,21 @@ internal sealed class GuestSystem : ISimSystem
             var guest = guests[read];
             guest.Alcohol = Math.Max(0, guest.Alcohol - state.FacilityRules.AlcoholDecayPerMinute);
             // A seriously injured rider stays where they fell (even after closing) until the helicopter has flown them out.
-            GuestLeaveReason? leave = guest.Activity == RiderActivity.Injured
-                ? ctx.Tick >= guest.RescueAtTick ? GuestLeaveReason.Evacuated : null
-                : guest.Activity == RiderActivity.Apres
-                    ? Catering.ApresMinute(ctx, guest) ? GuestLeaveReason.StayCompleted : null
-                    : closed || lastRides && IsBetweenLaps(guest)
-                        ? GuestLeaveReason.ParkClosed
-                        : UpdateGuest(ctx, guest, crowded, raining);
-            // Done for the day: maybe a drink at the bar first (après-bike).
-            if (leave is GuestLeaveReason.ParkClosed or GuestLeaveReason.StayCompleted or GuestLeaveReason.Tired
-                && guest.Activity == RiderActivity.Idle && Catering.TryApres(ctx, ctx.Network, guest))
+            GuestLeaveReason? leave = guest.Activity == RiderActivity.Camping
+                ? Camping.Night(ctx, guest)
+                : guest.Activity == RiderActivity.Injured
+                    ? ctx.Tick >= guest.RescueAtTick ? GuestLeaveReason.Evacuated : null
+                    : guest.Activity == RiderActivity.Apres
+                        ? Catering.ApresMinute(ctx, guest) ? GuestLeaveReason.StayCompleted : null
+                        : closed || lastRides && IsBetweenLaps(guest)
+                            ? GuestLeaveReason.ParkClosed
+                            : UpdateGuest(ctx, guest, crowded, raining);
+            bool doneForTheDay = leave is GuestLeaveReason.ParkClosed or GuestLeaveReason.StayCompleted or GuestLeaveReason.Tired
+                or GuestLeaveReason.Drunk;
+            // Done for the day: maybe a drink at the bar first (après-bike), then campers go to their tent.
+            if (doneForTheDay && guest.Activity == RiderActivity.Idle && leave != GuestLeaveReason.Drunk && Catering.TryApres(ctx, ctx.Network, guest))
+                leave = null;
+            else if (doneForTheDay && Camping.TryGoToSleep(ctx, guest))
                 leave = null;
             if (leave == GuestLeaveReason.Evacuated)
             {
@@ -313,7 +356,12 @@ internal sealed class FinanceSystem : ISimSystem
             if (FacilityMath.FindType(state, facility.TypeId) is not { } type) continue;
             long upkeep = FacilityMath.Upkeep(type, facility);
             if (upkeep <= 0) continue;
-            state.Finance.Spend(type.Kind == FacilityKind.Bar ? MoneyCategory.BarUpkeep : MoneyCategory.ShopUpkeep, upkeep);
+            state.Finance.Spend(type.Kind switch
+            {
+                FacilityKind.Bar => MoneyCategory.BarUpkeep,
+                FacilityKind.Campground => MoneyCategory.CampUpkeep,
+                _ => MoneyCategory.ShopUpkeep,
+            }, upkeep);
             facilityUpkeep += upkeep;
         }
         state.Finance.TotalFacilityUpkeepCents += facilityUpkeep;
@@ -364,6 +412,8 @@ internal sealed class FinanceSystem : ISimSystem
             MerchCents: state.Finance.MerchTodayCents,
             FacilityUpkeepCents: facilityUpkeep,
             DrinksCents: state.Finance.DrinksTodayCents,
+            ParkingCents: state.Finance.ParkingTodayCents,
+            CampingCents: state.Finance.CampingTodayCents,
             ByCategory: new MoneyByCategory(state.Finance.TodayCents));
         ctx.Publish(new DayEnded(ctx.Tick, report));
         state.DayHistory.Add(report);
@@ -383,6 +433,8 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.FoodTodayCents = 0;
         state.Finance.MerchTodayCents = 0;
         state.Finance.DrinksTodayCents = 0;
+        state.Finance.ParkingTodayCents = 0;
+        state.Finance.CampingTodayCents = 0;
         foreach (var sales in state.Finance.ProductSales)
         {
             sales.SoldToday = 0;

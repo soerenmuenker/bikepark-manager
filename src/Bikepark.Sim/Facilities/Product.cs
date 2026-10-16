@@ -42,6 +42,9 @@ public sealed class ProductType
     /// <summary>Sold in shops to guests going home (else a bar's food or drink).</summary>
     public bool Merch { get; set; }
 
+    /// <summary>A night at a campground (one per night, paid on arrival).</summary>
+    public bool Overnight { get; set; }
+
     /// <summary>Chance per minute between laps (and, scaled up, per stop on the way) that a guest at a bar buys it.</summary>
     public int ImpulsePermille { get; set; }
 
@@ -64,7 +67,7 @@ public sealed class ProductType
         if (CaffeineMinutes is < 0 or > 600) errors.Add($"{p}.caffeineMinutes must be within 0..600");
         if (Lunch && (MinMinutes < 1 || MaxMinutes < MinMinutes || MaxMinutes > 240))
             errors.Add($"{p}: lunch minutes must satisfy 1 <= minMinutes <= maxMinutes <= 240");
-        if (Lunch && Merch) errors.Add($"{p}: lunch and merch exclude each other");
+        if ((Lunch ? 1 : 0) + (Merch ? 1 : 0) + (Overnight ? 1 : 0) > 1) errors.Add($"{p}: lunch, merch and overnight exclude each other");
         if (ImpulsePermille is < 0 or > 1000 || WhenEnergyBelow is < 0 or > 1000)
             errors.Add($"{p}: impulsePermille and whenEnergyBelow must be within 0..1000");
         return errors;
@@ -130,6 +133,20 @@ public sealed class FacilityRules
     /// <summary>One more drink every this many minutes.</summary>
     public int ApresDrinkEveryMinutes { get; set; } = 20;
 
+    // ---- Camping (only with a campground) ----
+
+    /// <summary>Share of arriving guests who would camp (at the fair price, with a free pitch), permille.</summary>
+    public int CampChancePermille { get; set; } = 150;
+
+    /// <summary>Nights a camper stays.</summary>
+    public int MinNights { get; set; } = 1;
+    public int MaxNights { get; set; } = 3;
+
+    /// <summary>Energy campers wake up with, and the mood a night outdoors brings (plus the campground's own).</summary>
+    public int CampEnergyMin { get; set; } = 850;
+    public int CampEnergyMax { get; set; } = 1000;
+    public int CampMood { get; set; } = 30;
+
     public List<string> Validate()
     {
         var errors = new List<string>();
@@ -143,6 +160,10 @@ public sealed class FacilityRules
         if (ApresChancePermille is < 0 or > 1000) errors.Add($"{p}.apresChancePermille must be within 0..1000");
         if (ApresMinMinutes < 1 || ApresMaxMinutes < ApresMinMinutes || ApresMaxMinutes > 600) errors.Add($"{p}: 1 <= apresMinMinutes <= apresMaxMinutes <= 600");
         if (ApresDrinkEveryMinutes is < 1 or > 600) errors.Add($"{p}.apresDrinkEveryMinutes must be within 1..600");
+        if (CampChancePermille is < 0 or > 1000) errors.Add($"{p}.campChancePermille must be within 0..1000");
+        if (MinNights < 1 || MaxNights < MinNights || MaxNights > 30) errors.Add($"{p}: 1 <= minNights <= maxNights <= 30");
+        if (CampEnergyMin < 0 || CampEnergyMax < CampEnergyMin || CampEnergyMax > 1000 || CampMood is < 0 or > 1000)
+            errors.Add($"{p}: 0 <= campEnergyMin <= campEnergyMax <= 1000, campMood within 0..1000");
         return errors;
     }
 }

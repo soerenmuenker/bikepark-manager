@@ -56,6 +56,9 @@ public sealed record KpiReport(
     long SeriousCrashes,
     int CrashesPer1000Runs,
     int GuestsInjured,
+    int CampersAsleep,
+    long TotalParkingCents,
+    long TotalCampingCents,
     string? StateHash)
 {
     /// <param name="network">The way network, for the park XP (without it: XP from visitors only).</param>
@@ -80,7 +83,7 @@ public sealed record KpiReport(
             TotalExpensesCents: state.Finance.TotalExpensesCents,
             TotalVisitors: state.Stats.TotalVisitors,
             TotalTurnedAway: state.Stats.TotalTurnedAway,
-            GuestsInPark: state.Guests.Count,
+            GuestsInPark: Systems.ParkSchedule.AwakeGuests(state),
             AverageHappiness: average,
             AverageExitHappiness: state.Stats.TotalGuestsLeft == 0 ? 0 : (int)(state.Stats.SumExitHappiness / state.Stats.TotalGuestsLeft),
             TotalLeftUnhappy: state.Stats.TotalLeftUnhappy,
@@ -90,7 +93,7 @@ public sealed record KpiReport(
             AverageRunFun: runs == 0 ? 0 : (int)(state.Ways.Sum(w => w.Stats.SumFun) / runs),
             RidersOnTrails: state.Guests.Count(g => g.Activity == RiderActivity.Descending),
             TotalTurnedAwayParkingFull: state.Stats.TotalTurnedAwayParkingFull,
-            ParkingOccupancyPermille: parking is > 0 ? (int)Math.Min(1000, state.Guests.Count * 1000L / parking.Value) : 0,
+            ParkingOccupancyPermille: parking is > 0 ? (int)Math.Min(1000, Lifts.LiftMath.DayGuests(state) * 1000L / parking.Value) : 0,
             LiftRides: liftRides,
             AverageWaitMinutes: liftRides == 0 ? 0 : (int)(state.Lifts.Sum(l => l.Stats.SumWaitMinutes) / liftRides),
             MaxQueue: state.Lifts.Count == 0 ? 0 : state.Lifts.Max(l => l.Stats.MaxQueue),
@@ -111,6 +114,9 @@ public sealed record KpiReport(
             SeriousCrashes: state.Safety.TotalSerious,
             CrashesPer1000Runs: runs == 0 ? 0 : (int)(state.Safety.TotalCrashes * 1000 / runs),
             GuestsInjured: state.Guests.Count(g => g.Activity == RiderActivity.Injured),
+            CampersAsleep: state.Guests.Count(g => g.Activity == RiderActivity.Camping),
+            TotalParkingCents: state.Finance.TotalParkingCents,
+            TotalCampingCents: state.Finance.TotalCampingCents,
             StateHash: includeHash ? Persistence.StateHash.Compute(state) : null);
     }
 }

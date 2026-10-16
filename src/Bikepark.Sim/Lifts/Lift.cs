@@ -125,13 +125,23 @@ public static class LiftMath
         return (horizontal, rise, FixedMath.ISqrt(horizontal * horizontal + (long)rise * rise));
     }
 
-    /// <summary>Guests the parking lots hold (spaces × guests per car), or null without parking lots.</summary>
+    /// <summary>
+    /// Guests the parking lots hold (spaces × guests per car), or null without parking lots. Campers park at their
+    /// campground (<see cref="DayGuests"/> count against it).
+    /// </summary>
     public static int? ParkingCapacity(WorldState state)
     {
         if (state.ParkingLots.Count == 0) return null;
         long spaces = state.ParkingLots.Sum(p => (long)p.Spaces);
         return (int)(spaces * state.LiftRules.GuestsPerCarPermille / 1000);
     }
+
+    /// <summary>Guests who came by car for the day (not campers).</summary>
+    public static int DayGuests(WorldState state) => state.Guests.Count(g => g.CampgroundId == 0);
+
+    /// <summary>A day guest's share of the parking fee (0 without parking lots).</summary>
+    public static long ParkingShareCents(WorldState state, long feePerCarCents) =>
+        state.ParkingLots.Count == 0 ? 0 : feePerCarCents * 1000 / Math.Max(1000, state.LiftRules.GuestsPerCarPermille);
 
     /// <summary>Ride time in seconds (rounded up).</summary>
     public static int RideSeconds(LiftType type, long lengthCm) => (int)((lengthCm + type.SpeedCmPerS - 1) / type.SpeedCmPerS);

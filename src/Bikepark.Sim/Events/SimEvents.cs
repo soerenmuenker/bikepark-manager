@@ -136,6 +136,8 @@ public sealed record DayReport(
     long MerchCents = 0,
     long FacilityUpkeepCents = 0,
     long DrinksCents = 0,
+    long ParkingCents = 0,
+    long CampingCents = 0,
     State.MoneyByCategory? ByCategory = null);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
@@ -259,6 +261,12 @@ public sealed record ProductSold(long Tick, int GuestId, int FacilityId, string 
 
 /// <summary>A guest going home stays at a bar for après-bike until <paramref name="UntilTick"/>.</summary>
 public sealed record ApresStarted(long Tick, int GuestId, int FacilityId, long UntilTick) : ISimEvent;
+
+/// <summary>A camper went to sleep at their campground (<paramref name="NightsLeft"/> after this one).</summary>
+public sealed record CamperSleeping(long Tick, int GuestId, int CampgroundId, int NightsLeft) : ISimEvent;
+
+/// <summary>A camper woke up for another day in the park.</summary>
+public sealed record CamperWokeUp(long Tick, int GuestId) : ISimEvent;
 
 /// <summary>The park bought a building's next upgrade.</summary>
 public sealed record FacilityUpgraded(long Tick, int FacilityId, string UpgradeName, int Level) : ISimEvent;

@@ -49,6 +49,7 @@ public enum UiIcon
     Star,
     Level,
     Land,
+    Tent,
 }
 
 /// <summary>Line icons drawn with canvas primitives (no image assets), scaled to any square.</summary>
@@ -236,6 +237,11 @@ internal static class UiIcons
             case UiIcon.Shop: // a shopping bag
                 Poly(0.20f, 0.38f, 0.80f, 0.38f, 0.86f, 0.88f, 0.14f, 0.88f);
                 ci.DrawArc(P(0.5f, 0.38f), 0.16f * s, Mathf.Pi, Mathf.Tau, 12, color, w, true);
+                break;
+            case UiIcon.Tent: // an A-frame tent with its door
+                Poly(0.08f, 0.84f, 0.50f, 0.20f, 0.92f, 0.84f);
+                Polyline(0.38f, 0.84f, 0.50f, 0.56f, 0.62f, 0.84f);
+                Line(0.50f, 0.20f, 0.50f, 0.10f);
                 break;
             case UiIcon.Crew: // worker with a hard hat
                 Circle(0.5f, 0.40f, 0.14f);

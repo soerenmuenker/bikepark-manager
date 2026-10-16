@@ -127,8 +127,14 @@ internal sealed partial class WorldPicker : Node
         if (Bikepark.Sim.Facilities.FacilityMath.AtPoint(state, x, z, radius / 3) is { } facility)
         {
             var type = Bikepark.Sim.Facilities.FacilityMath.FindType(state, facility.TypeId);
-            string busy = type?.Kind == Bikepark.Sim.Facilities.FacilityKind.Bar
-                ? $" · {Bikepark.Sim.Facilities.FacilityMath.SeatsTaken(state, facility)}/{Bikepark.Sim.Facilities.FacilityMath.Seats(type, facility)} seats taken" : "";
+            string busy = type?.Kind switch
+            {
+                Bikepark.Sim.Facilities.FacilityKind.Bar =>
+                    $" · {Bikepark.Sim.Facilities.FacilityMath.SeatsTaken(state, facility)}/{Bikepark.Sim.Facilities.FacilityMath.Seats(type, facility)} seats taken",
+                Bikepark.Sim.Facilities.FacilityKind.Campground =>
+                    $" · {Bikepark.Sim.Facilities.FacilityMath.PitchesTaken(state, facility)}/{Bikepark.Sim.Facilities.FacilityMath.Pitches(type, facility)} pitches booked",
+                _ => "",
+            };
             return new WorldPick($"{facility.Name}{busy} · {UiTheme.Money(facility.RevenueTodayCents)} today · click for finances",
                 () => _show(Hud.Menu.Finance, facility.Id.ToString()));
         }

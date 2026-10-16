@@ -224,6 +224,17 @@ public partial class LiftView : Node3D
                     b.Box(new Vector3(x - 1.1f, 2.3f, z - 1.1f), new Vector3(x + 1.1f, 2.45f, z + 1.1f), cloth[(i + j) % cloth.Length]);
                 }
         }
+        else if (kind == Bikepark.Sim.Facilities.FacilityKind.Campground)
+        {
+            // A small reception hut at the back and rows of A-frame tents in bright colours.
+            b.Box(new Vector3(-l + 0.5f, 0, -2.0f), new Vector3(-l + 4.5f, 2.6f, 2.0f), wood);
+            b.Box(new Vector3(-l + 0.3f, 2.6f, -2.3f), new Vector3(-l + 4.8f, 3.0f, 2.3f), roof);
+            var canvas = new[] { new Color(0.95f, 0.55f, 0.15f), new Color(0.25f, 0.62f, 0.35f), new Color(0.25f, 0.45f, 0.85f), new Color(0.85f, 0.25f, 0.30f) };
+            int n = 0;
+            for (float x = -l + 6.5f; x <= l - 1.8f; x += 4.0f)
+                for (float z = -w + 2.0f; z <= w - 1.8f; z += 4.0f)
+                    Tent(b, x, z, canvas[n++ % canvas.Length]);
+        }
         else
         {
             b.Box(new Vector3(-l + 0.7f, 0, -w + 0.7f), new Vector3(l - 0.7f, 3.0f, w - 0.7f), new Color(0.90f, 0.88f, 0.82f));
@@ -233,6 +244,20 @@ public partial class LiftView : Node3D
             b.Box(new Vector3(-0.8f, 3.4f, -w * 0.5f), new Vector3(0.8f, 4.4f, w * 0.5f), new Color(0.95f, 0.45f, 0.20f));
         }
         return Placed(b.ToMesh(), pad);
+    }
+
+    /// <summary>An A-frame tent (2.4 m long, 2 m wide, 1.3 m high) centred at (x, z), ridge along local x.</summary>
+    private static void Tent(FlatMeshBuilder b, float x, float z, Color color)
+    {
+        var inside = new Vector3(x, 0.4f, z);
+        Vector3 fl = new(x - 1.2f, 0, z - 1.0f), fr = new(x - 1.2f, 0, z + 1.0f), bl = new(x + 1.2f, 0, z - 1.0f), br = new(x + 1.2f, 0, z + 1.0f);
+        Vector3 rf = new(x - 1.2f, 1.3f, z), rb = new(x + 1.2f, 1.3f, z);
+        b.Triangle(fl, bl, rb, color, inside);
+        b.Triangle(fl, rb, rf, color, inside);
+        b.Triangle(fr, br, rb, color, inside);
+        b.Triangle(fr, rb, rf, color, inside);
+        b.Triangle(fl, fr, rf, color.Darkened(0.3f), inside);
+        b.Triangle(bl, br, rb, color.Darkened(0.3f), inside);
     }
 
     private static ArrayMesh Station(TerrainPad pad, LiftKind kind, Func<Color, Color> tint)
@@ -420,7 +445,7 @@ public partial class LiftView : Node3D
     {
         var state = sim.State;
         int capacity = LiftMath.ParkingCapacity(state) ?? 0;
-        int cars = capacity == 0 ? 0 : (int)Math.Ceiling(state.Guests.Count * 1000.0 / state.LiftRules.GuestsPerCarPermille);
+        int cars = capacity == 0 ? 0 : (int)Math.Ceiling(LiftMath.DayGuests(state) * 1000.0 / state.LiftRules.GuestsPerCarPermille);
         if (cars == _carsShown) return;
         _carsShown = cars;
 

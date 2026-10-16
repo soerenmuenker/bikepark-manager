@@ -9,6 +9,8 @@
 // Shops (kind "shop"): a guest going home buys merch with buyChancePermille, scaled by their mood and the price.
 // upgrades: bought one after the other (Finances menu → Buildings), each adding seats, products, buy chance (shops) or
 // longer après-bike stays (apresMinutes), with its own cost, upkeep and park level.
+// Campgrounds (kind "campground"): `pitches` campers at a time; some arriving guests camp 1-3 nights (facilityRules), park
+// there, pay their nights (product "pitch") on arrival and ride again each morning (morningMood: how rested they wake up).
 // requiredLevel: the park level needed to build it.
 [
   { "id": "snack_bar", "name": "Snack bar", "kind": "bar", "buildCostCents": 800000, "upkeepPerDayCents": 25000,
@@ -40,5 +42,15 @@
         "requiredLevel": 7, "seats": 20, "products": ["radler"] },
       { "name": "Sun deck", "description": "40 more seats with a view", "costCents": 1200000, "upkeepPerDayCents": 10000,
         "requiredLevel": 8, "seats": 40 }
+    ] },
+  { "id": "campground", "name": "Campground", "kind": "campground", "buildCostCents": 2000000, "upkeepPerDayCents": 20000,
+    "lengthMeters": 24, "widthMeters": 18, "requiredLevel": 3, "pitches": 40, "products": ["pitch"],
+    "upgrades": [
+      { "name": "Showers", "description": "Campers wake up in a better mood", "costCents": 400000, "upkeepPerDayCents": 5000,
+        "requiredLevel": 3, "morningMood": 60 },
+      { "name": "More pitches", "description": "40 more pitches", "costCents": 800000, "upkeepPerDayCents": 8000,
+        "requiredLevel": 5, "pitches": 40 },
+      { "name": "Glamping huts", "description": "20 more places, and a cosy night", "costCents": 1500000, "upkeepPerDayCents": 12000,
+        "requiredLevel": 7, "pitches": 20, "morningMood": 60 }
     ] }
 ]

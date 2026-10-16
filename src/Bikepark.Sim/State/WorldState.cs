@@ -176,6 +176,9 @@ public sealed class ParkState
     /// <summary>Prices the park set per product (products without one sell at their reference price).</summary>
     public List<Facilities.ProductPrice> Prices { get; set; } = [];
 
+    /// <summary>The parking fee per car (0 = free parking), shared by the guests in it; only where there are parking lots.</summary>
+    public long ParkingFeeCents { get; set; }
+
     /// <summary>Bars serve alcohol to riders from this minute of the day (0 = all day; after closing, après-bike always may).</summary>
     public int BeerFromMinute { get; set; }
 
@@ -194,6 +197,10 @@ public sealed class ParkRules
 
     public long ReferenceEntryFeeCents { get; set; } = 1500;
     public long MaxEntryFeeCents { get; set; } = 10_000;
+
+    /// <summary>The parking fee per car guests find fair (counted with the entry fee as one arrival cost), and the most it can be.</summary>
+    public long ReferenceParkingFeeCents { get; set; }
+    public long MaxParkingFeeCents { get; set; } = 2_000;
     public int Capacity { get; set; } = 150;
     public long DailyUpkeepCents { get; set; } = 25_000;
     public long SnackPriceCents { get; set; } = 400;
@@ -244,6 +251,7 @@ public sealed class ParkRules
         if (BaseArrivalPermille < 0) errors.Add("rules.baseArrivalPermille must be >= 0");
         if (ReferenceEntryFeeCents <= 0) errors.Add("rules.referenceEntryFeeCents must be > 0");
         if (Capacity <= 0) errors.Add("rules.capacity must be > 0");
+        if (ReferenceParkingFeeCents < 0 || MaxParkingFeeCents < 0) errors.Add("rules: parking fees must be >= 0");
         for (int i = 0; i < ArrivalProfile.Count; i++)
         {
             var p = ArrivalProfile[i];
@@ -277,6 +285,12 @@ public sealed class FinanceState
 
     /// <summary>Lunch sales (included in the revenue).</summary>
     public long TotalFoodCents { get; set; }
+
+    /// <summary>Parking fees and campground nights (included in the revenue).</summary>
+    public long TotalParkingCents { get; set; }
+    public long ParkingTodayCents { get; set; }
+    public long TotalCampingCents { get; set; }
+    public long CampingTodayCents { get; set; }
 
     /// <summary>Coffee, beer and other drinks sold (included in the revenue).</summary>
     public long TotalDrinksCents { get; set; }
@@ -399,6 +413,10 @@ public sealed class ParkStats
     /// <summary>Guests who stayed for après-bike.</summary>
     public long TotalApresGuests { get; set; }
 
+    /// <summary>Guests who came to camp, and the nights they spent.</summary>
+    public long TotalCampers { get; set; }
+    public long TotalCampNights { get; set; }
+
     /// <summary>Sum of happiness of all guests at the moment they left; divide by <see cref="TotalGuestsLeft"/>.</summary>
     public long SumExitHappiness { get; set; }
 }
@@ -441,6 +459,9 @@ public enum RiderActivity : byte
 
     /// <summary>Après-bike: done riding, sitting at a bar (<see cref="Guest.FacilityId"/>) until <see cref="Guest.BusyUntilTick"/>, then home.</summary>
     Apres = 9,
+
+    /// <summary>A camper asleep at their campground (not in the park) until <see cref="Guest.WakeTick"/>.</summary>
+    Camping = 10,
 }
 
 public sealed class Guest
@@ -530,6 +551,17 @@ public sealed class Guest
 
     /// <summary>Paid above the reference prices this visit (lowers the value-for-money part of the review).</summary>
     public long OverpaidCents { get; set; }
+
+    // ---- Camping (multi-day guests) ----
+
+    /// <summary>The campground the guest has a pitch at (0: a day guest).</summary>
+    public int CampgroundId { get; set; }
+
+    /// <summary>Nights still to spend at the campground (the evening they reach 0 they go home).</summary>
+    public int NightsLeft { get; set; }
+
+    /// <summary>A sleeping camper wakes up then (the next opening).</summary>
+    public long WakeTick { get; set; }
 
     // ---- Visit, for the review written on leaving (see Reputation.ReviewMath) ----
 

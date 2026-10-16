@@ -12,6 +12,9 @@ public enum FacilityKind : byte
 
     /// <summary>Merchandise: guests on their way home buy something, the happier the likelier.</summary>
     Shop = 1,
+
+    /// <summary>Pitches for campers: guests who stay a few nights and ride again each morning.</summary>
+    Campground = 2,
 }
 
 /// <summary>A building model from <c>data/facility_types.json</c>, copied into the world.</summary>
@@ -39,6 +42,12 @@ public sealed class FacilityType
     /// <summary>Chance that a perfectly happy guest leaving buys something, permille (shops; scaled by mood and price).</summary>
     public int BuyChancePermille { get; set; }
 
+    /// <summary>Campers it sleeps (campgrounds).</summary>
+    public int Pitches { get; set; }
+
+    /// <summary>Mood its campers wake up with (campgrounds: showers, huts).</summary>
+    public int MorningMood { get; set; }
+
     /// <summary>Upgrades bought one after the other (<see cref="Facility.Level"/>), each adding to the building.</summary>
     public List<FacilityUpgrade> Upgrades { get; set; } = [];
 
@@ -55,6 +64,8 @@ public sealed class FacilityType
             errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
         if (Products.Count == 0) errors.Add($"{p}.products: it must sell something");
         if (Kind == FacilityKind.Bar && Seats is < 1 or > 1000) errors.Add($"{p}.seats must be within 1..1000");
+        if (Kind == FacilityKind.Campground && Pitches is < 1 or > 1000) errors.Add($"{p}.pitches must be within 1..1000");
+        if (Pitches is < 0 or > 1000 || MorningMood is < 0 or > 1000) errors.Add($"{p}: pitches and morningMood within 0..1000");
         if (BuyChancePermille is < 0 or > 1000) errors.Add($"{p}.buyChancePermille must be within 0..1000");
         foreach (var upgrade in Upgrades) errors.AddRange(upgrade.Validate(p));
         return errors;
@@ -77,6 +88,8 @@ public sealed class FacilityUpgrade
     public List<string> Products { get; set; } = [];
     public int BuyChancePermille { get; set; }
     public int ApresMinutes { get; set; }
+    public int Pitches { get; set; }
+    public int MorningMood { get; set; }
 
     public List<string> Validate(string owner)
     {
@@ -87,6 +100,7 @@ public sealed class FacilityUpgrade
         if (RequiredLevel is < 0 or > Reputation.ReputationRules.MaxLevel) errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
         if (Seats is < 0 or > 1000 || BuyChancePermille is < 0 or > 1000 || ApresMinutes is < 0 or > 600)
             errors.Add($"{p}: seats, buyChancePermille within 0..1000, apresMinutes within 0..600");
+        if (Pitches is < 0 or > 1000 || MorningMood is < 0 or > 1000) errors.Add($"{p}: pitches and morningMood within 0..1000");
         return errors;
     }
 }
@@ -133,6 +147,25 @@ public static class FacilityMath
         Math.Min(1000, type.BuyChancePermille + Bought(type, facility).Sum(u => u.BuyChancePermille));
 
     public static int ApresBonusMinutes(FacilityType type, Facility facility) => Bought(type, facility).Sum(u => u.ApresMinutes);
+
+    public static int Pitches(FacilityType type, Facility facility) => type.Pitches + Bought(type, facility).Sum(u => u.Pitches);
+
+    public static int MorningMood(FacilityType type, Facility facility) => type.MorningMood + Bought(type, facility).Sum(u => u.MorningMood);
+
+    /// <summary>Pitches booked: every camper registered there, asleep or out riding (a pitch is theirs for the whole stay).</summary>
+    public static int PitchesTaken(WorldState state, Facility camp) => state.Guests.Count(g => g.CampgroundId == camp.Id);
+
+    /// <summary>The first campground (build order) with a free pitch selling a night, with that product, or null.</summary>
+    public static (Facility Camp, FacilityType Type, ProductType Night)? FreeCampground(WorldState state)
+    {
+        foreach (var camp in state.Facilities)
+        {
+            if (FindType(state, camp.TypeId) is not { Kind: FacilityKind.Campground } type) continue;
+            if (PitchesTaken(state, camp) >= Pitches(type, camp)) continue;
+            if (ProductsOf(state, type, camp).FirstOrDefault(p => p.Overnight) is { } night) return (camp, type, night);
+        }
+        return null;
+    }
 
     /// <summary>Everything paid for the building (built and upgraded).</summary>
     public static long InvestedCents(FacilityType type, Facility facility) => type.BuildCostCents + Bought(type, facility).Sum(u => u.CostCents);
@@ -188,7 +221,7 @@ public static class FacilityMath
     {
         if (guest.Activity == RiderActivity.Queuing)
             return state.Lifts.FirstOrDefault(l => l.Queue.Contains(guest.Id)) is { } lift ? PadCenter(state, lift.Valley.TerrainEditId) : null;
-        if (guest.Activity is not (RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Apres)) return null;
+        if (guest.Activity is not (RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Apres)) return null; // camping: asleep
         if (guest.LocationHubId != 0)
             return network.FindHub(guest.LocationHubId) is { } hub ? new PointCm(hub.Pad.CenterX, hub.Pad.CenterZ) : null;
         if (guest.LocationWayId == 0 || !network.TryGetGeometry(guest.LocationWayId, out var geometry)) return null;
@@ -271,7 +304,7 @@ public static class FacilityMath
 
     /// <summary>The money category a product's sales are booked under.</summary>
     public static MoneyCategory CategoryOf(ProductType product) =>
-        product.Merch ? MoneyCategory.Merch : product.IsDrink ? MoneyCategory.Drinks : MoneyCategory.Food;
+        product.Overnight ? MoneyCategory.Camping : product.Merch ? MoneyCategory.Merch : product.IsDrink ? MoneyCategory.Drinks : MoneyCategory.Food;
 
     /// <summary>
     /// A guest buys a product at a facility at the park's price: revenue for the park and the facility, the goods' cost,
@@ -288,8 +321,13 @@ public static class FacilityMath
         facility.Customers++;
         long goods = price * product.GoodsCostPermille / 1000;
         if (goods > 0)
-            finance.Spend(product.Merch ? MoneyCategory.MerchGoods : MoneyCategory.FoodGoods, goods);
-        if (product.Merch)
+            finance.Spend(product.Merch ? MoneyCategory.MerchGoods : product.Overnight ? MoneyCategory.CampUpkeep : MoneyCategory.FoodGoods, goods);
+        if (product.Overnight)
+        {
+            finance.TotalCampingCents += price;
+            finance.CampingTodayCents += price;
+        }
+        else if (product.Merch)
         {
             finance.TotalMerchCents += price;
             finance.MerchTodayCents += price;

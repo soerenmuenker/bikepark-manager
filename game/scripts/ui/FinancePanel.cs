@@ -27,6 +27,8 @@ public partial class FinancePanel : HudPanel
         new("Food & drinks", [MoneyCategory.BarUpkeep, MoneyCategory.FoodGoods], [MoneyCategory.Food, MoneyCategory.Drinks],
             "Lunch, snacks, coffee and beer sold · the goods sold · upkeep of the bars"),
         new("Merch", [MoneyCategory.ShopUpkeep, MoneyCategory.MerchGoods], [MoneyCategory.Merch], "Merch sold · the goods sold · upkeep of the shops"),
+        new("Parking & camping", [MoneyCategory.CampUpkeep], [MoneyCategory.ParkingFees, MoneyCategory.Camping],
+            "Parking fees · nights at the campground · upkeep of the campgrounds"),
         new("Crew", [MoneyCategory.Wages], [], "Daily wages of your crew (Crew menu: hire and dismiss)"),
         new("Park staff", [MoneyCategory.ParkStaff], [], "Ticket office, first aid and cleaning: every day, open or not"),
         new("Loans", [], [], "Weekly installments of your running loans, per day", Loans: true),
@@ -43,6 +45,7 @@ public partial class FinancePanel : HudPanel
     private bool _showToday;
 
     private Label _fee = null!, _feeDetail = null!, _liftTicket = null!, _liftTicketDetail = null!;
+    private Label? _parking, _parkingDetail;
     private VBoxContainer? _loans;
     private string _loansSignature = "";
     private VBoxContainer _transactions = null!;
@@ -95,7 +98,7 @@ public partial class FinancePanel : HudPanel
         left.AddChild(_chart);
         if (Ctx.Sim.State.FacilityTypes.Count > 0)
         {
-            left.AddChild(UiTheme.Label("BARS & SHOPS — built in the Build menu, upgraded here", 11, UiTheme.TextDim, bold: true));
+            left.AddChild(UiTheme.Label("BARS, SHOPS & CAMPGROUNDS — built in the Build menu, upgraded here", 11, UiTheme.TextDim, bold: true));
             _buildings = new VBoxContainer();
             _buildings.AddThemeConstantOverride("separation", 2);
             left.AddChild(_buildings);
@@ -186,6 +189,18 @@ public partial class FinancePanel : HudPanel
         card.AddChild(ticket);
         _liftTicketDetail = UiTheme.Label("", 11, UiTheme.TextDim);
         card.AddChild(_liftTicketDetail);
+
+        if (Ctx.Sim.State.Rules.MaxParkingFeeCents <= 0) return;
+        var parking = Row(8);
+        parking.AddChild(Cell("Parking", 80, UiTheme.Text, 13, bold: true));
+        parking.AddChild(UiTheme.Button("−", () => Ctx.ChangeParkingFee(-HudContext.FeeStepCents), "Lower the parking fee"));
+        _parking = Cell("", 84, UiTheme.Text, 17, bold: true, align: HorizontalAlignment.Center);
+        parking.AddChild(_parking);
+        parking.AddChild(UiTheme.Button("+", () => Ctx.ChangeParkingFee(HudContext.FeeStepCents),
+            "Raise the parking fee (per car, shared by its guests and counted with the entrance fee: dearer = fewer guests; campers park free)"));
+        card.AddChild(parking);
+        _parkingDetail = UiTheme.Label("", 11, UiTheme.TextDim);
+        card.AddChild(_parkingDetail);
     }
 
     /// <summary>One price per product (all bars and shops sell at it) and when riders may drink.</summary>
@@ -376,6 +391,7 @@ public partial class FinancePanel : HudPanel
         {
             _feeDetail.Text = "A dearer entrance means fewer guests.";
             _liftTicketDetail.Text = "Bought once per visit, when a guest first takes a lift.";
+            RefreshParking(state, null);
             return;
         }
         long entry = Ledger.Get(money, MoneyCategory.EntryFees), passes = Ledger.Get(money, MoneyCategory.LiftPasses);
@@ -384,6 +400,17 @@ public partial class FinancePanel : HudPanel
         _liftTicketDetail.Text = pass == 0
             ? $"Free lifts: {yesterday.LiftRides} lift rides yesterday"
             : $"Yesterday: {UiTheme.Money(passes)} (≈ {passes / pass} passes) · too dear and guests pedal up";
+        RefreshParking(state, Ledger.Get(money, MoneyCategory.ParkingFees));
+    }
+
+    private void RefreshParking(WorldState state, long? yesterdayCents)
+    {
+        if (_parking is null || _parkingDetail is null) return;
+        long fee = state.Park.ParkingFeeCents;
+        _parking.Text = fee == 0 ? "free" : UiTheme.MoneyExact(fee);
+        _parkingDetail.Text = state.ParkingLots.Count == 0 ? "No parking lots: nobody pays it."
+            : yesterdayCents is { } cents ? $"Yesterday: {UiTheme.Money(cents)} · per car, counted with the entrance fee"
+            : "Per car, shared by its guests and counted with the entrance fee.";
     }
 
     private void RefreshPrices(WorldState state)
@@ -521,9 +548,12 @@ public partial class FinancePanel : HudPanel
             var (_, text, button) = _buildingRows[facility.Id];
             if (FacilityMath.FindType(state, facility.TypeId) is not { } type) continue;
             string sells = string.Join(", ", FacilityMath.ProductsOf(state, type, facility).Select(p => p.Name.ToLowerInvariant()));
-            string busy = type.Kind == FacilityKind.Bar
-                ? $"{FacilityMath.SeatsTaken(state, facility)}/{FacilityMath.Seats(type, facility)} seats"
-                : $"{FacilityMath.BuyChancePermille(type, facility) / 10} % of happy guests buy";
+            string busy = type.Kind switch
+            {
+                FacilityKind.Bar => $"{FacilityMath.SeatsTaken(state, facility)}/{FacilityMath.Seats(type, facility)} seats",
+                FacilityKind.Campground => $"{FacilityMath.PitchesTaken(state, facility)}/{FacilityMath.Pitches(type, facility)} pitches booked",
+                _ => $"{FacilityMath.BuyChancePermille(type, facility) / 10} % of happy guests buy",
+            };
             string upgrades = facility.Level == 0 ? "" : $" ({string.Join(", ", FacilityMath.Bought(type, facility).Select(u => u.Name.ToLowerInvariant()))})";
             text.Text = $"{facility.Name}{upgrades} · {sells} · {busy} · {facility.Customers} sold · today {UiTheme.Money(facility.RevenueTodayCents)} · " +
                         $"total {UiTheme.Money(facility.TotalRevenueCents)} · upkeep {UiTheme.Money(FacilityMath.Upkeep(type, facility))}/day";
@@ -548,6 +578,7 @@ public partial class FinancePanel : HudPanel
     private static bool Shown(WorldState state, BudgetLine line) => line.Name switch
     {
         "Merch" => state.FacilityTypes.Any(t => t.Kind == FacilityKind.Shop),
+        "Parking & camping" => state.ParkingLots.Count > 0 || state.FacilityTypes.Any(t => t.Kind == FacilityKind.Campground),
         "Park staff" => state.Rules.DailyUpkeepCents > 0,
         "Loans" => state.LoanRules.Offers.Count > 0 || state.Loans.Count > 0,
         _ => true,
@@ -573,6 +604,9 @@ public partial class FinancePanel : HudPanel
         MoneyCategory.Food => "lunch & snacks",
         MoneyCategory.Drinks => "coffee & drinks",
         MoneyCategory.FoodGoods => "food goods",
+        MoneyCategory.ParkingFees => "parking fees",
+        MoneyCategory.Camping => "camping nights",
+        MoneyCategory.CampUpkeep => "campground upkeep",
         MoneyCategory.Merch => "merch",
         MoneyCategory.LiftFees => "bike access fees",
         MoneyCategory.LiftUpkeep => "own lift upkeep",

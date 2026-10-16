@@ -34,7 +34,7 @@ internal sealed class RiderSystem : ISimSystem
         if (!network.HasBase)
         {
             foreach (var guest in state.Guests)
-                if (guest.Activity != RiderActivity.Wandering) MakeWandering(state, guest);
+                if (guest.Activity is not (RiderActivity.Wandering or RiderActivity.Camping)) MakeWandering(state, guest);
             return;
         }
 
@@ -42,6 +42,7 @@ internal sealed class RiderSystem : ISimSystem
         var injured = new List<Guest>();
         foreach (var guest in state.Guests)
         {
+            if (guest.Activity == RiderActivity.Camping) continue; // asleep at the campground
             if (guest.Activity == RiderActivity.Injured)
             {
                 injured.Add(guest); // lies on the trail (and blocks it) until the helicopter comes

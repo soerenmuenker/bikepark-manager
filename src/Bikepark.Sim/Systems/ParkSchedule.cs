@@ -52,14 +52,17 @@ public static class ParkSchedule
 
     public static DayPhase Phase(WorldState state, long tick) =>
         IsOpen(state, tick) ? DayPhase.Open
-        : IsLastRides(state, tick) && state.Guests.Count > 0 ? DayPhase.LastRides
+        : IsLastRides(state, tick) && AwakeGuests(state) > 0 ? DayPhase.LastRides
         : DayPhase.Closed;
+
+    /// <summary>Guests in the park: everyone but campers asleep at their campground.</summary>
+    public static int AwakeGuests(WorldState state) => state.Guests.Count(g => g.Activity != RiderActivity.Camping);
 
     /// <summary>
     /// Dead hours the host may fast-forward through: the park is closed and empty (the last rides are over; a seriously
-    /// injured rider waiting for the helicopter is still in it).
+    /// injured rider waiting for the helicopter is still in it; campers asleep at the campground are not).
     /// </summary>
-    public static bool IsQuiet(WorldState state, long tick) => !IsOpen(state, tick) && state.Guests.Count == 0;
+    public static bool IsQuiet(WorldState state, long tick) => !IsOpen(state, tick) && AwakeGuests(state) == 0;
 
     /// <summary>The next opening after <paramref name="tick"/>.</summary>
     public static long NextWakeTick(WorldState state, long tick)

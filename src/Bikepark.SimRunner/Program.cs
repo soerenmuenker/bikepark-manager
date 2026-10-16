@@ -203,7 +203,8 @@ public static class Program
                 var type = Bikepark.Sim.Facilities.FacilityMath.FindType(state, x.TypeId);
                 return new FacilityReport(x.Id, x.Name, x.TypeId, x.Level,
                     type is null ? [] : Bikepark.Sim.Facilities.FacilityMath.Bought(type, x).Select(u => u.Name).ToList(),
-                    type is null ? 0 : Bikepark.Sim.Facilities.FacilityMath.Seats(type, x),
+                    type is null ? 0 : type.Kind == Bikepark.Sim.Facilities.FacilityKind.Campground
+                        ? Bikepark.Sim.Facilities.FacilityMath.Pitches(type, x) : Bikepark.Sim.Facilities.FacilityMath.Seats(type, x),
                     type is null ? [] : Bikepark.Sim.Facilities.FacilityMath.ProductsOf(state, type, x).Select(p => p.Id).ToList(),
                     x.Customers, x.TotalRevenueCents);
             }).ToList(),
@@ -216,6 +217,9 @@ public static class Program
                     sales?.RevenueCents ?? 0);
             }).ToList(),
             state.Park.BeerFromMinute, state.Stats.TotalApresGuests,
+            new CampingReport(state.Park.ParkingFeeCents, f.TotalParkingCents, state.Stats.TotalCampers, state.Stats.TotalCampNights,
+                state.Guests.Count(g => g.CampgroundId != 0), state.Guests.Count(g => g.Activity == Bikepark.Sim.State.RiderActivity.Camping),
+                f.TotalCampingCents),
             state.Tools.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.Count()));
     }
 
@@ -392,6 +396,7 @@ internal sealed record LiftReport(
 
 internal sealed record ParcelReport(string Id, string Name, bool Owned, int RequiredLevel, long PriceCents, long AreaSquareMeters);
 
+/// <summary>Seats: a bar's seats, a campground's pitches.</summary>
 internal sealed record FacilityReport(int Id, string Name, string TypeId, int Level, List<string> Upgrades, int Seats, List<string> Products,
     int Customers, long RevenueCents);
 
@@ -399,7 +404,11 @@ internal sealed record ProductReport(string Id, long PriceCents, long ReferenceP
 
 internal sealed record FacilitiesReport(List<FacilityReport> Buildings, long FoodCents, long SnackCents, long DrinksCents, long MerchCents,
     long MerchCostCents, long BuildCents, long UpkeepCents, List<ProductReport> Products, int BeerFromMinute, long ApresGuests,
-    Dictionary<string, int> Tools);
+    CampingReport Camping, Dictionary<string, int> Tools);
+
+/// <summary>Parking fee and campers: campers now (asleep or riding), asleep now, all campers so far and their nights.</summary>
+internal sealed record CampingReport(long ParkingFeePerCarCents, long ParkingCents, long Campers, long Nights, int CampersNow, int Asleep,
+    long CampingCents);
 
 internal sealed record LoanOfferReport(string Id, string Name, long PrincipalCents, int Weeks, int InterestPermille,
     long InstallmentCents, long TotalRepayCents, int RequiredLevel, string? Locked);

@@ -103,6 +103,8 @@ internal sealed class HudContext
 
     public void ChangeFee(long delta) => Host.Enqueue(new SetEntryFeeCommand(Math.Max(0, Sim.State.Park.EntryFeeCents + delta)));
     public void ChangeLiftTicket(long delta) => Host.Enqueue(new SetLiftTicketCommand(Math.Max(0, Sim.State.Park.LiftTicketCents + delta)));
+    public void ChangeParkingFee(long delta) =>
+        Host.Enqueue(new SetParkingFeeCommand(Math.Clamp(Sim.State.Park.ParkingFeeCents + delta, 0, Sim.State.Rules.MaxParkingFeeCents)));
 
     /// <summary>Books the next lower/higher tier on the first operator-run lift (from the next opening).</summary>
     public void StepBikeTier(int step)
@@ -121,6 +123,11 @@ public abstract partial class HudPanel : PanelContainer
 {
     private protected HudContext Ctx = null!;
     protected VBoxContainer Body = null!;
+
+    /// <summary>Holds the body: scrolls when the menu is bigger than the room above the bar (<see cref="FitInto"/>).</summary>
+    private ScrollContainer _scroll = null!;
+
+    private const float ScrollbarWidth = 14f;
 
     public event Action? CloseRequested;
 
@@ -142,10 +149,31 @@ public abstract partial class HudPanel : PanelContainer
         header.AddChild(title);
         header.AddChild(new RoundButton(UiIcon.Close, 24, "", "Close (Esc)", () => CloseRequested?.Invoke()));
 
-        Body = new VBoxContainer();
+        _scroll = new ScrollContainer
+        {
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Auto,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto,
+        };
+        root.AddChild(_scroll);
+        Body = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         Body.AddThemeConstantOverride("separation", 10);
-        root.AddChild(Body);
+        _scroll.AddChild(Body);
         Build();
+    }
+
+    /// <summary>
+    /// Sizes the menu to its content, but never bigger than <paramref name="room"/> (the window above the bar): the body
+    /// scrolls instead, so the title and the close button always stay on screen.
+    /// </summary>
+    internal void FitInto(Vector2 room)
+    {
+        var chrome = GetCombinedMinimumSize() - _scroll.GetCombinedMinimumSize(); // header, padding, border
+        var body = Body.GetCombinedMinimumSize();
+        float height = Math.Min(body.Y, Math.Max(80, room.Y - chrome.Y));
+        bool scrollsDown = height < body.Y;
+        float width = Math.Min(body.X + (scrollsDown ? ScrollbarWidth : 0), Math.Max(200, room.X - chrome.X));
+        var size = new Vector2(MathF.Floor(width), MathF.Floor(height));
+        if (_scroll.CustomMinimumSize != size) _scroll.CustomMinimumSize = size;
     }
 
     protected abstract void Build();
@@ -324,18 +352,23 @@ public partial class BuildPanel : HudPanel
         if (Ctx.Sim.State.FacilityTypes.Count > 0)
         {
             Body.AddChild(UiTheme.Separator());
-            Body.AddChild(UiTheme.Label("BUILDINGS — next to a valley station, they serve the guests at its base: lunch and snacks only at a bar", 13, UiTheme.Accent, bold: true));
+            Body.AddChild(UiTheme.Label("BUILDINGS — near a gravel path or hub, they serve the guests nearby: lunch and snacks only at a bar", 13, UiTheme.Accent, bold: true));
             var buildings = Row(8);
             Body.AddChild(buildings);
             foreach (var type in Ctx.Sim.State.FacilityTypes.OrderBy(t => t.RequiredLevel))
             {
                 string id = type.Id;
-                var card = new ToolCard(type.Kind == Bikepark.Sim.Facilities.FacilityKind.Bar ? UiIcon.Bar : UiIcon.Shop, type.Name, "",
+                var card = new ToolCard(type.Kind switch
+                    {
+                        Bikepark.Sim.Facilities.FacilityKind.Bar => UiIcon.Bar,
+                        Bikepark.Sim.Facilities.FacilityKind.Campground => UiIcon.Tent,
+                        _ => UiIcon.Shop,
+                    }, type.Name, "",
                     FacilityTooltip(type), () => ToggleFacility(id)) { CustomMinimumSize = new Vector2(150, 104) };
                 buildings.AddChild(card);
                 _facilities.Add((type, card));
             }
-            Body.AddChild(UiTheme.Label("Click the centre next to a valley station, then where its front points · Enter builds it (paid at once)", 12, UiTheme.TextDim));
+            Body.AddChild(UiTheme.Label("Click the centre near a gravel path, platform, station or parking lot, then where its front points · Enter builds it (paid at once) · prices and upgrades: Finances", 12, UiTheme.TextDim));
         }
 
         Body.AddChild(UiTheme.Separator());
@@ -467,9 +500,14 @@ public partial class BuildPanel : HudPanel
     {
         var state = Ctx.Sim.State;
         string sells = string.Join(", ", type.Products.Select(id => Bikepark.Sim.Facilities.FacilityMath.FindProduct(state, id)?.Name.ToLowerInvariant() ?? id));
-        string what = type.Kind == Bikepark.Sim.Facilities.FacilityKind.Bar
-            ? $"{type.Name}: {sells}; {type.Seats} seats (lunch, après-bike). Riders stop at it on their way, too."
-            : $"{type.Name}: guests going home buy {sells} (the happier, the likelier).";
+        string what = type.Kind switch
+        {
+            Bikepark.Sim.Facilities.FacilityKind.Bar => $"{type.Name}: {sells}; {type.Seats} seats (lunch, après-bike). Riders stop at it on their way, too.",
+            Bikepark.Sim.Facilities.FacilityKind.Campground =>
+                $"{type.Name}: {type.Pitches} pitches. Some arriving guests camp {state.FacilityRules.MinNights}–{state.FacilityRules.MaxNights} nights: " +
+                "they pay their nights, park here and ride again every morning.",
+            _ => $"{type.Name}: guests going home buy {sells} (the happier, the likelier).",
+        };
         string upgrades = type.Upgrades.Count == 0 ? ""
             : " Upgrades: " + string.Join(" → ", type.Upgrades.Select(u => $"{u.Name} ({UiTheme.Money(u.CostCents)})")) + ".";
         return $"{what} Build {UiTheme.Money(type.BuildCostCents)}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day, " +
