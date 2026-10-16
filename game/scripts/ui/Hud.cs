@@ -507,7 +507,7 @@ public partial class Hud : CanvasLayer
     private void UpdateClock()
     {
         var state = _ctx.Sim.State;
-        _parkName.Text = state.Park.Name.ToUpperInvariant();
+        _parkName.Text = Bikepark.Sim.Sponsors.SponsorMath.ParkTitle(state).ToUpperInvariant();
         _clock.Text = $"Day {GameTime.Day(state.Tick) + 1}  {GameTime.Format(state.Tick)[^5..]}";
         var (text, color) = _ctx.Host.IsSkippingNight ? ("NIGHT ⏩", UiTheme.TextDim)
             : _ctx.Host.IsSkipping ? ("FAST-FORWARD", UiTheme.Warn)
@@ -746,6 +746,8 @@ public partial class Hud : CanvasLayer
 
     private string TrailName(int wayId) => _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == wayId)?.Label ?? "A trail";
 
+    private string BrandName(string id) => Bikepark.Sim.Sponsors.SponsorMath.Find(_ctx.Sim.State, id)?.Name ?? "A brand";
+
     // ---------------------------------------------------------------- events → toasts
 
     private void Subscribe(Simulation sim)
@@ -765,6 +767,13 @@ public partial class Hud : CanvasLayer
         var events = sim.Events;
         _subscriptions.Add(events.Subscribe<FacilityBuilt>(e => Toast(
             $"{_ctx.Sim.State.Facilities.FirstOrDefault(f => f.Id == e.FacilityId)?.Name ?? e.TypeName} is open", UiTheme.Good)));
+        _subscriptions.Add(events.Subscribe<SponsorOffered>(e => Toast(
+            $"{BrandName(e.SponsorId)} offers to sponsor {(e.WayId == 0 ? "the park" : TrailName(e.WayId))}: accept or decline in Finances", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<SponsorAnswered>(e => Toast(e.Yes
+            ? $"{BrandName(_ctx.Sim.State.Sponsorships.FirstOrDefault(s => s.Id == e.SponsorshipId)?.SponsorId ?? "")} says yes: accept the offer in Finances"
+            : $"A sponsor said no: {e.Reason}", e.Yes ? UiTheme.Good : UiTheme.Warn)));
+        _subscriptions.Add(events.Subscribe<SponsorSignBuilt>(e => Toast("The sponsor's sign stands: the deal pays from today", UiTheme.Good)));
+        _subscriptions.Add(events.Subscribe<SponsorshipEnded>(e => Toast($"A sponsorship ended: {e.Reason}", UiTheme.Warn)));
         _subscriptions.Add(events.Subscribe<FacilityUpgraded>(e => Toast(
             $"{_ctx.Sim.State.Facilities.FirstOrDefault(f => f.Id == e.FacilityId)?.Name ?? "The building"}: {e.UpgradeName} is in", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<ToolWornOut>(e => Toast(

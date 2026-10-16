@@ -990,6 +990,7 @@ public partial class CrewPanel : HudPanel
                 JobKind.FellTrees => UiIcon.Felling,
                 JobKind.BuildWay => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Kind == WayKind.AccessPath ? UiIcon.Path : UiIcon.Trail,
                 JobKind.RepairFeature => UiIcon.Tool,
+                JobKind.BuildSign => UiIcon.Star,
                 _ => FeatureIconFor(state, job),
             };
             h.AddChild(new IconView(icon, 30, UiTheme.Accent) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
@@ -1008,6 +1009,7 @@ public partial class CrewPanel : HudPanel
                 {
                     JobKind.FellTrees => "Cancel (trees cut so far stay cut)",
                     JobKind.RepairFeature => "Cancel the repair (the trail opens again)",
+                    JobKind.BuildSign => "Cancel the sign: the sponsor deal ends",
                     _ => "Cancel: removes the planned way or feature",
                 }, () => Ctx.Host.Enqueue(new CancelJobCommand(jobId))) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
             _list.AddChild(row);

@@ -118,14 +118,25 @@ public static class LoanMath
         loan.RemainingCents -= cents;
     }
 
+    /// <summary>The interest the park gets on the offer now (a bank sponsor may cut it).</summary>
+    public static int InterestPermille(WorldState state, LoanOffer offer) =>
+        offer.InterestPermille - offer.InterestPermille * Sponsors.SponsorMath.Benefit(state, Sponsors.SponsorBenefitKind.LoanInterest) / 1000;
+
+    /// <summary>What the park repays in all, and per week, for the offer now.</summary>
+    public static (long Total, long Installment) Terms(WorldState state, LoanOffer offer)
+    {
+        long total = offer.PrincipalCents * (1000 + InterestPermille(state, offer)) / 1000;
+        return (total, ((total + offer.Weeks - 1) / offer.Weeks + 99) / 100 * 100);
+    }
+
     public static Loan Open(WorldState state, LoanOffer offer, long tick) => new()
     {
         Id = state.AllocateEntityId(),
         OfferId = offer.Id,
         Name = offer.Name,
         PrincipalCents = offer.PrincipalCents,
-        RemainingCents = offer.TotalRepayCents,
-        InstallmentCents = offer.InstallmentCents,
+        RemainingCents = Terms(state, offer).Total,
+        InstallmentCents = Terms(state, offer).Installment,
         TakenDay = GameTime.Day(tick),
         NextDueDay = GameTime.Day(tick) + DaysPerInstallment - 1,
     };

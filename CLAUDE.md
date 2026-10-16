@@ -19,6 +19,9 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     price / upgrade / beer-hours commands in `Commands/FacilityCommands.cs`; `Systems/Catering.cs` (guests buying: lunch, impulse
     buys, stops on the way, après-bike, merch); `Systems/Camping.cs` (campers going to sleep and waking up); `Systems/Bikes.cs`
     (renting, fleet wear, returning, fixing broken bikes)
+  - `Sponsors/` – `SponsorType`/`SponsorBenefit`/`SponsorRules` (content: brands in `data/sponsors.json`, offers, signs, photo
+    spots), `Sponsorship` (state), `SponsorMath` (fits, score, payments, benefits, park title); `Systems/SponsorSystem.cs`,
+    `Commands/SponsorCommands.cs` (apply, accept, decline, end, cameras)
   - `Banking/` – `LoanOffer`/`LoanRules` (content), `Loan` (state), `LoanMath`; `Commands/LoanCommands.cs`, `Systems/LoanSystem.cs`
   - `Land/` – `Parcel` (content: named land outlines with price and required level), `LandMath` (who owns which point,
     the only land check, used by every planner); `Commands/LandCommands.cs` (`BuyParcelCommand`)
@@ -99,7 +102,8 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 # food/snack/drinks/merch sales, per-product price and sales, beer hours, après-bike guests, building and upkeep costs, tools owned);
 # "safety" has crashesUnderInfluence; facilities.camping: parking fee and money, campers (now, asleep, total), nights, camping money;
 # facilities.bikes: fleets (bikes, rented now, condition), renters (and those without a free bike), repairs, bikes retired,
-# bike-only crashes; --daily adds foodCents, drinksCents, merchCents, parkingCents, campingCents, rentalCents, repairCents, facilityUpkeepCents
+# bike-only crashes; "sponsors": deals (brand, target, status, sign, paid), the park title, sponsor and clip money,
+# cameras with clips sold, buzz and a log of offers, answers, signs and endings; --daily adds sponsorCents, clipCents, foodCents, drinksCents, merchCents, parkingCents, campingCents, rentalCents, repairCents, facilityUpkeepCents
 # ... with the demo trail features (planned, built by the crew: per-trail feature list, crew block with completed jobs, wood, wages)
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json
 # Godot (from game/): compile, then run headless with the demo trails at 60x, printing KPIs (incl. queues) every game hour
@@ -211,6 +215,23 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     `Seats` = workbenches, product `repair`, seated like lunch) and rides on; otherwise home (`GuestLeaveReason.BikeBroken`).
     The pro shop sells protectors (`ProductType.Protection`, an impulse buy at a shop between laps): `Guest.Protected` scales the
     serious share by `CrashRules.ProtectedSeriousPermille`. Money: `Rentals`, `Repairs` (income), `BikeCosts` (parts, upkeep).
+14g. **Sponsors and photo spots** (Phase 9.4): brands (`SponsorType`, content) sponsor a trail or the whole park (`Sponsorship`,
+    `WayId` 0 = the park; one brand per trail/park and one deal per brand at a time). The player applies (`ApplySponsorCommand`:
+    answered at an opening after `ApplyAnswerDays`, yes if it fits then) or brands offer by themselves (`SponsorSystem`: every
+    `OfferCheckDays`, a brand with nothing going on offers for the park if it fits, else its best fitting trail
+    (`SponsorMath.BestTrail`: rating, fun stars, runs a day, `Score`), with `OfferChancePermille`; offers expire after
+    `OfferDays`). `AcceptSponsorCommand` renames the trail ("ShortName Trail", back at the end; renaming is blocked meanwhile)
+    and queues `JobKind.BuildSign` (crew, carpentry + wood; `Job.FeatureId` = the deal; cancelling it ends the deal). Only once
+    the sign stands (`Sponsorship.Pays`) does the deal pay (at the day's end: per day + per run, or for the park per day + per
+    visitor; `MoneyCategory.Sponsors`) and give its **benefits** (`SponsorMath.Benefit`: the best paying deal of the kind; a
+    park deal in full, a trail deal `TrailBenefitPermille`): `BikeDiscount` (`FacilityMath.BikeCost`), `GoodsDiscount`
+    (`FacilityMath.Sell`), `BuildingDiscount` (`BuildCost`/`UpgradeCost`), `ParkingRevenue` (arrivals), `LoanInterest`
+    (`LoanMath.Terms`), `LiftDiscount` (`LiftWorks.BuildCost`/`RestoreCost`), `MoodBoost`. The park sponsor names the park
+    (`SponsorMath.ParkTitle`) and gives arriving guests its `Mood`. Deals end at `EndDay`, when the trail is gone or closed more
+    than `ClosedDaysAllowed` days in a row, or by the player (`EndSponsorshipCommand`). **Photo spots:** `PlaceCameraCommand` on a
+    built jump or drop (`TrailFeature.Camera`, paid, `CameraUpkeep` daily); a rider landing it is filmed (`Guest.FilmedFeatureId`,
+    their best camera jump of the run) and after the run buys the clip (product `clip`) with `ClipChancePermille` × fun × the
+    price's buy factor; each clip adds `BuzzPerClipPermille` to `Reputation.BuzzPermille` (demand, capped, fades daily).
 14. **Crew jobs build things.** Player ways and features are planned (`Built = false`) and built by a `Job` (unless the
     debug `instant` flag is set; scenario ways are always built). Only built ways are routed/ridden and only built
     features count. All work, wood and speed numbers come from `WorkCosts`; which trees stand comes only from `Forest`
@@ -335,7 +356,7 @@ scroll to and highlight the item (`HudPanel.Focus`) · Space pause, 1–4 speed 
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter finishes it: a trail asks for its name
 in a pop-up (not when it continues a trail), then it is planned for the crew; Esc cancel; preview colored by gradient, tool
-panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's ends onto loose trail ends, joined in line) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) · Build → Gravel platform (centre, then direction; link paths and trails) · Build → Buildings: snack bar, merch shop, service shop, beer rondel, rental station, campground, pro shop, bike café (centre near a gravel path, platform, station or parking lot, then direction, Enter builds; click one in the world → Finances menu, which lists them with their Upgrade button) · Finances menu → Levers: entrance fee, lift pass, parking fee per car · Prices: one price per product (− / +, incl. a campground night), beer hours for riders (all day / from 15:00 / après-bike only / never) · Build → Renaturalize (click where a section of a trail or gravel path starts and ends: it's removed, a trail cut in two becomes Part 1 / Part 2 and the pieces stay closed until connected; draw a trail from a loose end to join it again, or put a gravel path or platform between them; click a lift station, parking lot or platform to tear it down, lifts and parking lots for a fee) · a warning lists unconnected trails when you leave the Build menu, the Trails menu marks them ·
+panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's ends onto loose trail ends, joined in line) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) · Build → Gravel platform (centre, then direction; link paths and trails) · Build → Buildings: snack bar, merch shop, service shop, beer rondel, rental station, campground, pro shop, bike café (centre near a gravel path, platform, station or parking lot, then direction, Enter builds; click one in the world → Finances menu, which lists them with their Upgrade button) · Finances menu → Levers: entrance fee, lift pass, parking fee per car · Prices: one price per product (− / +, incl. a campground night), beer hours · Sponsors: offers (Accept / No), running deals (End), brands to apply to (Park / best trail) · feature overview: Camera on jumps and drops for riders (all day / from 15:00 / après-bike only / never) · Build → Renaturalize (click where a section of a trail or gravel path starts and ends: it's removed, a trail cut in two becomes Part 1 / Part 2 and the pieces stay closed until connected; draw a trail from a loose end to join it again, or put a gravel path or platform between them; click a lift station, parking lot or platform to tear it down, lifts and parking lots for a fee) · a warning lists unconnected trails when you leave the Build menu, the Trails menu marks them ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
 Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu (trails only, gravel paths aren't listed) per trail: worst feature, click the trail (or Features…) for the feature overview + repairs, Rename, Close/Open ·
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →

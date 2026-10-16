@@ -158,6 +158,9 @@ public sealed record CancelJobCommand(int JobId) : ICommand
             case JobKind.BuildFeature:
                 new RemoveTrailFeatureCommand(job.WayId, job.FeatureId).Apply(ctx);
                 break;
+            case JobKind.BuildSign when ctx.State.Sponsorships.FirstOrDefault(s => s.Id == job.FeatureId) is { } deal:
+                Systems.SponsorSystem.End(ctx, deal, "No sign: you cancelled it."); // the deal goes with its sign
+                break;
             default:
                 Jobs.Cancel(ctx, job);
                 break;

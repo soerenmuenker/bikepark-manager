@@ -52,6 +52,9 @@ public sealed class ProductType
     /// <summary>Protective gear: crashes of a guest wearing it are less often serious.</summary>
     public bool Protection { get; set; }
 
+    /// <summary>A video clip from a photo spot, bought after a filmed run (no building sells it).</summary>
+    public bool Clip { get; set; }
+
     /// <summary>Chance per minute between laps (and, scaled up, per stop on the way) that a guest at a bar buys it.</summary>
     public int ImpulsePermille { get; set; }
 
@@ -74,7 +77,7 @@ public sealed class ProductType
         if (CaffeineMinutes is < 0 or > 600) errors.Add($"{p}.caffeineMinutes must be within 0..600");
         if (Lunch && (MinMinutes < 1 || MaxMinutes < MinMinutes || MaxMinutes > 240))
             errors.Add($"{p}: lunch minutes must satisfy 1 <= minMinutes <= maxMinutes <= 240");
-        if ((Lunch ? 1 : 0) + (Merch ? 1 : 0) + (Overnight ? 1 : 0) + (Rental ? 1 : 0) + (Repair ? 1 : 0) + (Protection ? 1 : 0) > 1)
+        if ((Lunch ? 1 : 0) + (Merch ? 1 : 0) + (Overnight ? 1 : 0) + (Rental ? 1 : 0) + (Repair ? 1 : 0) + (Protection ? 1 : 0) + (Clip ? 1 : 0) > 1)
             errors.Add($"{p}: lunch, merch, overnight, rental, repair and protection exclude each other");
         if (Repair && (MinMinutes < 1 || MaxMinutes < MinMinutes || MaxMinutes > 240))
             errors.Add($"{p}: repair minutes must satisfy 1 <= minMinutes <= maxMinutes <= 240");

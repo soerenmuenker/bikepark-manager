@@ -43,6 +43,10 @@ public static class Jobs
                 var feature = way?.Features.FirstOrDefault(f => f.Id == job.FeatureId);
                 var type = feature is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId);
                 return $"{type?.Name ?? "Feature"} on {way?.Name ?? "a trail"}{(feature is null ? "" : $" at {feature.DistanceCm / 100} m")}";
+            case JobKind.BuildSign:
+                var deal = state.Sponsorships.FirstOrDefault(s => s.Id == job.FeatureId);
+                string brand = deal is null ? "a sponsor" : Sponsors.SponsorMath.Find(state, deal.SponsorId)?.Name ?? "a sponsor";
+                return way is null ? $"Sign for {brand} at the park entrance" : $"Sign for {brand} at {way.Name}";
             case JobKind.RepairFeature:
                 var worn = way?.Features.FirstOrDefault(f => f.Id == job.FeatureId);
                 var wornType = worn is null ? null : TrailFeatures.FindType(state.TrailFeatureTypes, worn.TypeId);
@@ -159,6 +163,11 @@ public static class Jobs
                 state.WaysRevision++;
                 Release(state, job);
                 Reopen(ctx, state.Ways.First(w => w.Id == job.WayId));
+                break;
+            case JobKind.BuildSign when state.Sponsorships.FirstOrDefault(s => s.Id == job.FeatureId) is { } sponsored:
+                sponsored.SignBuilt = true;
+                sponsored.SignJobId = 0;
+                ctx.Publish(new SponsorSignBuilt(ctx.Tick, sponsored.Id));
                 break;
             case JobKind.RepairFeature when state.Ways.FirstOrDefault(w => w.Id == job.WayId) is { } trail:
                 if (trail.Features.FirstOrDefault(f => f.Id == job.FeatureId) is { } repaired)

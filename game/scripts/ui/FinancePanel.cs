@@ -3,6 +3,7 @@ using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Facilities;
+using Bikepark.Sim.Sponsors;
 using Bikepark.Sim.State;
 using Godot;
 
@@ -29,6 +30,8 @@ public partial class FinancePanel : HudPanel
         new("Merch", [MoneyCategory.ShopUpkeep, MoneyCategory.MerchGoods], [MoneyCategory.Merch], "Merch sold · the goods sold · upkeep of the shops"),
         new("Parking & camping", [MoneyCategory.CampUpkeep], [MoneyCategory.ParkingFees, MoneyCategory.Camping],
             "Parking fees · nights at the campground · upkeep of the campgrounds"),
+        new("Sponsors & media", [MoneyCategory.CameraUpkeep], [MoneyCategory.Sponsors, MoneyCategory.Clips],
+            "Trail and park sponsors (once their sign stands) · clips sold at photo spots · camera upkeep"),
         new("Bikes", [MoneyCategory.BikeCosts], [MoneyCategory.Rentals, MoneyCategory.Repairs],
             "Bike rentals and repairs · parts and upkeep of rental stations and service shops (new fleet bikes are one-offs)"),
         new("Crew", [MoneyCategory.Wages], [], "Daily wages of your crew (Crew menu: hire and dismiss)"),
@@ -48,6 +51,8 @@ public partial class FinancePanel : HudPanel
 
     private Label _fee = null!, _feeDetail = null!, _liftTicket = null!, _liftTicketDetail = null!;
     private Label? _parking, _parkingDetail;
+    private VBoxContainer? _sponsors;
+    private string _sponsorsSignature = "";
     private VBoxContainer? _loans;
     private string _loansSignature = "";
     private VBoxContainer _transactions = null!;
@@ -93,6 +98,7 @@ public partial class FinancePanel : HudPanel
         BuildBudget(left);
         BuildLevers(right);
         BuildPrices(right);
+        BuildSponsors(right);
         BuildLoans(right);
         BuildTransactions(right);
         BuildBalance(right);
@@ -273,6 +279,103 @@ public partial class FinancePanel : HudPanel
                $"goods cost {p.GoodsCostPermille / 10} % of the price\n{string.Join(" · ", effects)}";
     }
 
+    private void BuildSponsors(VBoxContainer right)
+    {
+        if (Ctx.Sim.State.SponsorTypes.Count == 0) return;
+        var card = Card(right, "SPONSORS — the park and its trails, with benefits");
+        _sponsors = new VBoxContainer();
+        _sponsors.AddThemeConstantOverride("separation", 6);
+        card.AddChild(_sponsors);
+    }
+
+    /// <summary>
+    /// The park sponsor and the trail deals (offers to accept or turn down, applications, running deals with what they
+    /// pay and give), then every brand with what it would sponsor now: apply for the park or its best trail.
+    /// </summary>
+    private void RefreshSponsors(WorldState state)
+    {
+        if (_sponsors is null) return;
+        int level = Ctx.Kpi.Level;
+        long day = GameTime.Day(state.Tick);
+        string signature = $"{level}|{day}|{state.Ways.Count}|{state.WaysRevision}|{string.Join(",", state.Sponsorships.Select(d => $"{d.Id}:{d.Status}:{d.SignBuilt}:{d.PaidCents / 10_000}"))}";
+        if (signature == _sponsorsSignature) return;
+        _sponsorsSignature = signature;
+        foreach (var child in _sponsors.GetChildren()) child.QueueFree();
+
+        string Target(Sponsorship d) => d.IsPark ? "the park" : state.Ways.FirstOrDefault(w => w.Id == d.WayId)?.Name ?? "a trail";
+        var open = state.Sponsorships.Where(d => d.Status != SponsorshipStatus.Ended).OrderBy(d => d.IsPark ? 0 : 1).ThenBy(d => d.Id).ToList();
+        if (open.Count == 0)
+            _sponsors.AddChild(UiTheme.Label("No sponsors yet: brands come by for very good trails, or apply below.", 12, UiTheme.TextDim));
+        foreach (var deal in open)
+        {
+            if (SponsorMath.Find(state, deal.SponsorId) is not { } brand) continue;
+            var block = new VBoxContainer();
+            block.AddThemeConstantOverride("separation", 0);
+            var head = Row(8);
+            var name = UiTheme.Label($"{brand.Name} · {Target(deal)}", 13, Color.FromHtml(brand.Color).Lightened(0.35f), bold: true);
+            name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            head.AddChild(name);
+            int id = deal.Id;
+            int scale = deal.IsPark ? 1000 : state.SponsorRules.TrailBenefitPermille;
+            long pays = deal.IsPark ? brand.ParkDailyCents : brand.DailyCents;
+            string extra = deal.IsPark ? brand.ParkPerVisitorCents > 0 ? $" + {UiTheme.Money(brand.ParkPerVisitorCents)}/visitor" : ""
+                : brand.PerRunCents > 0 ? $" + {UiTheme.Money(brand.PerRunCents)}/run" : "";
+            string detail;
+            switch (deal.Status)
+            {
+                case SponsorshipStatus.Offered:
+                    head.AddChild(UiTheme.Button("Accept", () => Ctx.Host.Enqueue(new AcceptSponsorCommand(id)),
+                        "The crew puts up the brand's sign at the entrance; it pays from the day the sign stands"));
+                    head.AddChild(UiTheme.Button("No", () => Ctx.Host.Enqueue(new DeclineSponsorCommand(id)), "Turn the offer down"));
+                    detail = $"Offers {UiTheme.Money(pays)}/day{extra} for {(deal.IsPark ? brand.ParkDays : brand.Days)} days · until day {GameTime.Day(deal.ExpiresTick) + 1}";
+                    break;
+                case SponsorshipStatus.Applied:
+                    detail = $"You applied: answer on day {GameTime.Day(deal.AnswerTick) + 1}";
+                    break;
+                default:
+                    head.AddChild(UiTheme.Button("End", () => Ctx.Host.Enqueue(new EndSponsorshipCommand(id)), "End the deal now (the money stops)"));
+                    detail = (deal.SignBuilt ? $"{UiTheme.Money(pays)}/day{extra} · paid {UiTheme.Money(deal.PaidCents)}" : "The crew is putting up the sign (Crew menu)")
+                             + $" · {Math.Max(0, deal.EndDay - day)} days left";
+                    break;
+            }
+            block.AddChild(head);
+            block.AddChild(UiTheme.Label(detail, 11, UiTheme.TextDim));
+            block.AddChild(UiTheme.Label(SponsorMath.Describe(brand, scale), 11, UiTheme.Good));
+            _sponsors.AddChild(block);
+        }
+
+        _sponsors.AddChild(UiTheme.Label("BRANDS — apply, they answer in a few days", 11, UiTheme.TextDim, bold: true));
+        var network = Ctx.Sim.Network;
+        foreach (var brand in state.SponsorTypes.OrderBy(b => b.RequiredLevel))
+        {
+            var row = Row(6);
+            var label = UiTheme.Label(brand.Name, 12, bold: true);
+            label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            label.TooltipText = $"{brand.Name}: {SponsorMath.Describe(brand)} (a park deal in full, a trail deal {state.SponsorRules.TrailBenefitPermille / 10} %)";
+            row.AddChild(label);
+            bool busy = SponsorMath.Open(state, brand.Id) is not null;
+            string id = brand.Id;
+            if (brand.SponsorsParks)
+            {
+                string? misfit = SponsorMath.ParkMisfit(state, brand, level);
+                var park = UiTheme.Button("Park", () => Ctx.Host.Enqueue(new ApplySponsorCommand(id, 0)),
+                    misfit ?? $"Ask {brand.Name} to sponsor the whole park: {UiTheme.Money(brand.ParkDailyCents)}/day, {SponsorMath.Describe(brand)}");
+                park.Disabled = busy || misfit is not null || state.Sponsorships.Any(d => d.IsPark && d.Status != SponsorshipStatus.Ended);
+                row.AddChild(park);
+            }
+            var best = SponsorMath.BestTrail(state, network, brand, level);
+            string? why = best is null
+                ? network.Trails.Select(t => SponsorMath.TrailMisfit(state, network, brand, t, level)).FirstOrDefault(m => m is not null) ?? "No trail fits."
+                : null;
+            int wayId = best?.Id ?? 0;
+            var trail = UiTheme.Button(best is null ? "Trail" : best.Name, () => Ctx.Host.Enqueue(new ApplySponsorCommand(id, wayId)),
+                why ?? $"Ask {brand.Name} to sponsor {best!.Name}: {UiTheme.Money(brand.DailyCents)}/day, {SponsorMath.Describe(brand, state.SponsorRules.TrailBenefitPermille)}");
+            trail.Disabled = busy || best is null;
+            row.AddChild(trail);
+            _sponsors.AddChild(row);
+        }
+    }
+
     private void BuildLoans(VBoxContainer right)
     {
         if (Ctx.Sim.State.LoanRules.Offers.Count == 0) return;
@@ -343,6 +446,7 @@ public partial class FinancePanel : HudPanel
         _advice.Text = Advice(state, yesterday, loansPerDay);
         RefreshLevers(state, yesterday);
         RefreshPrices(state);
+        RefreshSponsors(state);
         RefreshLoans();
         RefreshTransactions(state);
         _money.Text = UiTheme.MoneyExact(f.MoneyCents);
@@ -608,6 +712,7 @@ public partial class FinancePanel : HudPanel
         "Merch" => state.FacilityTypes.Any(t => t.Kind == FacilityKind.Shop),
         "Parking & camping" => state.ParkingLots.Count > 0 || state.FacilityTypes.Any(t => t.Kind == FacilityKind.Campground),
         "Bikes" => state.FacilityTypes.Any(t => t.Kind is FacilityKind.Rental or FacilityKind.Service),
+        "Sponsors & media" => state.SponsorTypes.Count > 0,
         "Park staff" => state.Rules.DailyUpkeepCents > 0,
         "Loans" => state.LoanRules.Offers.Count > 0 || state.Loans.Count > 0,
         _ => true,
@@ -639,6 +744,9 @@ public partial class FinancePanel : HudPanel
         MoneyCategory.Rentals => "bike rentals",
         MoneyCategory.Repairs => "repairs",
         MoneyCategory.BikeCosts => "bike parts & upkeep",
+        MoneyCategory.Sponsors => "sponsors",
+        MoneyCategory.Clips => "video clips",
+        MoneyCategory.CameraUpkeep => "camera upkeep",
         MoneyCategory.Merch => "merch",
         MoneyCategory.LiftFees => "bike access fees",
         MoneyCategory.LiftUpkeep => "own lift upkeep",

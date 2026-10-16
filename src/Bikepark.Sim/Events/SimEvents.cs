@@ -146,6 +146,8 @@ public sealed record DayReport(
     long CampingCents = 0,
     long RentalCents = 0,
     long RepairCents = 0,
+    long SponsorCents = 0,
+    long ClipCents = 0,
     State.MoneyByCategory? ByCategory = null);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
@@ -269,6 +271,19 @@ public sealed record ProductSold(long Tick, int GuestId, int FacilityId, string 
 
 /// <summary>A guest going home stays at a bar for après-bike until <paramref name="UntilTick"/>.</summary>
 public sealed record ApresStarted(long Tick, int GuestId, int FacilityId, long UntilTick) : ISimEvent;
+
+/// <summary>A brand offers a deal (for a trail, or the park: way 0), or answered the park's application.</summary>
+public sealed record SponsorOffered(long Tick, int SponsorshipId, string SponsorId, int WayId) : ISimEvent;
+public sealed record SponsorAnswered(long Tick, int SponsorshipId, bool Yes, string Reason) : ISimEvent;
+
+/// <summary>A deal was accepted (the sign is being put up), its sign stands (it pays from now), or it ended.</summary>
+public sealed record SponsorshipStarted(long Tick, int SponsorshipId) : ISimEvent;
+public sealed record SponsorSignBuilt(long Tick, int SponsorshipId) : ISimEvent;
+public sealed record SponsorshipEnded(long Tick, int SponsorshipId, string Reason) : ISimEvent;
+
+/// <summary>A camera was put up at a feature (or taken down), and a rider bought their clip.</summary>
+public sealed record CameraPlaced(long Tick, int WayId, int FeatureId, bool Placed) : ISimEvent;
+public sealed record ClipSold(long Tick, int GuestId, int WayId, int FeatureId, long PriceCents) : ISimEvent;
 
 /// <summary>A rental bike worn down to 0 % was retired from the fleet.</summary>
 public sealed record RentalBikeRetired(long Tick, int StationId, int BikeId) : ISimEvent;

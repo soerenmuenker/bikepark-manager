@@ -1,0 +1,47 @@
+// Brands that sponsor trails and whole parks (SponsorType). Copied into the world when a scenario starts.
+// A brand deals with the park from requiredLevel. Trail deals: the trail needs at least minRating, minStarsTenths of
+// fun (its riders' average fun as 1.0..5.0 stars) and minRunsPerDay; the deal renames it ("shortName trail") for `days`
+// and pays dailyCents + perRunCents per run, once the crew has put up the brand's sign at its entrance.
+// Park deals (parkDailyCents > 0): at most one at a time, from parkMinLevel and a park rating of parkMinStarsTenths;
+// pays parkDailyCents + parkPerVisitorCents per visitor for parkDays, once the sign stands at the park entrance; guests
+// arriving take the brand with `mood` (negative: too commercial).
+// benefits: what the deal gives besides money, in full for a park deal, a share (sponsorRules.trailBenefitPermille) for a
+// trail deal; the best of a kind counts. Kinds: bikeDiscount (rental bikes), goodsDiscount (targets: product ids),
+// buildingDiscount (targets: building ids), parkingRevenue (on top of parking fees), loanInterest (new loans),
+// liftDiscount (building and restoring lifts), moodBoost (targets: product ids, permille of their mood).
+[
+  { "id": "valley_cycles", "name": "Valley Cycles", "shortName": "Valley Cycles", "color": "#2f7fd0", "requiredLevel": 0,
+    "minRating": "green", "minStarsTenths": 30, "minRunsPerDay": 20, "dailyCents": 4000, "perRunCents": 20, "days": 14,
+    "benefits": [ { "kind": "goodsDiscount", "permille": 300, "targets": ["repair", "protectors"] } ] },
+  { "id": "talbank", "name": "Talbank", "shortName": "Talbank", "color": "#1f5f3f", "requiredLevel": 2,
+    "minRating": "green", "minStarsTenths": 33, "minRunsPerDay": 30, "dailyCents": 5000, "days": 14,
+    "parkDailyCents": 45000, "parkPerVisitorCents": 30, "parkMinLevel": 4, "parkMinStarsTenths": 35, "parkDays": 28, "mood": -10,
+    "benefits": [ { "kind": "loanInterest", "permille": 500 } ] },
+  { "id": "bergbraeu", "name": "Bergbräu", "shortName": "Bergbräu", "color": "#c8961e", "requiredLevel": 1,
+    "minRating": "blue", "minStarsTenths": 32, "minRunsPerDay": 40, "dailyCents": 6000, "perRunCents": 25, "days": 14,
+    "parkDailyCents": 40000, "parkPerVisitorCents": 50, "parkMinLevel": 4, "parkMinStarsTenths": 35, "parkDays": 28, "mood": -10,
+    "benefits": [ { "kind": "goodsDiscount", "permille": 600, "targets": ["beer", "radler"] } ] },
+  { "id": "summit", "name": "Summit Outdoor", "shortName": "Summit", "color": "#3a8a8a", "requiredLevel": 3,
+    "minRating": "blue", "minStarsTenths": 34, "minRunsPerDay": 50, "dailyCents": 8000, "perRunCents": 20, "days": 21,
+    "parkDailyCents": 60000, "parkPerVisitorCents": 40, "parkMinLevel": 5, "parkMinStarsTenths": 36, "parkDays": 28, "mood": 10,
+    "benefits": [ { "kind": "buildingDiscount", "permille": 300, "targets": ["campground", "pro_shop"] },
+                  { "kind": "goodsDiscount", "permille": 300, "targets": ["merch"] } ] },
+  { "id": "bolt", "name": "Bolt Energy", "shortName": "Bolt", "color": "#e04a1a", "requiredLevel": 2,
+    "minRating": "red", "minStarsTenths": 34, "minRunsPerDay": 40, "dailyCents": 9000, "perRunCents": 40, "days": 14,
+    "parkDailyCents": 50000, "parkPerVisitorCents": 50, "parkMinLevel": 5, "parkMinStarsTenths": 36, "parkDays": 28, "mood": -20,
+    "benefits": [ { "kind": "goodsDiscount", "permille": 500, "targets": ["coffee", "snack"] },
+                  { "kind": "moodBoost", "permille": 500, "targets": ["coffee", "snack"] } ] },
+  { "id": "gravity", "name": "Gravity Bikes", "shortName": "Gravity", "color": "#8a2be2", "requiredLevel": 3,
+    "minRating": "red", "minStarsTenths": 36, "minRunsPerDay": 60, "dailyCents": 12000, "perRunCents": 50, "days": 21,
+    "parkDailyCents": 80000, "parkPerVisitorCents": 60, "parkMinLevel": 6, "parkMinStarsTenths": 38, "parkDays": 42, "mood": 20,
+    "benefits": [ { "kind": "bikeDiscount", "permille": 400 },
+                  { "kind": "goodsDiscount", "permille": 400, "targets": ["repair", "protectors"] } ] },
+  { "id": "steelrope", "name": "Steelrope Lifts", "shortName": "Steelrope", "color": "#5a6a7a", "requiredLevel": 5,
+    "minRating": "red", "minStarsTenths": 37, "minRunsPerDay": 60, "dailyCents": 10000, "days": 21,
+    "parkDailyCents": 70000, "parkPerVisitorCents": 40, "parkMinLevel": 7, "parkMinStarsTenths": 38, "parkDays": 42,
+    "benefits": [ { "kind": "liftDiscount", "permille": 300 } ] },
+  { "id": "alpen_motors", "name": "Alpen Motors", "shortName": "Alpen Motors", "color": "#202020", "requiredLevel": 4,
+    "minRating": "green", "minStarsTenths": 35, "minRunsPerDay": 80, "dailyCents": 10000, "perRunCents": 30, "days": 21,
+    "parkDailyCents": 100000, "parkPerVisitorCents": 80, "parkMinLevel": 7, "parkMinStarsTenths": 38, "parkDays": 42, "mood": -30,
+    "benefits": [ { "kind": "parkingRevenue", "permille": 500 } ] }
+]

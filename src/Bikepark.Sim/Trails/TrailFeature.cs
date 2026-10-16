@@ -137,6 +137,10 @@ public sealed class TrailFeature
 
     /// <summary>Riders who crashed on it.</summary>
     public int Crashes { get; set; }
+
+    /// <summary>A photo spot: a camera films riders landing it; they may buy the clip after the run (jumps and drops only).</summary>
+    public bool Camera { get; set; }
+    public int ClipsSold { get; set; }
 }
 
 /// <summary>A placed feature resolved against the catalog: the stretch of trail it covers.</summary>

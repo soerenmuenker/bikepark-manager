@@ -180,7 +180,7 @@ internal sealed partial class RepairDialog : PanelContainer
 
         var worn = _overview ? built : built.Where(f => f.Condition < TrailCondition.Perfect).ToList();
         string signature = string.Join(';', worn.Select(f =>
-            $"{f.Id}:{f.Condition / 20_000}:{Jobs.ForRepair(state, f.Id)?.Progress / 20_000}")) + $"|{_workers}|{state.Crew.Count}";
+            $"{f.Id}:{f.Condition / 20_000}:{Jobs.ForRepair(state, f.Id)?.Progress / 20_000}:{f.Camera}:{f.ClipsSold}")) + $"|{_workers}|{state.Crew.Count}";
         if (signature == _signature) return;
         _signature = signature;
 
@@ -215,12 +215,26 @@ internal sealed partial class RepairDialog : PanelContainer
         }
         if (feature.Crashes > 0)
             detail += $" · {feature.Crashes} crash{(feature.Crashes == 1 ? "" : "es")} here";
+        if (feature.Camera)
+            detail += $" · camera: {feature.ClipsSold} clips sold";
         texts.AddChild(UiTheme.Label(detail, 11, feature.Crashes > 0 ? UiTheme.Warn : UiTheme.TextDim));
         row.AddChild(texts);
 
         row.AddChild(UiTheme.Label($"{permille / 10} %", 15, color, bold: true));
 
         int wayId = way.Id, featureId = feature.Id, workers = _workers;
+        // Photo spots: a camera at a jump or drop sells riders their clip.
+        if (Bikepark.Sim.Reputation.ReviewMath.IsJump(type.Kind))
+        {
+            long cost = state.SponsorRules.CameraCostCents;
+            var camera = feature.Camera
+                ? UiTheme.Button("Camera ✕", () => _ctx.Host.Enqueue(new RemoveCameraCommand(wayId, featureId)), "Take the camera down")
+                : UiTheme.Button($"Camera {UiTheme.Money(cost)}", () => _ctx.Host.Enqueue(new PlaceCameraCommand(wayId, featureId)),
+                    $"A photo spot: riders landing it may buy their clip after the run (price in Finances); clips shared online bring a little " +
+                    $"demand. Upkeep {UiTheme.Money(state.SponsorRules.CameraUpkeepPerDayCents)}/day");
+            camera.Disabled = !feature.Built || !feature.Camera && state.Finance.MoneyCents < cost;
+            row.AddChild(camera);
+        }
         var button = UiTheme.Button(job is not null ? "Repairing…" : "Repair",
             () => _ctx.Host.Enqueue(new RepairFeatureCommand(wayId, featureId, workers)),
             "Send the crew: the repair goes to the front of the queue, the trail is closed while they work");

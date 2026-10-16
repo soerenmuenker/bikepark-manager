@@ -95,6 +95,11 @@ public sealed class WorldState
 
     public Facilities.FacilityRules FacilityRules { get; set; } = new();
 
+    /// <summary>Brands that sponsor trails and the park (content), their rules (and the photo spots'), and the deals.</summary>
+    public List<Sponsors.SponsorType> SponsorTypes { get; set; } = [];
+    public Sponsors.SponsorRules SponsorRules { get; set; } = new();
+    public List<Sponsors.Sponsorship> Sponsorships { get; set; } = [];
+
     /// <summary>Land the park can own (content, from the scenario). None = all land is the park's.</summary>
     public List<Parcel> Parcels { get; set; } = [];
 
@@ -291,6 +296,12 @@ public sealed class FinanceState
     public long ParkingTodayCents { get; set; }
     public long TotalCampingCents { get; set; }
     public long CampingTodayCents { get; set; }
+
+    /// <summary>Sponsor money and clips sold at photo spots (included in the revenue).</summary>
+    public long TotalSponsorCents { get; set; }
+    public long SponsorTodayCents { get; set; }
+    public long TotalClipCents { get; set; }
+    public long ClipTodayCents { get; set; }
 
     /// <summary>Bike rentals and repairs (included in the revenue).</summary>
     public long TotalRentalCents { get; set; }
@@ -588,6 +599,10 @@ public sealed class Guest
 
     /// <summary>Wears protectors from the pro shop: crashes are less often serious.</summary>
     public bool Protected { get; set; }
+
+    /// <summary>Filmed landing a jump with a camera this run (the feature; 0: not filmed), and how much they enjoyed it.</summary>
+    public int FilmedFeatureId { get; set; }
+    public int FilmedFun { get; set; }
 
     // ---- Visit, for the review written on leaving (see Reputation.ReviewMath) ----
 

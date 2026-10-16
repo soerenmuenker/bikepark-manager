@@ -125,11 +125,14 @@ public partial class CrewView : Node3D
             return new Vector3(tree.X / 100f, 0, tree.Z / 100f);
         }
         var network = sim.Network;
+        if (job.Kind == JobKind.BuildSign && job.WayId == 0)
+            return network.BaseHub is { } hub ? new Vector3(hub.Pad.CenterX / 100f, 0, hub.Pad.CenterZ / 100f) + Vector3.Right * (hub.Pad.HalfWidthCm / 100f + 4f) : null;
         if (!network.TryGetGeometry(job.WayId, out var g)) return null;
         long done = job.WorkMinutes <= 0 ? 0 : Math.Min(job.Progress, job.WorkMinutes * 1000) * 1000 / (job.WorkMinutes * 1000);
         long at = job.Kind switch
         {
             JobKind.BuildWay => g.LengthCm * done / 1000,
+            JobKind.BuildSign => Math.Min(400, g.LengthCm),
             JobKind.BuildFeature when network.FeaturesOn(job.WayId).FirstOrDefault(f => f.Feature.Id == job.FeatureId) is { Type: not null } f
                 => f.StartCm + (f.EndCm - f.StartCm) * done / 1000,
             _ => -1,

@@ -10,6 +10,7 @@
 // half the energy meanwhile). overnight: a night at a campground (campers pay their nights on arrival; the price decides
 // how many arriving guests camp). rental: a rental bike for the day (rental stations; the price decides how many guests
 // without a bike come). repair: fixing a bike broken in a crash at a service shop (seated minMinutes..maxMinutes).
+// clip: a video clip from a photo spot (a camera at a jump), bought after a filmed run.
 // protection: protectors from the pro shop (an impulse buy; crashes are less often serious). Catalog order is the order
 // guests consider things in.
 [
@@ -32,5 +33,7 @@
   { "id": "repair", "name": "Bike repair", "referencePriceCents": 2500, "maxPriceCents": 8000, "goodsCostPermille": 300,
     "elasticityPermille": 600, "repair": true, "minMinutes": 15, "maxMinutes": 30 },
   { "id": "protectors", "name": "Protectors", "referencePriceCents": 4500, "maxPriceCents": 12000, "goodsCostPermille": 500,
-    "elasticityPermille": 1000, "happiness": 10, "protection": true, "impulsePermille": 3 }
+    "elasticityPermille": 1000, "happiness": 10, "protection": true, "impulsePermille": 3 },
+  { "id": "clip", "name": "Video clip", "referencePriceCents": 1200, "maxPriceCents": 5000, "goodsCostPermille": 50,
+    "elasticityPermille": 1000, "happiness": 20, "clip": true }
 ]

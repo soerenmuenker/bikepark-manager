@@ -82,11 +82,26 @@ their buildings sold, at their old prices; the new buildings and upgrades come w
 - **Pro shop** (level 3): protectors (an impulse buy between laps) halve the share of serious crashes, plus merch.
 - The Demo has a rental station with 15 bikes and a service shop.
 
+## 9.4 Sponsors and photo spots (built)
+
+- **Trail sponsors:** apply to a brand for a trail (it answers in two days) or wait for brands to offer on their own
+  for very good trails (rating, fun stars, runs a day). Accepting renames the trail ("Gravity Red Rocket") and the
+  crew puts up a big sign in the brand's colour at its entrance; the deal pays per day and per run once the sign stands.
+- **Park sponsor:** one at a time, worth several trail deals: per day and per visitor, a longer contract, and it
+  needs a park level and rating stars. The park shows as "… presented by …" and arriving guests take the brand well
+  or badly (`mood`).
+- **Benefits:** every brand gives something in its line: Valley Cycles cheaper repair parts and protectors, Talbank
+  half the loan interest, Bergbräu cheaper beer, Summit Outdoor cheaper campgrounds and pro shops, Bolt Energy cheaper
+  coffee and snacks that cheer more, Gravity Bikes cheap rental bikes, Steelrope cheaper lifts, Alpen Motors half again
+  on every parking fee. A park deal gives them in full, a trail deal 40 %; the best of a kind counts.
+- Deals end at their last day, when the trail is renaturalized or closed for more than two days, or when you end them.
+- **Photo spots:** a camera at a built jump or drop (3,500 €, 30 €/day). Riders filmed landing it may buy their clip
+  (12 €) after the run, the more they enjoyed the jump the likelier; every clip shared adds a little buzz (demand).
+
 ## Roadmap
 
-- **9.4 Brands and media:** trail sponsorship and naming rights (daily income, brand mood; ties into the Phase 10
-  politics of town businesses and council); a photo/video spot at a signature jump (sells clips after the run, boosts
-  influencer posts).
+- **Phase 10 politics:** local businesses and the council can react to sponsors (local brands welcome, big brands
+  controversial).
 
 ## More ideas
 

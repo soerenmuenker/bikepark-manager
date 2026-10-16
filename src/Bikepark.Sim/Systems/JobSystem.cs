@@ -80,6 +80,8 @@ public sealed class JobSystem : ISimSystem
         JobKind.RepairFeature => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Features.Any(f => f.Id == job.FeatureId && f.Built) == true,
         JobKind.BuildFeature => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Built == true
                                 && (job.WoodTaken || state.WoodStock >= job.Wood),
+        JobKind.BuildSign => state.Sponsorships.Any(s => s.Id == job.FeatureId && s.Status == Sponsors.SponsorshipStatus.Active)
+                             && (job.WoodTaken || state.WoodStock >= job.Wood),
         _ => true,
     };
 

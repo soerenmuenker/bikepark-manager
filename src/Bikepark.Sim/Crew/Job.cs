@@ -25,6 +25,12 @@ public enum JobKind : byte
 
     /// <summary>Repair a worn feature (<see cref="Job.WayId"/>, <see cref="Job.FeatureId"/>): when done it is in perfect condition. The trail is closed meanwhile.</summary>
     RepairFeature = 3,
+
+    /// <summary>
+    /// Put up a sponsor's sign (<see cref="Job.FeatureId"/> is the sponsorship): at the entrance of <see cref="Job.WayId"/>, or
+    /// at the park's entrance (way 0). The trail stays open.
+    /// </summary>
+    BuildSign = 4,
 }
 
 /// <summary>

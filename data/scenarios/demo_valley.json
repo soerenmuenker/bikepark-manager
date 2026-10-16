@@ -217,6 +217,8 @@
   "toolsFile": "../tools.json",
   "facilityTypesFile": "../facility_types.json",
   "productTypesFile": "../products.json",
+  // Brands that sponsor trails and the park (data/sponsors.json) and how they deal (SponsorRules: defaults), photo spots too.
+  "sponsorTypesFile": "../sponsors.json",
   // Bars and shops (FacilityRules): they need a gravel path or hub within accessReachMeters and serve guests within
   // serveReachMeters. Après-bike: guests done for the day may stay at a bar serving beer until apresEndMinute (19:30).
   "facilityRules": {

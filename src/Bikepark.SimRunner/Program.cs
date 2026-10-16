@@ -94,6 +94,15 @@ public static class Program
         sim.Events.Subscribe<DebtWarning>(e => loanLog.Add($"{GameTime.Format(e.Tick)} in the red for {e.DaysInDebt} day(s): bankrupt in {e.DaysLeft}"));
         sim.Events.Subscribe<ParkBankrupt>(e => loanLog.Add($"{GameTime.Format(e.Tick)} BANKRUPT after {e.DaysInDebt} days in the red"));
 
+        var sponsorLog = new List<string>();
+        string Brand(string id) => sim.State.SponsorTypes.FirstOrDefault(b => b.Id == id)?.Name ?? id;
+        string Target(int wayId) => wayId == 0 ? "the park" : sim.State.Ways.FirstOrDefault(w => w.Id == wayId)?.Name ?? $"way {wayId}";
+        sim.Events.Subscribe<SponsorOffered>(e => sponsorLog.Add($"{GameTime.Format(e.Tick)} {Brand(e.SponsorId)} offers to sponsor {Target(e.WayId)}"));
+        sim.Events.Subscribe<SponsorAnswered>(e => sponsorLog.Add($"{GameTime.Format(e.Tick)} answer to application {e.SponsorshipId}: {(e.Yes ? "yes" : "no: " + e.Reason)}"));
+        sim.Events.Subscribe<SponsorshipStarted>(e => sponsorLog.Add($"{GameTime.Format(e.Tick)} deal {e.SponsorshipId} accepted"));
+        sim.Events.Subscribe<SponsorSignBuilt>(e => sponsorLog.Add($"{GameTime.Format(e.Tick)} deal {e.SponsorshipId}: the sign stands"));
+        sim.Events.Subscribe<SponsorshipEnded>(e => sponsorLog.Add($"{GameTime.Format(e.Tick)} deal {e.SponsorshipId} ended: {e.Reason}"));
+
         var crashes = new List<string>();
         sim.Events.Subscribe<RiderCrashed>(e => crashes.Add(
             $"{GameTime.Format(e.Tick)} {e.Severity} {e.Cause} on {sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId)?.Name} at {e.Cm / 100} m"
@@ -135,6 +144,7 @@ public static class Program
             Land: LandReport(sim, landLog),
             Loans: LoansReport(sim, loanLog),
             Facilities: FacilitiesReport(sim),
+            Sponsors: SponsorsReport(sim, sponsorLog),
             Ways: WayReports(sim),
             Lifts: LiftReports(sim),
             Crew: CrewReport(sim, completed),
@@ -190,6 +200,19 @@ public static class Program
             state.Parcels.Select(p => new ParcelReport(p.Id, p.Name, state.OwnedParcelIds.Contains(p.Id), p.RequiredLevel, p.PriceCents,
                 Bikepark.Sim.Land.LandMath.AreaSquareMeters(p.Outline))).ToList(),
             state.Finance.TotalLandCents, state.Finance.TotalLiftBuildCents, state.Finance.TotalLiftUpkeepCents, log);
+    }
+
+    private static SponsorsReport? SponsorsReport(Simulation sim, List<string> log)
+    {
+        var state = sim.State;
+        if (state.SponsorTypes.Count == 0) return null;
+        var cameras = state.Ways.SelectMany(w => w.Features.Where(f => f.Camera).Select(f => new CameraReport(w.Name, f.TypeId, f.ClipsSold))).ToList();
+        return new SponsorsReport(
+            state.Sponsorships.Select(d => new DealReport(d.Id, state.SponsorTypes.FirstOrDefault(b => b.Id == d.SponsorId)?.Name ?? d.SponsorId,
+                d.WayId == 0 ? "park" : state.Ways.FirstOrDefault(w => w.Id == d.WayId)?.Name ?? $"way {d.WayId}", d.Status.ToString(), d.SignBuilt,
+                d.PaidCents, d.Note)).ToList(),
+            Bikepark.Sim.Sponsors.SponsorMath.ParkTitle(state), state.Finance.TotalSponsorCents, state.Finance.TotalClipCents, cameras,
+            state.Reputation.BuzzPermille, log);
     }
 
     private static FacilitiesReport? FacilitiesReport(Simulation sim)
@@ -403,6 +426,13 @@ internal sealed record LiftReport(
 internal sealed record ParcelReport(string Id, string Name, bool Owned, int RequiredLevel, long PriceCents, long AreaSquareMeters);
 
 /// <summary>Seats: a bar's seats, a campground's pitches.</summary>
+internal sealed record DealReport(int Id, string Brand, string Target, string Status, bool SignBuilt, long PaidCents, string Note);
+
+internal sealed record CameraReport(string Trail, string Feature, int ClipsSold);
+
+internal sealed record SponsorsReport(List<DealReport> Deals, string ParkTitle, long SponsorCents, long ClipCents, List<CameraReport> Cameras,
+    int BuzzPermille, List<string> Log);
+
 internal sealed record FacilityReport(int Id, string Name, string TypeId, int Level, List<string> Upgrades, int Seats, List<string> Products,
     int Customers, long RevenueCents);
 
@@ -528,6 +558,7 @@ internal sealed record RunnerOutput(
     LandReport? Land,
     LoansReport? Loans,
     FacilitiesReport? Facilities,
+    SponsorsReport? Sponsors,
     List<WayReport> Ways,
     List<LiftReport> Lifts,
     CrewReport? Crew,

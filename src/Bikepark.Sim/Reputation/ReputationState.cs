@@ -41,6 +41,9 @@ public sealed class ReputationState
     /// <summary>An influencer comes today: the next guest admitted is them.</summary>
     public bool InfluencerDue { get; set; }
 
+    /// <summary>Clips shared online lately: extra demand (permille), fading day by day (see Sponsors.SponsorRules).</summary>
+    public int BuzzPermille { get; set; }
+
     /// <summary>The day the last influencer was booked (-1: none yet).</summary>
     public long LastInfluencerDay { get; set; } = -1;
 

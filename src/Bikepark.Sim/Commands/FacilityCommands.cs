@@ -43,10 +43,11 @@ public sealed record UpgradeFacilityCommand(int FacilityId) : ICommand
         var type = FacilityMath.FindType(state, facility.TypeId)!;
         var upgrade = FacilityMath.NextUpgrade(type, facility)!;
         facility.Level++;
-        if (upgrade.CostCents > 0)
+        long cost = FacilityMath.UpgradeCost(state, type, upgrade);
+        if (cost > 0)
         {
-            state.Finance.Invest(MoneyCategory.Buildings, upgrade.CostCents, ctx.Tick, $"{facility.Name}: {upgrade.Name}");
-            state.Finance.TotalFacilityBuildCents += upgrade.CostCents;
+            state.Finance.Invest(MoneyCategory.Buildings, cost, ctx.Tick, $"{facility.Name}: {upgrade.Name}");
+            state.Finance.TotalFacilityBuildCents += cost;
         }
         ctx.Publish(new FacilityUpgraded(ctx.Tick, facility.Id, upgrade.Name, facility.Level));
     }
@@ -82,7 +83,7 @@ public sealed record BuyRentalBikesCommand(int FacilityId, int Count) : ICommand
         var type = FacilityMath.FindType(state, station.TypeId)!;
         for (int i = 0; i < Count; i++)
             station.Fleet.Add(new RentalBike { Id = state.AllocateEntityId() });
-        long cost = Count * type.BikeCostCents;
+        long cost = Count * FacilityMath.BikeCost(state, type);
         state.Finance.Invest(MoneyCategory.Buildings, cost, ctx.Tick, $"{station.Name}: {Count} rental bike{(Count == 1 ? "" : "s")}");
         state.Finance.TotalFacilityBuildCents += cost;
     }

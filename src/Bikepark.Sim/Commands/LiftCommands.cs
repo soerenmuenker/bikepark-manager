@@ -68,8 +68,8 @@ public sealed record BuildLiftCommand(
         if (Contracted)
         {
             // The contractor builds it; until then it carries nobody.
-            cost = plan.Type!.BuildCostCents;
-            state.Finance.Invest(MoneyCategory.LiftBuild, cost, ctx.Tick, $"Ordered {plan.Type.Name.ToLowerInvariant()} {lift.Name}");
+            cost = LiftWorks.BuildCost(state, plan.Type!);
+            state.Finance.Invest(MoneyCategory.LiftBuild, cost, ctx.Tick, $"Ordered {plan.Type!.Name.ToLowerInvariant()} {lift.Name}");
             state.Finance.TotalLiftBuildCents += cost;
             lift.ReadyTick = LiftWorks.ReadyTick(state, ctx.Tick, plan.Type.BuildDays);
             lift.BikeCarrierPermille = 0;
@@ -147,7 +147,7 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
             if (Facilities.FacilityMath.CannotBuild(ctx.State, level, type) is { } locked) return locked;
             if (type.Upgrades.Take(Level).FirstOrDefault(u => ctx.State.Rules.UnlockLevel(level) < u.RequiredLevel) is { } gated)
                 return $"The {gated.Name.ToLowerInvariant()} needs park level {gated.RequiredLevel} (you are level {level}).";
-            if (ctx.State.Finance.MoneyCents < Cost(type)) return $"Not enough money: it costs {Cost(type) / 100:N0} €.";
+            if (ctx.State.Finance.MoneyCents < Cost(ctx.State, type)) return $"Not enough money: it costs {Cost(ctx.State, type) / 100:N0} €.";
         }
         return Plan(ctx).FirstError;
     }
@@ -171,17 +171,20 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
         });
         for (int i = 0; i < Bikes; i++)
             state.Facilities[^1].Fleet.Add(new Facilities.RentalBike { Id = state.AllocateEntityId() });
-        if (Origin != WayOrigin.Scenario && Cost(type) > 0)
+        long cost = Cost(state, type);
+        if (Origin != WayOrigin.Scenario && cost > 0)
         {
-            state.Finance.Invest(MoneyCategory.Buildings, Cost(type), ctx.Tick, $"Built {state.Facilities[^1].Name}");
-            state.Finance.TotalFacilityBuildCents += Cost(type);
+            state.Finance.Invest(MoneyCategory.Buildings, cost, ctx.Tick, $"Built {state.Facilities[^1].Name}");
+            state.Finance.TotalFacilityBuildCents += cost;
         }
         ctx.Publish(new FacilityBuilt(ctx.Tick, id, type.Name));
     }
 
     /// <summary>The building and the upgrades it comes with.</summary>
-    private long Cost(Facilities.FacilityType type) =>
-        type.BuildCostCents + type.Upgrades.Take(Level).Sum(u => u.CostCents) + Bikes * type.BikeCostCents;
+    /// <summary>The building, the upgrades it comes with and its first bikes, after any sponsor discounts.</summary>
+    private long Cost(WorldState state, Facilities.FacilityType type) =>
+        Facilities.FacilityMath.BuildCost(state, type) + type.Upgrades.Take(Level).Sum(u => Facilities.FacilityMath.UpgradeCost(state, type, u))
+        + Bikes * Facilities.FacilityMath.BikeCost(state, type);
 
     private ParkingPlan Plan(SimContext ctx) =>
         StructurePlanner.PlanFacility(ctx.Terrain, ctx.Network, ctx.State, TypeId, Center, Toward, scenario: Origin == WayOrigin.Scenario);
@@ -279,7 +282,7 @@ public sealed record RestoreLiftCommand(int LiftId) : ICommand
         if (!LiftWorks.StationsOwned(state, lift)) return $"{lift.Name} stands on land the park doesn't own.";
         var type = LiftNetwork.FindType(state, lift.TypeId);
         if (type is null) return "Unknown lift type.";
-        if (state.Finance.MoneyCents < type.RestoreCostCents) return $"Not enough money: restoring costs {type.RestoreCostCents / 100:N0} €.";
+        if (state.Finance.MoneyCents < LiftWorks.RestoreCost(state, type)) return $"Not enough money: restoring costs {LiftWorks.RestoreCost(state, type) / 100:N0} €.";
         return null;
     }
 
@@ -288,10 +291,11 @@ public sealed record RestoreLiftCommand(int LiftId) : ICommand
         var state = ctx.State;
         var lift = state.Lifts.First(l => l.Id == LiftId);
         var type = LiftNetwork.FindType(state, lift.TypeId)!;
-        state.Finance.Invest(MoneyCategory.LiftBuild, type.RestoreCostCents, ctx.Tick, $"Restored {lift.Name}");
-        state.Finance.TotalLiftBuildCents += type.RestoreCostCents;
+        long cost = LiftWorks.RestoreCost(state, type);
+        state.Finance.Invest(MoneyCategory.LiftBuild, cost, ctx.Tick, $"Restored {lift.Name}");
+        state.Finance.TotalLiftBuildCents += cost;
         lift.ReadyTick = LiftWorks.ReadyTick(state, ctx.Tick, type.RestoreDays);
-        ctx.Publish(new LiftConstructionStarted(ctx.Tick, lift.Id, lift.ReadyTick, type.RestoreCostCents, Restoration: true));
+        ctx.Publish(new LiftConstructionStarted(ctx.Tick, lift.Id, lift.ReadyTick, cost, Restoration: true));
     }
 }
 
@@ -309,9 +313,17 @@ public static class LiftWorks
     public static string? CannotBuild(State.WorldState state, int level, LiftType type)
     {
         if (state.Rules.UnlockLevel(level) < type.RequiredLevel) return $"A {type.Name} needs park level {type.RequiredLevel} (you are level {level}).";
-        if (state.Finance.MoneyCents < type.BuildCostCents) return $"Not enough money: a {type.Name} costs {type.BuildCostCents / 100:N0} €.";
+        if (state.Finance.MoneyCents < BuildCost(state, type)) return $"Not enough money: a {type.Name} costs {BuildCost(state, type) / 100:N0} €.";
         return null;
     }
+
+    /// <summary>What the contractor charges to build a lift of this type now (a lift maker sponsor may give a discount).</summary>
+    public static long BuildCost(State.WorldState state, LiftType type) =>
+        Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.LiftDiscount, type.BuildCostCents);
+
+    /// <summary>What restoring a derelict lift of this type costs now.</summary>
+    public static long RestoreCost(State.WorldState state, LiftType type) =>
+        Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.LiftDiscount, type.RestoreCostCents);
 
     /// <summary>Both station pads stand on the park's land.</summary>
     public static bool StationsOwned(State.WorldState state, Lift lift) =>

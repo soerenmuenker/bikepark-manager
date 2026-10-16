@@ -224,7 +224,7 @@ public static class FacilityMath
         if (count is < 1 or > 50) return "Buy 1 to 50 bikes at a time.";
         int max = MaxFleet(type, station);
         if (station.Fleet.Count + count > max) return $"The rack holds {max} bikes ({station.Fleet.Count} there).";
-        long cost = count * type.BikeCostCents;
+        long cost = count * BikeCost(state, type);
         if (state.Finance.MoneyCents < cost) return $"Not enough money: {count} bikes cost {cost / 100:N0} €.";
         return null;
     }
@@ -247,6 +247,18 @@ public static class FacilityMath
     /// <summary>Everything paid for the building (built and upgraded).</summary>
     public static long InvestedCents(FacilityType type, Facility facility) => type.BuildCostCents + Bought(type, facility).Sum(u => u.CostCents);
 
+    /// <summary>What building it costs now (a sponsor may give a discount).</summary>
+    public static long BuildCost(WorldState state, FacilityType type) =>
+        Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.BuildingDiscount, type.BuildCostCents, type.Id);
+
+    /// <summary>What an upgrade costs now (a sponsor's building discount counts here too).</summary>
+    public static long UpgradeCost(WorldState state, FacilityType type, FacilityUpgrade upgrade) =>
+        Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.BuildingDiscount, upgrade.CostCents, type.Id);
+
+    /// <summary>What one more fleet bike costs now (a bike brand may give a discount).</summary>
+    public static long BikeCost(WorldState state, FacilityType type) =>
+        Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.BikeDiscount, type.BikeCostCents);
+
     /// <summary>True if the building sells the product (as built or after an upgrade).</summary>
     public static bool Sells(FacilityType type, Facility facility, string productId) =>
         type.Products.Contains(productId) || Bought(type, facility).Any(u => u.Products.Contains(productId));
@@ -261,8 +273,8 @@ public static class FacilityMath
         if (NextUpgrade(type, facility) is not { } next) return $"{facility.Name} is fully upgraded.";
         if (state.Rules.UnlockLevel(level) < next.RequiredLevel)
             return $"The {next.Name.ToLowerInvariant()} needs park level {next.RequiredLevel} (you are level {level}).";
-        if (state.Finance.MoneyCents < next.CostCents)
-            return $"Not enough money: the {next.Name.ToLowerInvariant()} costs {next.CostCents / 100:N0} €.";
+        if (state.Finance.MoneyCents < UpgradeCost(state, type, next))
+            return $"Not enough money: the {next.Name.ToLowerInvariant()} costs {UpgradeCost(state, type, next) / 100:N0} €.";
         return null;
     }
 
@@ -370,8 +382,8 @@ public static class FacilityMath
     {
         if (state.Rules.UnlockLevel(level) < type.RequiredLevel)
             return $"The {type.Name.ToLowerInvariant()} needs park level {type.RequiredLevel} (you are level {level}).";
-        if (state.Finance.MoneyCents < type.BuildCostCents)
-            return $"Not enough money: the {type.Name.ToLowerInvariant()} costs {type.BuildCostCents / 100:N0} €.";
+        if (state.Finance.MoneyCents < BuildCost(state, type))
+            return $"Not enough money: the {type.Name.ToLowerInvariant()} costs {BuildCost(state, type) / 100:N0} €.";
         return null;
     }
 
@@ -382,6 +394,7 @@ public static class FacilityMath
     /// <summary>The money category a product's sales are booked under.</summary>
     public static MoneyCategory CategoryOf(ProductType product) =>
         product.Overnight ? MoneyCategory.Camping
+        : product.Clip ? MoneyCategory.Clips
         : product.Rental ? MoneyCategory.Rentals
         : product.Repair ? MoneyCategory.Repairs
         : product.Merch || product.Protection ? MoneyCategory.Merch
@@ -398,19 +411,28 @@ public static class FacilityMath
     /// A guest buys a product at a facility at the park's price: revenue for the park and the facility, the goods' cost,
     /// sales stats, the product's effects and a little lost mood (and value) when it was overpriced.
     /// </summary>
-    public static long Sell(WorldState state, long tick, Facility facility, Guest guest, ProductType product)
+    public static long Sell(WorldState state, long tick, Facility? facility, Guest guest, ProductType product)
     {
         long price = PriceOf(state, product);
         var finance = state.Finance;
         guest.CashCents -= price;
         finance.Earn(CategoryOf(product), price);
-        facility.TotalRevenueCents += price;
-        facility.RevenueTodayCents += price;
-        facility.Customers++;
-        long goods = price * product.GoodsCostPermille / 1000;
+        if (facility is not null)
+        {
+            facility.TotalRevenueCents += price;
+            facility.RevenueTodayCents += price;
+            facility.Customers++;
+        }
+        // A sponsor (brewery, bike brand, ...) may supply the goods cheaper.
+        long goods = Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.GoodsDiscount, price * product.GoodsCostPermille / 1000, product.Id);
         if (goods > 0)
             finance.Spend(GoodsOf(product), goods);
-        if (product.Overnight)
+        if (product.Clip)
+        {
+            finance.TotalClipCents += price;
+            finance.ClipTodayCents += price;
+        }
+        else if (product.Overnight)
         {
             finance.TotalCampingCents += price;
             finance.CampingTodayCents += price;
@@ -448,7 +470,8 @@ public static class FacilityMath
         sales.RevenueTodayCents += price;
 
         guest.Energy = Math.Min(1000, guest.Energy + product.Energy);
-        guest.Happiness = Math.Clamp(guest.Happiness + product.Happiness - RipOffMood(state.FacilityRules, product, price), 0, 1000);
+        int boost = product.Happiness * Sponsors.SponsorMath.Benefit(state, Sponsors.SponsorBenefitKind.MoodBoost, product.Id) / 1000;
+        guest.Happiness = Math.Clamp(guest.Happiness + product.Happiness + boost - RipOffMood(state.FacilityRules, product, price), 0, 1000);
         guest.Alcohol = Math.Min(1000, guest.Alcohol + product.Alcohol);
         if (product.Protection) guest.Protected = true;
         if (product.CaffeineMinutes > 0) guest.CaffeineUntilTick = Math.Max(guest.CaffeineUntilTick, tick + product.CaffeineMinutes);

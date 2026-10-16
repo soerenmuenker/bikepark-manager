@@ -1,4 +1,5 @@
 using Bikepark.Game.Terrain;
+using Bikepark.Game.Ways;
 using Bikepark.Sim;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Lifts;
@@ -97,6 +98,10 @@ public partial class LiftView : Node3D
         _subscriptions.Add(sim.Events.Subscribe<PlatformDeleted>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<StructureRenaturalized>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<FacilityBuilt>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<SponsorSignBuilt>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<SponsorshipEnded>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<CameraPlaced>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<WayBuilt>(_ => _dirty = true));
         _dirty = true;
     }
 
@@ -145,6 +150,9 @@ public partial class LiftView : Node3D
             AddMesh(Building(pad, type?.Kind ?? Bikepark.Sim.Facilities.FacilityKind.Shop), facility.Name);
             AddLabel(facility.Name, LiftShapes.Center(pad, 7f));
         }
+
+        AddSponsorSigns(sim);
+        AddCameras(sim);
 
         foreach (var lift in state.Lifts)
         {
@@ -495,6 +503,75 @@ public partial class LiftView : Node3D
             mm.SetInstanceColor(i, items[i].Color);
         }
         mm.VisibleInstanceCount = items.Count;
+    }
+
+    /// <summary>A big board in the brand's colour on two posts at each sponsored trail's entrance (and the park's entrance).</summary>
+    private void AddSponsorSigns(Simulation sim)
+    {
+        var state = sim.State;
+        var network = sim.Network;
+        foreach (var deal in state.Sponsorships)
+        {
+            if (!deal.Pays || Bikepark.Sim.Sponsors.SponsorMath.Find(state, deal.SponsorId) is not { } brand) continue;
+            Vector3 at, side;
+            if (deal.IsPark)
+            {
+                if (network.BaseHub is not { } hub) continue;
+                side = LiftShapes.Right(hub.Pad);
+                at = LiftShapes.Center(hub.Pad) + side * (hub.Pad.HalfWidthCm / 100f + 4f);
+            }
+            else
+            {
+                if (!network.TryGetGeometry(deal.WayId, out var g)) continue;
+                var p = g.PositionAt(Math.Min(400, g.LengthCm));
+                var dir = new Vector3(p.DirX, 0, p.DirZ);
+                if (dir.LengthSquared() < 0.0001f) dir = Vector3.Forward;
+                side = new Vector3(-dir.Z, 0, dir.X).Normalized();
+                at = WayMeshes.ToWorld(p) + side * 3.5f;
+            }
+            at.Y = sim.Terrain.HeightAt((long)(at.X * 100), (long)(at.Z * 100)) / 100f;
+            var color = Color.FromHtml(brand.Color);
+            float w = deal.IsPark ? 3.5f : 2.2f;
+            var b = new FlatMeshBuilder();
+            var post = new Color(0.30f, 0.30f, 0.32f);
+            foreach (float s in new[] { -w, w })
+            {
+                var c = at + side * s;
+                b.Box(c - new Vector3(0.1f, 0, 0.1f), c + new Vector3(0.1f, 3.4f, 0.1f), post);
+            }
+            var a = at - side * w;
+            var e = at + side * w;
+            b.Box(new Vector3(Math.Min(a.X, e.X) - 0.1f, at.Y + 2.0f, Math.Min(a.Z, e.Z) - 0.1f),
+                new Vector3(Math.Max(a.X, e.X) + 0.1f, at.Y + 3.6f, Math.Max(a.Z, e.Z) + 0.1f), color);
+            AddMesh(b.ToMesh(), $"{brand.Name} sign");
+            AddLabel(deal.IsPark ? $"{brand.Name}\npark sponsor" : brand.Name, at + Vector3.Up * 5.2f);
+        }
+    }
+
+    /// <summary>A camera on a tripod beside each photo spot.</summary>
+    private void AddCameras(Simulation sim)
+    {
+        var network = sim.Network;
+        foreach (var way in sim.State.Ways)
+        {
+            if (!way.Features.Any(f => f.Camera) || !network.TryGetGeometry(way.Id, out var g)) continue;
+            foreach (var placed in network.FeaturesOn(way.Id))
+            {
+                if (!placed.Feature.Camera) continue;
+                var p = g.PositionAt(Math.Min(g.LengthCm, placed.EndCm));
+                var dir = new Vector3(p.DirX, 0, p.DirZ);
+                if (dir.LengthSquared() < 0.0001f) dir = Vector3.Forward;
+                var side = new Vector3(-dir.Z, 0, dir.X).Normalized();
+                var at = WayMeshes.ToWorld(p) + side * 4.5f;
+                at.Y = sim.Terrain.HeightAt((long)(at.X * 100), (long)(at.Z * 100)) / 100f;
+                var b = new FlatMeshBuilder();
+                var dark = new Color(0.12f, 0.12f, 0.13f);
+                b.Box(at + new Vector3(-0.06f, 0, -0.06f), at + new Vector3(0.06f, 1.5f, 0.06f), dark);
+                b.Box(at + new Vector3(-0.35f, 1.5f, -0.25f), at + new Vector3(0.35f, 1.95f, 0.25f), dark);
+                b.Box(at + new Vector3(-0.12f, 1.62f, -0.12f), at + new Vector3(0.12f, 1.84f, 0.12f), new Color(0.85f, 0.2f, 0.2f));
+                AddMesh(b.ToMesh(), $"Camera on {way.Name}");
+            }
+        }
     }
 
     private void AddMesh(ArrayMesh mesh, string name) =>

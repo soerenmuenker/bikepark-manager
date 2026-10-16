@@ -75,6 +75,14 @@ public sealed class ScenarioDefinition
 
     public Facilities.FacilityRules FacilityRules { get; set; } = new();
 
+    /// <summary>Brand catalog file, relative to the scenario file; loaded into <see cref="SponsorTypes"/>.</summary>
+    public string? SponsorTypesFile { get; set; }
+
+    /// <summary>Brands that sponsor trails and parks (inline, plus those from <see cref="SponsorTypesFile"/>; none: no sponsors).</summary>
+    public List<Sponsors.SponsorType> SponsorTypes { get; set; } = [];
+
+    public Sponsors.SponsorRules SponsorRules { get; set; } = new();
+
     public Reputation.ReputationRules ReputationRules { get; set; } = new();
 
     public Safety.CrashRules CrashRules { get; set; } = new();
@@ -127,6 +135,11 @@ public static class ScenarioLoader
             scenario.ProductTypes = [.. scenario.ProductTypes, .. LoadProductCatalog(Path.Combine(directory, products))];
             scenario.ProductTypesFile = null;
         }
+        if (scenario.SponsorTypesFile is { Length: > 0 } sponsors)
+        {
+            scenario.SponsorTypes = [.. scenario.SponsorTypes, .. LoadCatalog<Sponsors.SponsorType>(Path.Combine(directory, sponsors), "Sponsor")];
+            scenario.SponsorTypesFile = null;
+        }
         return scenario;
     }
 
@@ -135,6 +148,9 @@ public static class ScenarioLoader
 
     /// <summary>Loads a product catalog (<c>data/products.json</c>).</summary>
     public static List<Facilities.ProductType> LoadProductCatalog(string path) => LoadCatalog<Facilities.ProductType>(path, "Product");
+
+    /// <summary>Loads a brand catalog (<c>data/sponsors.json</c>).</summary>
+    public static List<Sponsors.SponsorType> LoadSponsorCatalog(string path) => LoadCatalog<Sponsors.SponsorType>(path, "Sponsor");
 
     /// <summary>Loads a trail feature catalog (<c>data/trail_features.json</c>).</summary>
     public static List<Trails.TrailFeatureType> LoadFeatureCatalog(string path) => LoadCatalog<Trails.TrailFeatureType>(path, "Trail feature");
@@ -174,6 +190,8 @@ public static class ScenarioLoader
             FacilityTypes = scenario.FacilityTypes,
             ProductTypes = scenario.ProductTypes,
             FacilityRules = scenario.FacilityRules,
+            SponsorTypes = scenario.SponsorTypes,
+            SponsorRules = scenario.SponsorRules,
             ReputationRules = scenario.ReputationRules,
             CrashRules = scenario.CrashRules,
             Parcels = scenario.Parcels,
@@ -231,6 +249,10 @@ public static class ScenarioLoader
                 if (s.ProductTypes.All(p => p.Id != id))
                     errors.Add($"facilityTypes[{type.Id}]: unknown product '{id}'");
         errors.AddRange(s.FacilityRules.Validate());
+        if (s.SponsorTypesFile is { Length: > 0 }) errors.Add("sponsorTypesFile can only be resolved when loading from a file");
+        foreach (var brand in s.SponsorTypes) errors.AddRange(brand.Validate());
+        if (s.SponsorTypes.Select(b => b.Id).Distinct().Count() != s.SponsorTypes.Count) errors.Add("sponsorTypes: ids must be unique");
+        errors.AddRange(s.SponsorRules.Validate());
         errors.AddRange(s.ReputationRules.Validate());
         errors.AddRange(s.CrashRules.Validate());
         errors.AddRange(s.LoanRules.Validate());

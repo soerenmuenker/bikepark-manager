@@ -117,6 +117,7 @@ public sealed record RenameTrailCommand(int WayId, string Name) : ICommand
         var way = ctx.State.Ways.FirstOrDefault(w => w.Id == WayId);
         if (way is null) return "No such trail.";
         if (way.Kind != WayKind.Trail) return "Gravel paths have no names.";
+        if (Sponsors.SponsorMath.DealOn(ctx.State, WayId) is not null) return $"{way.Name} carries its sponsor's name while the deal runs.";
         return CannotName(ctx.State, Name, WayId);
     }
 

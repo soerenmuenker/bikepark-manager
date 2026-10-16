@@ -50,6 +50,7 @@ public sealed class Simulation
             new JobSystem(),
             new ReputationSystem(), // before Finance: it reads today's visitors before the books close
             new SafetySystem(), // before Finance: it closes the day's accident book (today's runs per trail)
+            new SponsorSystem(), // before Finance: sponsors pay for today's runs and visitors
             new LoanSystem(), // before Finance: today's installments are in today's books
             new FinanceSystem(),
         ];

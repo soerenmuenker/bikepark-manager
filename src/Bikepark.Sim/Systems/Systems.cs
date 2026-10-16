@@ -207,6 +207,14 @@ internal sealed class GuestArrivalSystem : ISimSystem
             state.Finance.Earn(MoneyCategory.ParkingFees, parking);
             state.Finance.TotalParkingCents += parking;
             state.Finance.ParkingTodayCents += parking;
+            // A car maker sponsor pays on top of every parking fee.
+            long bonus = parking * Sponsors.SponsorMath.Benefit(state, Sponsors.SponsorBenefitKind.ParkingRevenue) / 1000;
+            if (bonus > 0)
+            {
+                state.Finance.Earn(MoneyCategory.Sponsors, bonus);
+                state.Finance.TotalSponsorCents += bonus;
+                state.Finance.SponsorTodayCents += bonus;
+            }
         }
         if (nights > 0)
         {
@@ -221,6 +229,9 @@ internal sealed class GuestArrivalSystem : ISimSystem
         }
         if (renter)
             Bikes.Rent(ctx, guest, bike!.Value.Station, bike.Value.Type, bike.Value.Bike, rental!);
+        // The park sponsor's brand: some guests like it, some find it too commercial.
+        if (Sponsors.SponsorMath.DealOn(state, 0) is { Pays: true } deal && Sponsors.SponsorMath.Find(state, deal.SponsorId) is { Mood: not 0 } brand)
+            guest.Happiness = Math.Clamp(guest.Happiness + brand.Mood, 0, 1000);
         state.Guests.Add(guest);
         state.Stats.TotalVisitors++;
         state.Stats.VisitorsToday++;
@@ -405,6 +416,9 @@ internal sealed class FinanceSystem : ISimSystem
             state.Finance.TotalWagesCents += wages;
             state.Finance.WagesTodayCents += wages;
         }
+        // Photo spots: each camera's upkeep.
+        long cameras = state.Ways.Sum(w => w.Features.Count(f => f.Camera)) * state.SponsorRules.CameraUpkeepPerDayCents;
+        if (cameras > 0) state.Finance.Spend(MoneyCategory.CameraUpkeep, cameras);
         long facilityUpkeep = 0;
         foreach (var facility in state.Facilities)
         {
@@ -472,6 +486,8 @@ internal sealed class FinanceSystem : ISimSystem
             CampingCents: state.Finance.CampingTodayCents,
             RentalCents: state.Finance.RentalTodayCents,
             RepairCents: state.Finance.RepairTodayCents,
+            SponsorCents: state.Finance.SponsorTodayCents,
+            ClipCents: state.Finance.ClipTodayCents,
             ByCategory: new MoneyByCategory(state.Finance.TodayCents));
         ctx.Publish(new DayEnded(ctx.Tick, report));
         state.DayHistory.Add(report);
@@ -495,6 +511,8 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.CampingTodayCents = 0;
         state.Finance.RentalTodayCents = 0;
         state.Finance.RepairTodayCents = 0;
+        state.Finance.SponsorTodayCents = 0;
+        state.Finance.ClipTodayCents = 0;
         foreach (var sales in state.Finance.ProductSales)
         {
             sales.SoldToday = 0;

@@ -206,6 +206,7 @@ internal sealed class RiderSystem : ISimSystem
         guest.RunSegments = 0;
         guest.ResumeLeg = -1;
         guest.StoppedThisLap = false;
+        guest.FilmedFeatureId = 0;
     }
 
     // ---------------------------------------------------------------- choosing a trail
@@ -466,6 +467,11 @@ internal sealed class RiderSystem : ISimSystem
                     }
                     guest.RunFun += (long)featureFun * feature.Type.FunWeight;
                     guest.RunSegments += feature.Type.FunWeight;
+                    if (feature.Feature.Camera && Reputation.ReviewMath.IsJump(feature.Type.Kind) && featureFun >= guest.FilmedFun)
+                    {
+                        guest.FilmedFeatureId = feature.Feature.Id; // on camera (their best jump this run)
+                        guest.FilmedFun = featureFun;
+                    }
                     TrailCondition.Wear(feature.Feature, TrailCondition.PassWear(ctx.State, feature.Type));
                     if (rolls && CrashMath.Roll(ctx.Rng, CrashMath.FeatureChancePpb(crashRules, ctx.State.WearRules, guest, feature.Type,
                             TrailCondition.Permille(feature.Feature), wetness)))
@@ -819,9 +825,34 @@ internal sealed class RiderSystem : ISimSystem
             guest.LocationHubId = 0;
             guest.LocationCm = network.Geometry(trailId).LengthCm;
         }
+        if (guest.FilmedFeatureId != 0 && trail is not null)
+            SellClip(ctx, guest, trail);
+        guest.FilmedFun = 0;
         ClearLap(ctx.State, guest);
         guest.Activity = RiderActivity.Idle;
         ctx.Publish(new RunFinished(ctx.Tick, guest.Id, trailId, minutes, fun));
+    }
+
+    /// <summary>
+    /// A rider filmed landing a jump at a photo spot may buy the clip: <see cref="Sponsors.SponsorRules.ClipChancePermille"/>
+    /// × how much they enjoyed the jump × the clip's price. Each clip shared online adds a little buzz (demand); an
+    /// influencer's clip makes their post rate the jumps higher.
+    /// </summary>
+    private static void SellClip(SimContext ctx, Guest guest, Way trail)
+    {
+        var state = ctx.State;
+        var rules = state.SponsorRules;
+        if (state.ProductTypes.FirstOrDefault(p => p.Clip) is not { } clip) return;
+        if (trail.Features.FirstOrDefault(f => f.Id == guest.FilmedFeatureId) is not { Camera: true } feature) return;
+        if (guest.IsInfluencer) guest.JumpFunSum += 200; // a great shot for the post
+        long price = FacilityMath.PriceOf(state, clip);
+        if (guest.CashCents < price) return;
+        long chance = (long)rules.ClipChancePermille * Math.Clamp(guest.FilmedFun, 0, 1000) / 1000 * FacilityMath.BuyFactorPermille(clip, price) / 1000;
+        if (!ctx.Rng.ChancePermille((int)Math.Min(1000, chance))) return;
+        FacilityMath.Sell(state, ctx.Tick, null, guest, clip);
+        feature.ClipsSold++;
+        state.Reputation.BuzzPermille = Math.Min(rules.MaxBuzzPermille, state.Reputation.BuzzPermille + rules.BuzzPerClipPermille);
+        ctx.Publish(new ClipSold(ctx.Tick, guest.Id, trail.Id, feature.Id, price));
     }
 
     // ---------------------------------------------------------------- tuning

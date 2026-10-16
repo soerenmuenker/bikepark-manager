@@ -120,7 +120,7 @@ public static class ReputationMath
         int visibility = ReputationRules.Evaluate(rules.VisibilityCurve, state.Reputation.TotalReviews);
         int rating = RatingTenths(state) is { } stars ? ReputationRules.Evaluate(rules.RatingCurve, stars) : 1000;
         int influencer = InfluencerEffect(state, GameTime.Day(state.Tick));
-        long total = (long)visibility * rating / 1000 * (1000 + influencer) / 1000;
+        long total = (long)visibility * rating / 1000 * (1000 + influencer) / 1000 * (1000 + state.Reputation.BuzzPermille) / 1000;
         return ((int)Math.Clamp(total, rules.DemandMinPermille, rules.DemandMaxPermille), visibility, rating, influencer);
     }
 
