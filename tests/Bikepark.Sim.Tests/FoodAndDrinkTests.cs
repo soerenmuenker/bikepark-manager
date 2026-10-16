@@ -414,7 +414,7 @@ public class FoodAndDrinkTests
         foreach (var c in TestWorlds.DemoFacilities()) sim.Commands.Enqueue(c.Command);
         sim.Commands.Enqueue(new SetProductPriceCommand("beer", 650));
         sim.RunTicks(16 * 60);
-        Assert.Equal(4, sim.State.Facilities.Count);
+        Assert.Equal(TestWorlds.DemoFacilities().Count, sim.State.Facilities.Count);
         var loaded = new Simulation(SaveGame.Clone(sim.State));
         sim.RunTicks(300);
         loaded.RunTicks(300);

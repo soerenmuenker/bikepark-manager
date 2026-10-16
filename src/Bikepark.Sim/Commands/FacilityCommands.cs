@@ -63,3 +63,27 @@ public sealed record SetBeerHoursCommand(int FromMinute) : ICommand
 
     public void Apply(SimContext ctx) => ctx.State.Park.BeerFromMinute = FromMinute;
 }
+
+/// <summary>
+/// Buys bikes for a rental station's fleet (new, in perfect condition), at the station's price per bike, up to its rack
+/// (<see cref="FacilityMath.MaxFleet"/>).
+/// </summary>
+public sealed record BuyRentalBikesCommand(int FacilityId, int Count) : ICommand
+{
+    public string? Validate(SimContext ctx) =>
+        ctx.State.Facilities.FirstOrDefault(f => f.Id == FacilityId) is not { } station
+            ? "No such building."
+            : FacilityMath.CannotBuyBikes(ctx.State, station, Count);
+
+    public void Apply(SimContext ctx)
+    {
+        var state = ctx.State;
+        var station = state.Facilities.First(f => f.Id == FacilityId);
+        var type = FacilityMath.FindType(state, station.TypeId)!;
+        for (int i = 0; i < Count; i++)
+            station.Fleet.Add(new RentalBike { Id = state.AllocateEntityId() });
+        long cost = Count * type.BikeCostCents;
+        state.Finance.Invest(MoneyCategory.Buildings, cost, ctx.Tick, $"{station.Name}: {Count} rental bike{(Count == 1 ? "" : "s")}");
+        state.Finance.TotalFacilityBuildCents += cost;
+    }
+}

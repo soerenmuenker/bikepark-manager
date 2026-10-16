@@ -8,7 +8,10 @@
 // facilityRules.stopScalePermille), only by guests with less energy than whenEnergyBelow. Effects: energy and happiness
 // (0..1000), alcohol (bolder trail choices and more crashes, wears off by the minute), caffeineMinutes (climbing costs
 // half the energy meanwhile). overnight: a night at a campground (campers pay their nights on arrival; the price decides
-// how many arriving guests camp). Catalog order is the order guests consider things in.
+// how many arriving guests camp). rental: a rental bike for the day (rental stations; the price decides how many guests
+// without a bike come). repair: fixing a bike broken in a crash at a service shop (seated minMinutes..maxMinutes).
+// protection: protectors from the pro shop (an impulse buy; crashes are less often serious). Catalog order is the order
+// guests consider things in.
 [
   { "id": "lunch", "name": "Lunch", "referencePriceCents": 1400, "maxPriceCents": 4000, "goodsCostPermille": 200,
     "elasticityPermille": 800, "energy": 250, "happiness": 40, "lunch": true, "minMinutes": 30, "maxMinutes": 50 },
@@ -23,5 +26,11 @@
   { "id": "merch", "name": "Merch", "referencePriceCents": 2500, "maxPriceCents": 10000, "goodsCostPermille": 450,
     "elasticityPermille": 1000, "merch": true },
   { "id": "pitch", "name": "Pitch (night)", "referencePriceCents": 1500, "maxPriceCents": 6000, "goodsCostPermille": 100,
-    "elasticityPermille": 900, "overnight": true }
+    "elasticityPermille": 900, "overnight": true },
+  { "id": "rental", "name": "Bike rental (day)", "referencePriceCents": 3500, "maxPriceCents": 10000, "goodsCostPermille": 100,
+    "elasticityPermille": 900, "rental": true },
+  { "id": "repair", "name": "Bike repair", "referencePriceCents": 2500, "maxPriceCents": 8000, "goodsCostPermille": 300,
+    "elasticityPermille": 600, "repair": true, "minMinutes": 15, "maxMinutes": 30 },
+  { "id": "protectors", "name": "Protectors", "referencePriceCents": 4500, "maxPriceCents": 12000, "goodsCostPermille": 500,
+    "elasticityPermille": 1000, "happiness": 10, "protection": true, "impulsePermille": 3 }
 ]

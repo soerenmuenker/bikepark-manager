@@ -45,6 +45,13 @@ public sealed class ProductType
     /// <summary>A night at a campground (one per night, paid on arrival).</summary>
     public bool Overnight { get; set; }
 
+    /// <summary>A rental bike for the day (rental stations), a repair (service shops: seated for MinMinutes..MaxMinutes).</summary>
+    public bool Rental { get; set; }
+    public bool Repair { get; set; }
+
+    /// <summary>Protective gear: crashes of a guest wearing it are less often serious.</summary>
+    public bool Protection { get; set; }
+
     /// <summary>Chance per minute between laps (and, scaled up, per stop on the way) that a guest at a bar buys it.</summary>
     public int ImpulsePermille { get; set; }
 
@@ -67,7 +74,10 @@ public sealed class ProductType
         if (CaffeineMinutes is < 0 or > 600) errors.Add($"{p}.caffeineMinutes must be within 0..600");
         if (Lunch && (MinMinutes < 1 || MaxMinutes < MinMinutes || MaxMinutes > 240))
             errors.Add($"{p}: lunch minutes must satisfy 1 <= minMinutes <= maxMinutes <= 240");
-        if ((Lunch ? 1 : 0) + (Merch ? 1 : 0) + (Overnight ? 1 : 0) > 1) errors.Add($"{p}: lunch, merch and overnight exclude each other");
+        if ((Lunch ? 1 : 0) + (Merch ? 1 : 0) + (Overnight ? 1 : 0) + (Rental ? 1 : 0) + (Repair ? 1 : 0) + (Protection ? 1 : 0) > 1)
+            errors.Add($"{p}: lunch, merch, overnight, rental, repair and protection exclude each other");
+        if (Repair && (MinMinutes < 1 || MaxMinutes < MinMinutes || MaxMinutes > 240))
+            errors.Add($"{p}: repair minutes must satisfy 1 <= minMinutes <= maxMinutes <= 240");
         if (ImpulsePermille is < 0 or > 1000 || WhenEnergyBelow is < 0 or > 1000)
             errors.Add($"{p}: impulsePermille and whenEnergyBelow must be within 0..1000");
         return errors;
@@ -147,6 +157,21 @@ public sealed class FacilityRules
     public int CampEnergyMax { get; set; } = 1000;
     public int CampMood { get; set; } = 30;
 
+    // ---- Bikes (only with a rental station / service shop) ----
+
+    /// <summary>Guests without a bike who come to rent one, in permille of the other arrivals (at the fair rental price, with a free bike).</summary>
+    public int RenterSharePermille { get; set; } = 150;
+
+    /// <summary>Renters are beginners: skill triangular in 0..this (on e-bikes: the usual mix).</summary>
+    public int RenterSkillMax { get; set; } = 600;
+
+    /// <summary>Wear of a rental bike per run (plus difficulty / 200), and per crash.</summary>
+    public int RentalWearPerRun { get; set; } = 3;
+    public int RentalCrashWear { get; set; } = 100;
+
+    /// <summary>On an e-bike climbing costs this share of the energy (permille), and riders climb faster by 1000 / this, at most double.</summary>
+    public int EBikeClimbPermille { get; set; } = 400;
+
     public List<string> Validate()
     {
         var errors = new List<string>();
@@ -164,6 +189,9 @@ public sealed class FacilityRules
         if (MinNights < 1 || MaxNights < MinNights || MaxNights > 30) errors.Add($"{p}: 1 <= minNights <= maxNights <= 30");
         if (CampEnergyMin < 0 || CampEnergyMax < CampEnergyMin || CampEnergyMax > 1000 || CampMood is < 0 or > 1000)
             errors.Add($"{p}: 0 <= campEnergyMin <= campEnergyMax <= 1000, campMood within 0..1000");
+        if (RenterSharePermille is < 0 or > 5000 || RenterSkillMax is < 0 or > 1000) errors.Add($"{p}: renterSharePermille within 0..5000, renterSkillMax within 0..1000");
+        if (RentalWearPerRun is < 0 or > 1000 || RentalCrashWear is < 0 or > 1000) errors.Add($"{p}: rental wear within 0..1000");
+        if (EBikeClimbPermille is < 1 or > 1000) errors.Add($"{p}.eBikeClimbPermille must be within 1..1000");
         return errors;
     }
 }

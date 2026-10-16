@@ -45,6 +45,25 @@ internal sealed class GuestArrivalSystem : ISimSystem
 
         for (int i = 0; i < arrivals; i++)
             TryAdmitGuest(ctx);
+
+        // Guests without a bike come on top, to rent one (only where the park has a rental station).
+        if (RentalPrice(state) is { } rental)
+        {
+            long renters = (long)expectedPermille * state.FacilityRules.RenterSharePermille / 1000
+                           * FacilityMath.BuyFactorPermille(rental.Product, rental.PriceCents) / 1000;
+            int count = (int)(renters / 1000) + (ctx.Rng.ChancePermille((int)(renters % 1000)) ? 1 : 0);
+            for (int i = 0; i < count; i++)
+                TryAdmitGuest(ctx, renter: true);
+        }
+    }
+
+    /// <summary>The first rental station's rental product and the park's price for it, or null without a rental station.</summary>
+    private static (ProductType Product, long PriceCents)? RentalPrice(WorldState state)
+    {
+        foreach (var station in state.Facilities)
+            if (FacilityMath.FindType(state, station.TypeId) is { Kind: FacilityKind.Rental } type && Bikes.RentalProduct(state, type, station) is { } product)
+                return (product, FacilityMath.PriceOf(state, product));
+        return null;
     }
 
     internal static int ExpectedArrivalsPermille(WorldState state, int minuteOfDay)
@@ -92,14 +111,32 @@ internal sealed class GuestArrivalSystem : ISimSystem
         return from + (ctx.Rng.NextInt(span) + ctx.Rng.NextInt(span)) / 2;
     }
 
-    private static void TryAdmitGuest(SimContext ctx)
+    private static void TryAdmitGuest(SimContext ctx, bool renter = false)
     {
         var state = ctx.State;
         long fee = state.Park.EntryFeeCents;
-        long cash = ctx.Rng.Range(2_000, 8_001);
+
+        // Renters need a free bike (and the rental station's price).
+        (Facility Station, FacilityType Type, RentalBike Bike)? bike = null;
+        ProductType? rental = null;
+        if (renter)
+        {
+            bike = FacilityMath.FreeRentalBike(state);
+            rental = bike is { } b ? Bikes.RentalProduct(state, b.Type, b.Station) : null;
+            if (rental is null)
+            {
+                state.Stats.RentersWithoutBike++;
+                state.Stats.TotalTurnedAway++;
+                state.Stats.TurnedAwayToday++;
+                ctx.Publish(new GuestTurnedAway(ctx.Tick, TurnAwayReason.NoRentalBike));
+                return;
+            }
+        }
+        long rentalCents = rental is null ? 0 : FacilityMath.PriceOf(state, rental);
+        long cash = ctx.Rng.Range(2_000, 8_001) + rentalCents;
 
         // Campers: a free pitch, the camping chance at the night's price; they bring money for their nights and park at the camp.
-        var camp = FacilityMath.FreeCampground(state);
+        var camp = renter ? null : FacilityMath.FreeCampground(state);
         int nights = 0;
         if (camp is { } c && ctx.Rng.ChancePermille((int)((long)state.FacilityRules.CampChancePermille
                 * FacilityMath.BuyFactorPermille(c.Night, FacilityMath.PriceOf(state, c.Night)) / 1000)))
@@ -119,7 +156,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
             return;
         }
 
-        if (cash < fee + parking + nightsCents)
+        if (cash < fee + parking + nightsCents + rentalCents)
         {
             state.Stats.TotalTurnedAway++;
             state.Stats.TurnedAwayToday++;
@@ -147,7 +184,15 @@ internal sealed class GuestArrivalSystem : ISimSystem
             Activity = RiderActivity.Wandering,
         };
 
-        if (state.Reputation.InfluencerDue)
+        if (renter && !FacilityMath.EBikes(bike!.Value.Type, bike.Value.Station))
+        {
+            // Without a bike of their own: mostly beginners and casual riders (on e-bikes: anyone).
+            int max = state.FacilityRules.RenterSkillMax;
+            guest.Skill = (ctx.Rng.Range(0, max + 1) + ctx.Rng.Range(0, max + 1)) / 2;
+            if (ctx.Rng.ChancePermille(667)) guest.Style = RiderStyle.Casual;
+        }
+
+        if (!renter && state.Reputation.InfluencerDue)
         {
             // The influencer rides like a good rider and stays the day.
             state.Reputation.InfluencerDue = false;
@@ -174,6 +219,8 @@ internal sealed class GuestArrivalSystem : ISimSystem
             guest.PlannedStayMinutes = Math.Max(guest.PlannedStayMinutes, state.Rules.CloseMinute - GameTime.MinuteOfDay(ctx.Tick));
             state.Stats.TotalCampers++;
         }
+        if (renter)
+            Bikes.Rent(ctx, guest, bike!.Value.Station, bike.Value.Type, bike.Value.Bike, rental!);
         state.Guests.Add(guest);
         state.Stats.TotalVisitors++;
         state.Stats.VisitorsToday++;
@@ -247,6 +294,7 @@ internal sealed class GuestSystem : ISimSystem
                     stats.TotalLeftUnhappy++;
                 if (reason is not (GuestLeaveReason.Evacuated or GuestLeaveReason.Injured))
                     Catering.BuyMerch(ctx, ctx.Network, guest);
+                Bikes.Return(ctx, guest);
                 ctx.Publish(new GuestLeft(ctx.Tick, guest.Id, reason));
                 ReputationSystem.Review(ctx, guest);
             }
@@ -273,7 +321,9 @@ internal sealed class GuestSystem : ISimSystem
             guest.Happiness += SnackHappinessBoost;
             return;
         }
-        Catering.TryImpulse(ctx, guest, FacilityMath.GuestPoint(state, ctx.Network, guest), 1000);
+        var point = FacilityMath.GuestPoint(state, ctx.Network, guest);
+        if (!Catering.TryImpulse(ctx, guest, point, 1000))
+            Catering.TryImpulse(ctx, guest, point, 1000, FacilityKind.Shop); // protectors at the pro shop
     }
 
     /// <summary>On a lift whose cabins keep riders dry (T-bars and chairlifts don't).</summary>
@@ -318,6 +368,11 @@ internal sealed class GuestSystem : ISimSystem
             return null;
         if (guest.Injury != InjurySeverity.None)
             return GuestLeaveReason.Injured; // down at last: home to recover
+        // Down with a broken bike: to the service shop or the rental station; if nobody can fix it, home.
+        if (guest.Activity == RiderActivity.Idle && guest.BikeBroken && !Bikes.TryFix(ctx, guest))
+            return GuestLeaveReason.BikeBroken;
+        if (guest.Activity == RiderActivity.Eating)
+            return null; // at the workbench
         if (guest.Activity == RiderActivity.Idle && guest.Alcohol >= ctx.State.FacilityRules.TooDrunkAlcohol)
             return GuestLeaveReason.Drunk;
         if (guest.Activity == RiderActivity.Idle && guest.Energy < ctx.State.TrailRules.TiredEnergy)
@@ -360,6 +415,7 @@ internal sealed class FinanceSystem : ISimSystem
             {
                 FacilityKind.Bar => MoneyCategory.BarUpkeep,
                 FacilityKind.Campground => MoneyCategory.CampUpkeep,
+            FacilityKind.Rental or FacilityKind.Service => MoneyCategory.BikeCosts,
                 _ => MoneyCategory.ShopUpkeep,
             }, upkeep);
             facilityUpkeep += upkeep;
@@ -414,6 +470,8 @@ internal sealed class FinanceSystem : ISimSystem
             DrinksCents: state.Finance.DrinksTodayCents,
             ParkingCents: state.Finance.ParkingTodayCents,
             CampingCents: state.Finance.CampingTodayCents,
+            RentalCents: state.Finance.RentalTodayCents,
+            RepairCents: state.Finance.RepairTodayCents,
             ByCategory: new MoneyByCategory(state.Finance.TodayCents));
         ctx.Publish(new DayEnded(ctx.Tick, report));
         state.DayHistory.Add(report);
@@ -435,6 +493,8 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.DrinksTodayCents = 0;
         state.Finance.ParkingTodayCents = 0;
         state.Finance.CampingTodayCents = 0;
+        state.Finance.RentalTodayCents = 0;
+        state.Finance.RepairTodayCents = 0;
         foreach (var sales in state.Finance.ProductSales)
         {
             sales.SoldToday = 0;

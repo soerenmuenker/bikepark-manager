@@ -292,6 +292,12 @@ public sealed class FinanceState
     public long TotalCampingCents { get; set; }
     public long CampingTodayCents { get; set; }
 
+    /// <summary>Bike rentals and repairs (included in the revenue).</summary>
+    public long TotalRentalCents { get; set; }
+    public long RentalTodayCents { get; set; }
+    public long TotalRepairCents { get; set; }
+    public long RepairTodayCents { get; set; }
+
     /// <summary>Coffee, beer and other drinks sold (included in the revenue).</summary>
     public long TotalDrinksCents { get; set; }
     public long DrinksTodayCents { get; set; }
@@ -416,6 +422,12 @@ public sealed class ParkStats
     /// <summary>Guests who came to camp, and the nights they spent.</summary>
     public long TotalCampers { get; set; }
     public long TotalCampNights { get; set; }
+
+    /// <summary>Guests who rented a bike, would-be renters who found none free, bikes fixed, fleet bikes retired.</summary>
+    public long TotalRenters { get; set; }
+    public long RentersWithoutBike { get; set; }
+    public long TotalRepairs { get; set; }
+    public long BikesRetired { get; set; }
 
     /// <summary>Sum of happiness of all guests at the moment they left; divide by <see cref="TotalGuestsLeft"/>.</summary>
     public long SumExitHappiness { get; set; }
@@ -562,6 +574,20 @@ public sealed class Guest
 
     /// <summary>A sleeping camper wakes up then (the next opening).</summary>
     public long WakeTick { get; set; }
+
+    // ---- Bikes ----
+
+    /// <summary>The rental bike the guest rides today (0: their own bike).</summary>
+    public int RentalBikeId { get; set; }
+
+    /// <summary>Riding a rental e-bike: climbing is cheap.</summary>
+    public bool EBike { get; set; }
+
+    /// <summary>The bike broke in a crash: rolling down slowly, then to the service shop (or a new rental bike), else home.</summary>
+    public bool BikeBroken { get; set; }
+
+    /// <summary>Wears protectors from the pro shop: crashes are less often serious.</summary>
+    public bool Protected { get; set; }
 
     // ---- Visit, for the review written on leaving (see Reputation.ReviewMath) ----
 

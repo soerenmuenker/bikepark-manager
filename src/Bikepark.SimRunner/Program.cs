@@ -220,6 +220,12 @@ public static class Program
             new CampingReport(state.Park.ParkingFeeCents, f.TotalParkingCents, state.Stats.TotalCampers, state.Stats.TotalCampNights,
                 state.Guests.Count(g => g.CampgroundId != 0), state.Guests.Count(g => g.Activity == Bikepark.Sim.State.RiderActivity.Camping),
                 f.TotalCampingCents),
+            new BikesReport(
+                state.Facilities.Where(x => x.Fleet.Count > 0 || Bikepark.Sim.Facilities.FacilityMath.FindType(state, x.TypeId)?.Kind == Bikepark.Sim.Facilities.FacilityKind.Rental)
+                    .Select(x => new FleetReport(x.Name, x.Fleet.Count, x.Fleet.Count(b => b.RentedBy != 0),
+                        x.Fleet.Count == 0 ? 0 : (int)x.Fleet.Average(b => b.ConditionPermille))).ToList(),
+                state.Stats.TotalRenters, state.Stats.RentersWithoutBike, f.TotalRentalCents, state.Stats.TotalRepairs, f.TotalRepairCents,
+                state.Stats.BikesRetired, state.Safety.BikeOnlyCrashes, state.Guests.Count(g => g.Protected)),
             state.Tools.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.Count()));
     }
 
@@ -404,7 +410,13 @@ internal sealed record ProductReport(string Id, long PriceCents, long ReferenceP
 
 internal sealed record FacilitiesReport(List<FacilityReport> Buildings, long FoodCents, long SnackCents, long DrinksCents, long MerchCents,
     long MerchCostCents, long BuildCents, long UpkeepCents, List<ProductReport> Products, int BeerFromMinute, long ApresGuests,
-    CampingReport Camping, Dictionary<string, int> Tools);
+    CampingReport Camping, BikesReport Bikes, Dictionary<string, int> Tools);
+
+/// <summary>Rental fleets (bikes, rented now, average condition permille), renters, repairs, bikes retired, bike-only crashes, guests in protectors now.</summary>
+internal sealed record BikesReport(List<FleetReport> Fleets, long Renters, long RentersWithoutBike, long RentalCents, long Repairs, long RepairCents,
+    long BikesRetired, long BikeOnlyCrashes, int ProtectedNow);
+
+internal sealed record FleetReport(string Station, int Bikes, int RentedNow, int AverageConditionPermille);
 
 /// <summary>Parking fee and campers: campers now (asleep or riding), asleep now, all campers so far and their nights.</summary>
 internal sealed record CampingReport(long ParkingFeePerCarCents, long ParkingCents, long Campers, long Nights, int CampersNow, int Asleep,

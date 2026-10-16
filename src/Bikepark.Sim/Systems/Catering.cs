@@ -21,15 +21,16 @@ internal static class Catering
     /// impulse chance × <paramref name="scalePermille"/> × the price's buy factor (drinks with alcohol also × mood, and
     /// less the more the guest has had). Lunch and merch are not impulse buys. True if something was bought.
     /// </summary>
-    public static bool TryImpulse(SimContext ctx, Guest guest, PointCm? point, int scalePermille)
+    public static bool TryImpulse(SimContext ctx, Guest guest, PointCm? point, int scalePermille, FacilityKind kind = FacilityKind.Bar)
     {
         var state = ctx.State;
-        var bars = FacilityMath.InReach(state, point, FacilityKind.Bar);
+        var bars = FacilityMath.InReach(state, point, kind);
         if (bars.Count == 0) return false;
         var (bar, type) = bars[0];
         foreach (var product in FacilityMath.ProductsOf(state, type, bar))
         {
             if (product.Lunch || product.Merch || product.ImpulsePermille <= 0 || guest.Energy >= product.WhenEnergyBelow) continue;
+            if (product.Protection && guest.Protected) continue; // has some already
             if (product.Alcohol > 0 && !AlcoholServed(state, ctx.Tick)) continue;
             long price = FacilityMath.PriceOf(state, product);
             if (guest.CashCents < price) continue;
@@ -183,7 +184,7 @@ internal static class Catering
             shops = FacilityMath.InReach(state, new PointCm(hub.Pad.CenterX, hub.Pad.CenterZ), FacilityKind.Shop);
         if (shops.Count == 0) return;
         var (shop, type) = shops[0];
-        var merch = FacilityMath.ProductsOf(state, type, shop).FirstOrDefault(p => guest.CashCents >= FacilityMath.PriceOf(state, p));
+        var merch = FacilityMath.ProductsOf(state, type, shop).FirstOrDefault(p => p.Merch && guest.CashCents >= FacilityMath.PriceOf(state, p));
         if (merch is null) return;
         long price = FacilityMath.PriceOf(state, merch);
         long chance = (long)FacilityMath.BuyChancePermille(type, shop) * Math.Clamp(guest.Happiness, 0, 1000) / 1000

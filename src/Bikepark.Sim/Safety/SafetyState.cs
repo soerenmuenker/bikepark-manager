@@ -25,6 +25,9 @@ public sealed class SafetyState
     /// <summary>Crashes of riders who had been drinking (at least <see cref="Facilities.FacilityRules.TipsyAlcohol"/>).</summary>
     public long CrashesUnderInfluence { get; set; }
 
+    /// <summary>Crashes that only broke the bike (no injury; see <see cref="CrashRules.BikeOnlyPermille"/>).</summary>
+    public long BikeOnlyCrashes { get; set; }
+
     public int MinorToday { get; set; }
     public int SeriousToday { get; set; }
 

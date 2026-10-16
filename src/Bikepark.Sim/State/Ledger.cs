@@ -57,6 +57,14 @@ public enum MoneyCategory : byte
     Camping = 23,
     /// <summary>Upkeep of campgrounds and the cost of each night (regular expense).</summary>
     CampUpkeep = 24,
+
+    // Appended (Phase 9.3)
+    /// <summary>Rental bikes for the day (regular income).</summary>
+    Rentals = 25,
+    /// <summary>Bikes fixed at the service shop (regular income).</summary>
+    Repairs = 26,
+    /// <summary>Upkeep of rental stations and service shops, parts (regular expense).</summary>
+    BikeCosts = 27,
 }
 
 /// <summary>A one-off booking, for the recent transactions list. <see cref="Cents"/> is signed (+ in, − out).</summary>
@@ -94,7 +102,8 @@ public static class Ledger
 
     /// <summary>Money coming in (revenue, or a loan for <see cref="MoneyCategory.LoanTaken"/>).</summary>
     public static bool IsIncome(MoneyCategory category) =>
-        category <= MoneyCategory.Merch || category is MoneyCategory.LoanTaken or MoneyCategory.Drinks or MoneyCategory.ParkingFees or MoneyCategory.Camping;
+        category <= MoneyCategory.Merch || category is MoneyCategory.LoanTaken or MoneyCategory.Drinks or MoneyCategory.ParkingFees or MoneyCategory.Camping
+            or MoneyCategory.Rentals or MoneyCategory.Repairs;
 
     /// <summary>The cents of <paramref name="category"/> in a per-category list (a day report's or today's), 0 if missing.</summary>
     public static long Get(IReadOnlyList<long>? byCategory, MoneyCategory category) =>

@@ -362,6 +362,8 @@ public partial class BuildPanel : HudPanel
                     {
                         Bikepark.Sim.Facilities.FacilityKind.Bar => UiIcon.Bar,
                         Bikepark.Sim.Facilities.FacilityKind.Campground => UiIcon.Tent,
+                        Bikepark.Sim.Facilities.FacilityKind.Rental => UiIcon.Riders,
+                        Bikepark.Sim.Facilities.FacilityKind.Service => UiIcon.Tool,
                         _ => UiIcon.Shop,
                     }, type.Name, "",
                     FacilityTooltip(type), () => ToggleFacility(id)) { CustomMinimumSize = new Vector2(150, 104) };
@@ -506,7 +508,12 @@ public partial class BuildPanel : HudPanel
             Bikepark.Sim.Facilities.FacilityKind.Campground =>
                 $"{type.Name}: {type.Pitches} pitches. Some arriving guests camp {state.FacilityRules.MinNights}–{state.FacilityRules.MaxNights} nights: " +
                 "they pay their nights, park here and ride again every morning.",
-            _ => $"{type.Name}: guests going home buy {sells} (the happier, the likelier).",
+            Bikepark.Sim.Facilities.FacilityKind.Rental =>
+                $"{type.Name}: rents bikes by the day to extra guests without one (mostly beginners). Buy its fleet in Finances " +
+                $"({UiTheme.Money(type.BikeCostCents)} a bike, up to {type.MaxFleet}); bikes wear and are retired at 0 %.",
+            Bikepark.Sim.Facilities.FacilityKind.Service =>
+                $"{type.Name}: {type.Seats} workbenches. Riders whose bike broke in a crash get it fixed here and ride on, instead of going home.",
+            _ => $"{type.Name}: guests buy {sells} (protectors between laps; merch on the way home, the happier, the likelier).",
         };
         string upgrades = type.Upgrades.Count == 0 ? ""
             : " Upgrades: " + string.Join(" → ", type.Upgrades.Select(u => $"{u.Name} ({UiTheme.Money(u.CostCents)})")) + ".";

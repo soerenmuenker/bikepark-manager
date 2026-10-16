@@ -69,11 +69,21 @@ their buildings sold, at their old prices; the new buildings and upgrades come w
   They review the whole stay once, when they finally leave.
 - The Demo has a campground with showers next to the valley parking.
 
+## 9.3 Bikes (built)
+
+- **Rental station** (level 2): you buy its fleet (900 € a bike, rack of 20; Bigger rack +20; E-bike fleet at level 6).
+  Guests without a bike come on top of the others (15 % of the arrivals at the fair 35 € a day), only when a bike is
+  free: mostly beginners and casual riders; on e-bikes anyone, and they pedal up cheaply and fast. Bikes wear a little
+  per run and in crashes and are retired at 0 % (about two weeks of use).
+- **Broken bikes:** only crashes break bikes. A share of the minor crashes (35 % in both scenarios) hurts only the bike:
+  nobody is injured, the rider rolls down slowly; a renter swaps the bike at the station, an own bike is fixed at a
+  **service shop** in reach (level 1, 2 workbenches, 25 € and 15–30 min), and the rider rides on — without one they go
+  home early.
+- **Pro shop** (level 3): protectors (an impulse buy between laps) halve the share of serious crashes, plus merch.
+- The Demo has a rental station with 15 bikes and a service shop.
+
 ## Roadmap
 
-- **9.3 Bikes:** `Guest.OwnBike` and bike condition. A rental station (buy a fleet at a discount, rent bikes with gear,
-  attracts guests without a bike, the fleet wears), a pro shop (parts and gear; merch generalised) and a service shop
-  (repairs guests' bikes after crashes and wear, else they leave early).
 - **9.4 Brands and media:** trail sponsorship and naming rights (daily income, brand mood; ties into the Phase 10
   politics of town businesses and council); a photo/video spot at a signature jump (sells clips after the run, boosts
   influencer posts).

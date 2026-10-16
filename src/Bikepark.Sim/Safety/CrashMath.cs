@@ -74,12 +74,13 @@ public static class CrashMath
     public static int AlcoholFactor(CrashRules rules, int alcohol) => 1000 + Math.Clamp(alcohol, 0, 1000) * rules.AlcoholFactorPermille / 1000;
 
     /// <summary>Share of crashes that are serious (permille).</summary>
-    public static int SeriousPermille(CrashRules rules, CrashCause cause, bool jump, int difficulty, int skill)
+    public static int SeriousPermille(CrashRules rules, CrashCause cause, bool jump, int difficulty, int skill, bool protectedRider = false)
     {
         int share = rules.SeriousBasePermille;
         if (jump) share += rules.SeriousJumpPermille;
         if (cause == CrashCause.Collision) share += rules.SeriousCollisionPermille;
         share += Math.Max(0, difficulty - skill) * rules.SeriousPer100OverSkillPermille / 100;
+        if (protectedRider) share = share * rules.ProtectedSeriousPermille / 1000;
         return Math.Clamp(share, 0, 1000);
     }
 

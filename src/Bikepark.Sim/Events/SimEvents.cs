@@ -27,6 +27,9 @@ public enum TurnAwayReason
 {
     CannotAfford,
     ParkingFull,
+
+    /// <summary>Came to rent a bike, but none was free.</summary>
+    NoRentalBike,
 }
 
 public sealed record GuestTurnedAway(long Tick, TurnAwayReason Reason = TurnAwayReason.CannotAfford) : ISimEvent;
@@ -46,6 +49,9 @@ public enum GuestLeaveReason
 
     /// <summary>Had too much to drink to ride on.</summary>
     Drunk,
+
+    /// <summary>Their bike broke in a crash and nobody could fix it (no service shop, no free rental bike).</summary>
+    BikeBroken,
 }
 
 public sealed record GuestLeft(long Tick, int GuestId, GuestLeaveReason Reason) : ISimEvent;
@@ -138,6 +144,8 @@ public sealed record DayReport(
     long DrinksCents = 0,
     long ParkingCents = 0,
     long CampingCents = 0,
+    long RentalCents = 0,
+    long RepairCents = 0,
     State.MoneyByCategory? ByCategory = null);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
@@ -202,7 +210,7 @@ public sealed record LiftReady(long Tick, int LiftId) : ISimEvent;
 /// <paramref name="LiftId"/> (hit at a crossing with <paramref name="WayId"/>; 0: not on a lift).
 /// </summary>
 public sealed record RiderCrashed(long Tick, int GuestId, int WayId, long Cm, InjurySeverity Severity, CrashCause Cause, int FeatureId,
-    int LiftId = 0) : ISimEvent;
+    int LiftId = 0, bool BikeOnly = false) : ISimEvent;
 
 /// <summary>Public service sent the rescue helicopter; it has flown the rider out at <paramref name="RescueAtTick"/>.</summary>
 public sealed record HelicopterCalled(long Tick, int GuestId, int WayId, long RescueAtTick) : ISimEvent;
@@ -261,6 +269,12 @@ public sealed record ProductSold(long Tick, int GuestId, int FacilityId, string 
 
 /// <summary>A guest going home stays at a bar for après-bike until <paramref name="UntilTick"/>.</summary>
 public sealed record ApresStarted(long Tick, int GuestId, int FacilityId, long UntilTick) : ISimEvent;
+
+/// <summary>A rental bike worn down to 0 % was retired from the fleet.</summary>
+public sealed record RentalBikeRetired(long Tick, int StationId, int BikeId) : ISimEvent;
+
+/// <summary>A guest's broken bike was fixed (at a service shop: <paramref name="FacilityId"/>; or swapped for another rental bike).</summary>
+public sealed record BikeFixed(long Tick, int GuestId, int FacilityId, bool Swapped) : ISimEvent;
 
 /// <summary>A camper went to sleep at their campground (<paramref name="NightsLeft"/> after this one).</summary>
 public sealed record CamperSleeping(long Tick, int GuestId, int CampgroundId, int NightsLeft) : ISimEvent;

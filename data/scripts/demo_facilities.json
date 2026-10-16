@@ -1,6 +1,6 @@
 // The Demo's buildings around the gondola's valley station (lunch and snacks need a bar in scenarios with bars): the snack
 // bar with its espresso machine (level 1: coffee), the merch shop, the beer rondel for après-bike and a campground with
-// showers (level 1) next to the valley parking. Queued after
+// showers (level 1) next to the valley parking, a rental station with 15 bikes and a service shop. Queued after
 // demo_lift_network.json by the game's Demo; add it with --commands in the SimRunner.
 [
   { "tick": 0, "command": { "type": "buildFacility", "typeId": "snack_bar", "name": "Valley Snack Bar", "origin": "scenario", "level": 1,
@@ -10,5 +10,9 @@
   { "tick": 0, "command": { "type": "buildFacility", "typeId": "beer_rondel", "name": "Valley Beer Rondel", "origin": "scenario",
     "center": {"x": 22000, "z": 89500}, "toward": {"x": 23000, "z": 89500} } },
   { "tick": 0, "command": { "type": "buildFacility", "typeId": "campground", "name": "Valley Camping", "origin": "scenario", "level": 1,
-    "center": {"x": 11000, "z": 92000}, "toward": {"x": 12000, "z": 92000} } }
+    "center": {"x": 11000, "z": 92000}, "toward": {"x": 12000, "z": 92000} } },
+  { "tick": 0, "command": { "type": "buildFacility", "typeId": "rental_station", "name": "Valley Rentals", "origin": "scenario", "bikes": 15,
+    "center": {"x": 21000, "z": 81500}, "toward": {"x": 22000, "z": 81500} } },
+  { "tick": 0, "command": { "type": "buildFacility", "typeId": "service_shop", "name": "Valley Bike Service", "origin": "scenario",
+    "center": {"x": 17000, "z": 86500}, "toward": {"x": 18000, "z": 86500} } }
 ]

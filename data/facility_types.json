@@ -11,6 +11,11 @@
 // longer après-bike stays (apresMinutes), with its own cost, upkeep and park level.
 // Campgrounds (kind "campground"): `pitches` campers at a time; some arriving guests camp 1-3 nights (facilityRules), park
 // there, pay their nights (product "pitch") on arrival and ride again each morning (morningMood: how rested they wake up).
+// Rental stations (kind "rental"): a fleet of bikes the park buys (bikeCostCents each, up to maxFleet; Finances menu),
+// rented by the day (product "rental") to extra guests without a bike, mostly beginners (e-bike upgrade: anyone, and they
+// pedal up cheaply); bikes wear per run and crash and are retired at 0 %. Service shops (kind "service"): `seats`
+// workbenches where bikes broken in a crash are fixed (product "repair"), so the rider rides on instead of going home.
+// The pro shop is a shop that also sells protectors (an impulse buy between laps).
 // requiredLevel: the park level needed to build it.
 [
   { "id": "snack_bar", "name": "Snack bar", "kind": "bar", "buildCostCents": 800000, "upkeepPerDayCents": 25000,
@@ -52,5 +57,25 @@
         "requiredLevel": 5, "pitches": 40 },
       { "name": "Glamping huts", "description": "20 more places, and a cosy night", "costCents": 1500000, "upkeepPerDayCents": 12000,
         "requiredLevel": 7, "pitches": 20, "morningMood": 60 }
+    ] },
+  { "id": "rental_station", "name": "Rental station", "kind": "rental", "buildCostCents": 1000000, "upkeepPerDayCents": 15000,
+    "lengthMeters": 10, "widthMeters": 8, "requiredLevel": 2, "products": ["rental"], "bikeCostCents": 90000, "maxFleet": 20,
+    "upgrades": [
+      { "name": "Bigger rack", "description": "Room for 20 more bikes", "costCents": 400000, "upkeepPerDayCents": 5000,
+        "requiredLevel": 3, "maxFleet": 20 },
+      { "name": "E-bike fleet", "description": "Rental e-bikes: better riders come, and they pedal up easily", "costCents": 2500000,
+        "upkeepPerDayCents": 15000, "requiredLevel": 6, "eBikes": true }
+    ] },
+  { "id": "service_shop", "name": "Service shop", "kind": "service", "buildCostCents": 600000, "upkeepPerDayCents": 12000,
+    "lengthMeters": 8, "widthMeters": 6, "requiredLevel": 1, "seats": 2, "products": ["repair"],
+    "upgrades": [
+      { "name": "Second workbench", "description": "Two more bikes fixed at a time", "costCents": 300000, "upkeepPerDayCents": 6000,
+        "requiredLevel": 2, "seats": 2 }
+    ] },
+  { "id": "pro_shop", "name": "Pro shop", "kind": "shop", "buildCostCents": 1800000, "upkeepPerDayCents": 20000,
+    "lengthMeters": 10, "widthMeters": 8, "requiredLevel": 3, "products": ["protectors", "merch"], "buyChancePermille": 150,
+    "upgrades": [
+      { "name": "Brand corner", "description": "Top brands: more guests buy something on their way home", "costCents": 700000,
+        "upkeepPerDayCents": 6000, "requiredLevel": 5, "buyChancePermille": 60 }
     ] }
 ]

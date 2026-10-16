@@ -71,6 +71,12 @@ public static class StructureRemoval
         }
         state.ParkingLots.RemoveAll(p => p.Id == id);
         state.Platforms.RemoveAll(p => p.Id == id);
+        if (state.Facilities.FirstOrDefault(f => f.Id == id) is { Fleet.Count: > 0 } station)
+            foreach (var guest in state.Guests.Where(g => station.Fleet.Any(b => b.Id == g.RentalBikeId)))
+            {
+                guest.RentalBikeId = 0; // the bikes go with the station: the renters finish their lap and go home
+                guest.PlannedStayMinutes = 0;
+            }
         state.Facilities.RemoveAll(f => f.Id == id);
         foreach (var guest in state.Guests.Where(g => g.FacilityId == id))
         {

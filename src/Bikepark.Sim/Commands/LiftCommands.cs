@@ -125,10 +125,11 @@ public sealed record BuildParkingLotCommand(string Name, PointCm Center, PointCm
 /// <summary>
 /// Builds a bar or shop near a gravel path or hub, at once: paid at once (needs its park level and the money; scenario
 /// buildings are free). <see cref="StructurePlanner.PlanFacility"/> validates the spot. <paramref name="Level"/>: built with
-/// its first upgrades already in (scenario content; a player pays for them too).
+/// its first upgrades already in (scenario content; a player pays for them too); <paramref name="Bikes"/>: a rental
+/// station's first fleet bikes (paid like the building).
 /// </summary>
 public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm Toward, string Name = "", WayOrigin Origin = WayOrigin.Player,
-    int Level = 0)
+    int Level = 0, int Bikes = 0)
     : ICommand
 {
     public const int MaxNameLength = 40;
@@ -138,6 +139,8 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
         if (Name is { Length: > MaxNameLength }) return $"Name cannot exceed {MaxNameLength} characters.";
         if (Facilities.FacilityMath.FindType(ctx.State, TypeId) is not { } type) return $"Unknown building '{TypeId}'.";
         if (Level < 0 || Level > type.Upgrades.Count) return $"The {type.Name.ToLowerInvariant()} has {type.Upgrades.Count} upgrades.";
+        if (Bikes < 0 || Bikes > 0 && (type.Kind != Facilities.FacilityKind.Rental || Bikes > type.MaxFleet + type.Upgrades.Take(Level).Sum(u => u.MaxFleet)))
+            return $"The {type.Name.ToLowerInvariant()} can't take {Bikes} bikes.";
         if (Origin != WayOrigin.Scenario)
         {
             int level = Reputation.ParkProgress.CurrentLevel(ctx.State, ctx.Network);
@@ -166,6 +169,8 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
             TerrainEditId = edit.Id,
             Level = Level,
         });
+        for (int i = 0; i < Bikes; i++)
+            state.Facilities[^1].Fleet.Add(new Facilities.RentalBike { Id = state.AllocateEntityId() });
         if (Origin != WayOrigin.Scenario && Cost(type) > 0)
         {
             state.Finance.Invest(MoneyCategory.Buildings, Cost(type), ctx.Tick, $"Built {state.Facilities[^1].Name}");
@@ -175,7 +180,8 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
     }
 
     /// <summary>The building and the upgrades it comes with.</summary>
-    private long Cost(Facilities.FacilityType type) => type.BuildCostCents + type.Upgrades.Take(Level).Sum(u => u.CostCents);
+    private long Cost(Facilities.FacilityType type) =>
+        type.BuildCostCents + type.Upgrades.Take(Level).Sum(u => u.CostCents) + Bikes * type.BikeCostCents;
 
     private ParkingPlan Plan(SimContext ctx) =>
         StructurePlanner.PlanFacility(ctx.Terrain, ctx.Network, ctx.State, TypeId, Center, Toward, scenario: Origin == WayOrigin.Scenario);

@@ -71,6 +71,8 @@ internal sealed class RiderSystem : ISimSystem
             if (guest.Activity == RiderActivity.Idle)
             {
                 if (guest.Injury != InjurySeverity.None) continue; // going home
+                if (guest.BikeBroken && !Bikes.TryFix(ctx, guest)) continue; // nobody can fix it: going home
+                if (guest.Activity != RiderActivity.Idle) continue; // at the workbench
                 if (!ParkSchedule.IsOpen(state, ctx.Tick)) continue;
                 if (guest.Alcohol >= state.FacilityRules.TooDrunkAlcohol) continue; // going home
                 if (TryStartLunch(ctx, guest)) continue;
@@ -275,6 +277,7 @@ internal sealed class RiderSystem : ISimSystem
         var climbing = network.Route(from, to, _ => false, out long climbCost, Open);
         if (climbing is null) return withLifts;
         climbCost = climbCost * (2000 - Math.Clamp(guest.Energy, 0, 1000)) / 1000;
+        if (guest.EBike) climbCost = climbCost * state.FacilityRules.EBikeClimbPermille / 1000; // the motor makes pedalling up cheap
         return climbCost < liftCost ? climbing : withLifts;
     }
 
@@ -377,7 +380,7 @@ internal sealed class RiderSystem : ISimSystem
                 budgetMs -= (int)Math.Min(budgetMs, Math.Max(1, (linkMove * 1000 + linkSpeed - 1) / linkSpeed));
                 guest.RouteProgressCm += linkMove;
                 // Pulled up a T-bar across a way: a crossing passage like any other.
-                if (leg.Kind == LegKind.Lift && guest.Injury == InjurySeverity.None && ctx.State.CrashRules.Enabled)
+                if (leg.Kind == LegKind.Lift && guest.Injury == InjurySeverity.None && !guest.BikeBroken && ctx.State.CrashRules.Enabled)
                 {
                     long from = leg.FromCm + offset;
                     foreach (var (liftCm, wayId, wayCm) in network.TowCrossingsOnLift(leg.WayId))
@@ -414,8 +417,8 @@ internal sealed class RiderSystem : ISimSystem
                         condition = TrailCondition.Permille(placed.Feature);
             if (condition < 1000)
                 speed = Math.Max(MinSpeedCmPerS, speed * (1000 - TrailCondition.SpeedLossPermille(ctx.State.WearRules, condition)) / 1000);
-            if (guest.Injury == InjurySeverity.Minor)
-                speed = Math.Min(speed, ctx.State.CrashRules.MinorSpeedCmPerS); // hurt: rolling down carefully
+            if (guest.Injury == InjurySeverity.Minor || guest.BikeBroken)
+                speed = Math.Min(speed, ctx.State.CrashRules.MinorSpeedCmPerS); // hurt or a broken bike: rolling down carefully
 
             long reach = (long)speed * budgetMs / 1000;
             if (reach <= 0) break;
@@ -434,16 +437,17 @@ internal sealed class RiderSystem : ISimSystem
 
             // Energy: climbing costs per meter gained, more on steep grades (a 100 % grade doubles it);
             // descending costs a little per distance.
-            // A coffee's caffeine halves the climbing cost while it lasts.
+            // A coffee's caffeine halves the climbing cost while it lasts; an e-bike's motor does most of the work.
             if (gradeAlong > 0)
                 guest.Energy -= (int)(move * gradeAlong / 1000 * rules.ClimbEnergyPerMeterGain * (1000 + gradeAlong) / 100_000
-                                      / (ctx.Tick < guest.CaffeineUntilTick ? 2 : 1));
+                                      / (ctx.Tick < guest.CaffeineUntilTick ? 2 : 1)
+                                      * (guest.EBike ? ctx.State.FacilityRules.EBikeClimbPermille : 1000) / 1000);
             else
                 guest.Energy -= (int)(move * rules.DescentEnergyPer100Meters / 10_000);
             guest.Energy = Math.Max(0, guest.Energy);
 
             var crashRules = ctx.State.CrashRules;
-            bool rolls = isRun && crashRules.Enabled && guest.Injury == InjurySeverity.None && geometry.Kind == WayKind.Trail;
+            bool rolls = isRun && crashRules.Enabled && guest.Injury == InjurySeverity.None && !guest.BikeBroken && geometry.Kind == WayKind.Trail;
             int wetness = ctx.State.Weather.WetnessPermille;
             if (isRun && guest.Injury == InjurySeverity.None)
             {
@@ -484,7 +488,7 @@ internal sealed class RiderSystem : ISimSystem
             }
 
             // Crossings passed in this move (of another way or a T-bar track), in riding order: riders meeting there collide.
-            if (move > 0 && guest.Injury == InjurySeverity.None && crashRules.Enabled)
+            if (move > 0 && guest.Injury == InjurySeverity.None && !guest.BikeBroken && crashRules.Enabled)
                 foreach (var (cm, otherId, otherCm) in CrossingsPassed(network, leg.WayId, position, dir * move))
                 {
                     long into = Math.Abs(cm - position);
@@ -557,7 +561,7 @@ internal sealed class RiderSystem : ISimSystem
         Crash(ctx, network, traffic, guest, wayId, wayCm, CrashCause.Collision, null, difficulty);
 
         var other = state.Guests.FirstOrDefault(g => g.Id == hit.GuestId);
-        if (other is null || other.Injury != InjurySeverity.None || other.Route.Count == 0) return true;
+        if (other is null || other.Injury != InjurySeverity.None || other.BikeBroken || other.Route.Count == 0) return true;
         var (legIndex, offset) = LocateOnRoute(other);
         var leg = other.Route[legIndex];
         if (other.Activity == RiderActivity.OnLift && leg.Kind == LegKind.Lift && leg.WayId == otherId)
@@ -590,13 +594,17 @@ internal sealed class RiderSystem : ISimSystem
         var state = ctx.State;
         var rules = state.CrashRules;
         bool jump = feature is { } f && ReviewMath.IsJump(f.Type.Kind);
-        bool serious = ctx.Rng.ChancePermille(CrashMath.SeriousPermille(rules, cause, jump, difficulty, guest.Skill));
-        guest.Injury = serious ? InjurySeverity.Serious : InjurySeverity.Minor;
+        bool serious = ctx.Rng.ChancePermille(CrashMath.SeriousPermille(rules, cause, jump, difficulty, guest.Skill, guest.Protected));
+        // Some minor crashes only break the bike: no injury; the rider rolls down slowly and gets it fixed (or goes home).
+        bool bikeOnly = !serious && ctx.Rng.ChancePermille(rules.BikeOnlyPermille);
+        guest.Injury = serious ? InjurySeverity.Serious : bikeOnly ? InjurySeverity.None : InjurySeverity.Minor;
+        guest.BikeBroken |= bikeOnly;
+        Bikes.Wear(state, guest, state.FacilityRules.RentalCrashWear);
         guest.CrashTick = ctx.Tick;
         guest.CrashWayId = wayId;
         guest.CrashCause = cause;
         guest.CrashFeatureId = feature?.Feature.Id ?? 0;
-        guest.Happiness = Math.Max(0, guest.Happiness - (serious ? rules.SeriousMoodLoss : rules.MinorMoodLoss));
+        guest.Happiness = Math.Max(0, guest.Happiness - (serious ? rules.SeriousMoodLoss : bikeOnly ? rules.MinorMoodLoss / 3 : rules.MinorMoodLoss));
 
         if (network.FindWay(wayId) is { } way)
         {
@@ -609,6 +617,7 @@ internal sealed class RiderSystem : ISimSystem
         var safety = state.Safety;
         safety.TotalCrashes++;
         if (guest.Alcohol >= state.FacilityRules.TipsyAlcohol) safety.CrashesUnderInfluence++;
+        if (bikeOnly) safety.BikeOnlyCrashes++;
         if (cause == CrashCause.Collision) safety.TotalCollisions++;
         if (serious)
         {
@@ -623,7 +632,7 @@ internal sealed class RiderSystem : ISimSystem
             ? state.Lifts.FirstOrDefault(l => l.Id == liftLeg.WayId)
             : null;
         traffic.Witness(guest, wayId, cm);
-        ctx.Publish(new RiderCrashed(ctx.Tick, guest.Id, wayId, cm, guest.Injury, cause, guest.CrashFeatureId, towedOn?.Id ?? 0));
+        ctx.Publish(new RiderCrashed(ctx.Tick, guest.Id, wayId, cm, guest.Injury, cause, guest.CrashFeatureId, towedOn?.Id ?? 0, bikeOnly));
 
 
         if (serious)
@@ -802,6 +811,7 @@ internal sealed class RiderSystem : ISimSystem
             if (!guest.TrailsRidden.Contains(trailId))
                 guest.TrailsRidden.Add(trailId);
             trail.Stats.Runs++;
+            Bikes.Wear(ctx.State, guest, ctx.State.FacilityRules.RentalWearPerRun + difficulty / 200);
             trail.Stats.RunsToday++;
             trail.Stats.SumRunMinutes += minutes;
             trail.Stats.SumFun += fun;
@@ -827,6 +837,7 @@ internal sealed class RiderSystem : ISimSystem
         if (gradeAlong > UphillGradeThreshold)
         {
             v = climb * 1000L / (1000 + gradeAlong * 6);
+            if (guest.EBike) v = v * 16 / 10; // pedal assist
         }
         else if (kind == WayKind.AccessPath)
         {

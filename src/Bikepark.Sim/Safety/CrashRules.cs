@@ -60,6 +60,15 @@ public sealed class CrashRules
     public int FatigueBelowEnergy { get; set; } = 350;
     public int FatigueFactorPermille { get; set; } = 1000;
 
+    /// <summary>
+    /// Share of the would-be minor crashes that only break the bike (permille; 0 = never): no injury, a little mood, then
+    /// the service shop (or a new rental bike) or home.
+    /// </summary>
+    public int BikeOnlyPermille { get; set; }
+
+    /// <summary>Protectors (pro shop) cut the share of serious crashes to this (permille of it).</summary>
+    public int ProtectedSeriousPermille { get; set; } = 500;
+
     /// <summary>Alcohol makes riders sloppy: the chance rises by up to this at full alcohol (1000), linearly.</summary>
     public int AlcoholFactorPermille { get; set; } = 2000;
 
@@ -141,6 +150,8 @@ public sealed class CrashRules
             errors.Add($"{p}: factors must be within 0..100000");
         if (MinSkillFactorPermille is < 0 or > 1000) errors.Add($"{p}.minSkillFactorPermille must be within 0..1000");
         if (FatigueBelowEnergy is < 1 or > 1000) errors.Add($"{p}.fatigueBelowEnergy must be within 1..1000");
+        if (BikeOnlyPermille is < 0 or > 1000 || ProtectedSeriousPermille is < 0 or > 1000)
+            errors.Add($"{p}: bikeOnlyPermille and protectedSeriousPermille must be within 0..1000");
         if (CollisionDistanceCm is < 0 or > 10_000) errors.Add($"{p}.collisionDistanceCm must be within 0..10000");
         if (CollisionMinSpeedCmPerS is < 0 or > 10_000) errors.Add($"{p}.collisionMinSpeedCmPerS must be within 0..10000");
         if (new[] { SeriousBasePermille, SeriousJumpPermille, SeriousCollisionPermille, SeriousPer100OverSkillPermille }.Any(s => s is < 0 or > 1000))

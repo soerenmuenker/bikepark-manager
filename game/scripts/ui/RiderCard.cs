@@ -111,6 +111,8 @@ internal sealed partial class RiderCard : PanelContainer
             case RiderActivity.Injured:
                 long left = Math.Max(0, guest.RescueAtTick - state.Tick);
                 return $"Crashed {crashPlace}, waiting for the rescue helicopter ({left} min)";
+            case RiderActivity.Descending or RiderActivity.Climbing when guest.BikeBroken:
+                return "Bike broken in a crash: rolling down to get it fixed";
             case RiderActivity.Descending or RiderActivity.Climbing when guest.Injury != Bikepark.Sim.Safety.InjurySeverity.None:
                 return $"Hurt in a crash {crashPlace}: riding down slowly, then home";
             case RiderActivity.Descending when guest.EntryWaitMs >= 0:
@@ -128,6 +130,9 @@ internal sealed partial class RiderCard : PanelContainer
                 return $"In the queue at {LiftName()}, heading for {target}";
             case RiderActivity.OnLift:
                 return $"On {LiftName()}, heading for {target}";
+            case RiderActivity.Eating when state.Facilities.FirstOrDefault(f => f.Id == guest.FacilityId) is { } shop
+                                           && Bikepark.Sim.Facilities.FacilityMath.FindType(state, shop.TypeId)?.Kind == Bikepark.Sim.Facilities.FacilityKind.Service:
+                return $"At {shop.Name}: the bike is being fixed until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
             case RiderActivity.Eating when guest.ResumeLeg >= 0:
                 return $"Stopped for lunch on the way to {target}, until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
             case RiderActivity.Eating:
@@ -152,6 +157,9 @@ internal sealed partial class RiderCard : PanelContainer
         if (guest.CaffeineUntilTick > state.Tick) parts.Add($"caffeine boost until {Clock(GameTime.MinuteOfDay(guest.CaffeineUntilTick))}");
         if (guest.Alcohol >= state.FacilityRules.TipsyAlcohol) parts.Add("tipsy: bolder, more likely to crash");
         else if (guest.Alcohol > 0) parts.Add("had a drink");
+        if (Bikepark.Sim.Facilities.FacilityMath.FindRentalBike(state, guest.RentalBikeId) is { } rental)
+            parts.Add($"rental {(guest.EBike ? "e-bike" : "bike")} ({rental.Bike.ConditionPermille / 10} %)");
+        if (guest.Protected) parts.Add("wears protectors");
         if (guest.CampgroundId != 0)
             parts.Add(guest.NightsLeft > 0 ? $"camper: {guest.NightsLeft} more night(s)" : "camper: last day");
         return parts.Count == 0 ? "" : "\n" + string.Join(" · ", parts);

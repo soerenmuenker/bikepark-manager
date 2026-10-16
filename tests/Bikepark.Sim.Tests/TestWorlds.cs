@@ -168,6 +168,7 @@ internal static class TestWorlds
         new(780, new SetParkingFeeCommand(500)),
         new(780, new SetParkingFeeCommand(99_999)), // rejected: above max
         new(780, new BuildFacilityCommand("campground", new PointCm(0, 0), new PointCm(100, 0))), // rejected: no such building
+        new(790, new BuyRentalBikesCommand(99, 5)), // rejected: no such building
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

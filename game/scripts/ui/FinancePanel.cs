@@ -29,6 +29,8 @@ public partial class FinancePanel : HudPanel
         new("Merch", [MoneyCategory.ShopUpkeep, MoneyCategory.MerchGoods], [MoneyCategory.Merch], "Merch sold · the goods sold · upkeep of the shops"),
         new("Parking & camping", [MoneyCategory.CampUpkeep], [MoneyCategory.ParkingFees, MoneyCategory.Camping],
             "Parking fees · nights at the campground · upkeep of the campgrounds"),
+        new("Bikes", [MoneyCategory.BikeCosts], [MoneyCategory.Rentals, MoneyCategory.Repairs],
+            "Bike rentals and repairs · parts and upkeep of rental stations and service shops (new fleet bikes are one-offs)"),
         new("Crew", [MoneyCategory.Wages], [], "Daily wages of your crew (Crew menu: hire and dismiss)"),
         new("Park staff", [MoneyCategory.ParkStaff], [], "Ticket office, first aid and cleaning: every day, open or not"),
         new("Loans", [], [], "Weekly installments of your running loans, per day", Loans: true),
@@ -58,7 +60,10 @@ public partial class FinancePanel : HudPanel
     private Label? _beerHoursDetail;
 
     private VBoxContainer? _buildings;
-    private readonly Dictionary<int, (PanelContainer Row, Label Text, Button Upgrade)> _buildingRows = [];
+    private readonly Dictionary<int, (PanelContainer Row, Label Text, Button Upgrade, Button Bikes)> _buildingRows = [];
+
+    /// <summary>Bikes bought for a rental fleet with one click.</summary>
+    private const int BikeBatch = 5;
     private DayChart _chart = null!;
 
     public override string Title => "Finances";
@@ -98,7 +103,7 @@ public partial class FinancePanel : HudPanel
         left.AddChild(_chart);
         if (Ctx.Sim.State.FacilityTypes.Count > 0)
         {
-            left.AddChild(UiTheme.Label("BARS, SHOPS & CAMPGROUNDS — built in the Build menu, upgraded here", 11, UiTheme.TextDim, bold: true));
+            left.AddChild(UiTheme.Label("BUILDINGS — built in the Build menu; upgrades and rental bikes here", 11, UiTheme.TextDim, bold: true));
             _buildings = new VBoxContainer();
             _buildings.AddThemeConstantOverride("separation", 2);
             left.AddChild(_buildings);
@@ -533,11 +538,20 @@ public partial class FinancePanel : HudPanel
                 text.SizeFlagsHorizontal = SizeFlags.ExpandFill;
                 line.AddChild(text);
                 int id = facility.Id;
+                var bikes = UiTheme.Button("", () =>
+                {
+                    var station = Ctx.Sim.State.Facilities.FirstOrDefault(f => f.Id == id);
+                    if (station is null || FacilityMath.FindType(Ctx.Sim.State, station.TypeId) is not { } type) return;
+                    int count = Math.Clamp(FacilityMath.MaxFleet(type, station) - station.Fleet.Count, 1, BikeBatch);
+                    Ctx.Host.Enqueue(new BuyRentalBikesCommand(id, count));
+                });
+                bikes.Visible = false;
+                line.AddChild(bikes);
                 var upgrade = UiTheme.Button("", () => Ctx.Host.Enqueue(new UpgradeFacilityCommand(id)));
                 line.AddChild(upgrade);
                 row.AddChild(line);
                 _buildings.AddChild(row);
-                _buildingRows[facility.Id] = (row, text, upgrade);
+                _buildingRows[facility.Id] = (row, text, upgrade, bikes);
             }
             if (state.Facilities.Count == 0)
                 _buildings.AddChild(UiTheme.Label("None yet: without a bar guests bring a packed lunch and buy no snacks.", 12, UiTheme.Warn));
@@ -545,18 +559,32 @@ public partial class FinancePanel : HudPanel
         int level = Ctx.Kpi.Level;
         foreach (var facility in state.Facilities)
         {
-            var (_, text, button) = _buildingRows[facility.Id];
+            var (_, text, button, bikesButton) = _buildingRows[facility.Id];
             if (FacilityMath.FindType(state, facility.TypeId) is not { } type) continue;
             string sells = string.Join(", ", FacilityMath.ProductsOf(state, type, facility).Select(p => p.Name.ToLowerInvariant()));
             string busy = type.Kind switch
             {
                 FacilityKind.Bar => $"{FacilityMath.SeatsTaken(state, facility)}/{FacilityMath.Seats(type, facility)} seats",
                 FacilityKind.Campground => $"{FacilityMath.PitchesTaken(state, facility)}/{FacilityMath.Pitches(type, facility)} pitches booked",
+                FacilityKind.Rental => facility.Fleet.Count == 0 ? "no bikes yet: buy some"
+                    : $"{facility.Fleet.Count(b => b.RentedBy == 0)}/{facility.Fleet.Count} bikes free (rack {FacilityMath.MaxFleet(type, facility)}) · " +
+                      $"condition {facility.Fleet.Average(b => b.ConditionPermille) / 10:0} %" + (FacilityMath.EBikes(type, facility) ? " · e-bikes" : ""),
+                FacilityKind.Service => $"{FacilityMath.SeatsTaken(state, facility)}/{FacilityMath.Seats(type, facility)} workbenches busy",
                 _ => $"{FacilityMath.BuyChancePermille(type, facility) / 10} % of happy guests buy",
             };
             string upgrades = facility.Level == 0 ? "" : $" ({string.Join(", ", FacilityMath.Bought(type, facility).Select(u => u.Name.ToLowerInvariant()))})";
             text.Text = $"{facility.Name}{upgrades} · {sells} · {busy} · {facility.Customers} sold · today {UiTheme.Money(facility.RevenueTodayCents)} · " +
                         $"total {UiTheme.Money(facility.TotalRevenueCents)} · upkeep {UiTheme.Money(FacilityMath.Upkeep(type, facility))}/day";
+            if (type.Kind == FacilityKind.Rental)
+            {
+                int room = FacilityMath.MaxFleet(type, facility) - facility.Fleet.Count;
+                int count = Math.Clamp(room, 1, BikeBatch);
+                string? cannot = FacilityMath.CannotBuyBikes(state, facility, count);
+                bikesButton.Visible = true;
+                bikesButton.Text = room <= 0 ? "Rack full" : $"+{count} bikes {UiTheme.Money(count * type.BikeCostCents)}";
+                bikesButton.Disabled = cannot is not null;
+                bikesButton.TooltipText = cannot ?? $"Buy {count} rental bikes ({UiTheme.Money(type.BikeCostCents)} each): worn bikes are retired at 0 %";
+            }
             if (FacilityMath.NextUpgrade(type, facility) is not { } next)
             {
                 button.Visible = false;
@@ -579,6 +607,7 @@ public partial class FinancePanel : HudPanel
     {
         "Merch" => state.FacilityTypes.Any(t => t.Kind == FacilityKind.Shop),
         "Parking & camping" => state.ParkingLots.Count > 0 || state.FacilityTypes.Any(t => t.Kind == FacilityKind.Campground),
+        "Bikes" => state.FacilityTypes.Any(t => t.Kind is FacilityKind.Rental or FacilityKind.Service),
         "Park staff" => state.Rules.DailyUpkeepCents > 0,
         "Loans" => state.LoanRules.Offers.Count > 0 || state.Loans.Count > 0,
         _ => true,
@@ -607,6 +636,9 @@ public partial class FinancePanel : HudPanel
         MoneyCategory.ParkingFees => "parking fees",
         MoneyCategory.Camping => "camping nights",
         MoneyCategory.CampUpkeep => "campground upkeep",
+        MoneyCategory.Rentals => "bike rentals",
+        MoneyCategory.Repairs => "repairs",
+        MoneyCategory.BikeCosts => "bike parts & upkeep",
         MoneyCategory.Merch => "merch",
         MoneyCategory.LiftFees => "bike access fees",
         MoneyCategory.LiftUpkeep => "own lift upkeep",
