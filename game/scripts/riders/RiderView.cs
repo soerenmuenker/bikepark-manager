@@ -152,7 +152,7 @@ public partial class RiderView : Node3D
             if (IsOnNetwork(g))
                 _previous[g.Id] = new(g.Route, g.RouteProgressCm, g.Activity, Jersey(g),
                     queueIndex.TryGetValue(g.Id, out var q) ? q.Index : -1);
-            else if (g.Activity is RiderActivity.Idle or RiderActivity.Eating)
+            else if (g.Activity is RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Apres)
                 _previous[g.Id] = new(null, 0, g.Activity, Jersey(g));
         }
     }
@@ -180,9 +180,10 @@ public partial class RiderView : Node3D
         int count = 0;
         foreach (var guest in sim.State.Guests)
         {
-            if (!IsOnNetwork(guest) && guest.Activity != RiderActivity.Eating) continue;
+            bool seated = guest.Activity is RiderActivity.Eating or RiderActivity.Apres;
+            if (!IsOnNetwork(guest) && !seated) continue;
             Vector3 position, forward;
-            if (guest.Activity == RiderActivity.Eating)
+            if (seated)
             {
                 if (!TryLocateBreak(sim, network, guest, out position, out forward)) continue;
             }
@@ -210,6 +211,7 @@ public partial class RiderView : Node3D
             mm.SetInstanceColor(count, guest.Activity switch
             {
                 RiderActivity.Eating => Jersey(guest).Lerp(LunchTint, 0.6f),
+                RiderActivity.Apres => Jersey(guest).Lerp(ApresTint, 0.6f),
                 RiderActivity.Injured => InjuredColor,
                 _ => Jersey(guest),
             });
@@ -344,6 +346,9 @@ public partial class RiderView : Node3D
 
     private static readonly Color LunchTint = new(1.0f, 0.78f, 0.35f);
 
+    /// <summary>Après-bike guests at the bar: amber, like the beer.</summary>
+    private static readonly Color ApresTint = new(1.0f, 0.72f, 0.18f);
+
     /// <summary>Seriously injured riders are red, riders with a minor injury get an orange tint on their way down.</summary>
     private static readonly Color InjuredColor = new(0.95f, 0.15f, 0.12f);
     private static readonly Color HurtTint = new(1.0f, 0.55f, 0.15f);
@@ -368,7 +373,7 @@ public partial class RiderView : Node3D
             foreach (var other in sim.State.Guests)
             {
                 if (other == guest) break;
-                if (other.FacilityId == bar.Id && other.Activity == RiderActivity.Eating) seat++;
+                if (other.FacilityId == bar.Id && other.Activity is RiderActivity.Eating or RiderActivity.Apres) seat++;
             }
             float l = barPad.HalfLengthCm / 100f, w = barPad.HalfWidthCm / 100f;
             int perRow = Math.Max(1, (int)((w * 2 - 1.6f) / 1.5f) + 1);

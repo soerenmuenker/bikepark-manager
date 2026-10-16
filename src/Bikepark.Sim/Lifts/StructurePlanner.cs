@@ -145,7 +145,8 @@ public static class StructurePlanner
 
     /// <summary>
     /// A bar or shop centred at <paramref name="center"/>, its length pointing towards <paramref name="toward"/>: on the
-    /// park's land, within reach of a valley station (whose base it serves). <see cref="ParkingPlan.LiftId"/> is that lift.
+    /// park's land, with a gravel path or a hub (station, parking lot, platform) within
+    /// <see cref="Facilities.FacilityRules.AccessReachMeters"/>. It serves the guests nearby.
     /// </summary>
     public static ParkingPlan PlanFacility(TerrainGrid grid, WayNetwork network, WorldState state, string typeId, PointCm center, PointCm toward,
         bool scenario = false)
@@ -159,25 +160,10 @@ public static class StructurePlanner
         var (dirX, dirZ) = TerrainPad.Direction(toward.X - center.X, toward.Z - center.Z);
         var pad = MakePad(grid, rules, center, type.LengthMeters, type.WidthMeters, dirX, dirZ);
         CheckPad(grid, network, state, rules, pad, type.Name, issues, checkLand: !scenario);
-        int liftId = NearestValleyStation(state, pad, rules.StationReachMeters * 100L);
-        if (liftId == 0)
-            issues.Add(Error("noStation", $"Place it within {rules.StationReachMeters} m of a valley station: it serves the guests at that lift's base."));
-        return new ParkingPlan { Pad = pad, LiftId = liftId, Issues = issues };
-    }
-
-    /// <summary>The lift whose valley station is nearest the pad, within <paramref name="reachCm"/> (0: none).</summary>
-    private static int NearestValleyStation(WorldState state, TerrainPad pad, long reachCm)
-    {
-        int liftId = 0;
-        long best = long.MaxValue;
-        foreach (var lift in state.Lifts)
-        {
-            var station = LiftNetwork.Pad(state, lift.Valley.TerrainEditId);
-            if (station is null) continue;
-            long d = pad.Corners().Append(new PointCm(pad.CenterX, pad.CenterZ)).Min(p => station.DistanceOutside(p.X, p.Z));
-            if (d < best) { best = d; liftId = lift.Id; }
-        }
-        return best <= reachCm ? liftId : 0;
+        int reach = state.FacilityRules.AccessReachMeters;
+        if (!Facilities.FacilityMath.HasAccess(network, pad, reach * 100L))
+            issues.Add(Error("noAccess", $"Place it within {reach} m of a gravel path, a platform, a station or a parking lot: guests and supplies need a way there."));
+        return new ParkingPlan { Pad = pad, Issues = issues };
     }
 
     /// <summary>Side of a gravel platform (square).</summary>

@@ -36,7 +36,8 @@ public static class StructureRemoval
         if (state.ParkingLots.FirstOrDefault(p => p.Id == id) is { } lot)
             return lot.Spaces * rules.ParkingRemovalCentsPerSpace;
         if (state.Facilities.FirstOrDefault(f => f.Id == id) is { } facility)
-            return (Facilities.FacilityMath.FindType(state, facility.TypeId)?.BuildCostCents ?? 0) * rules.RemovalPermille / 1000;
+            return (Facilities.FacilityMath.FindType(state, facility.TypeId) is { } type ? Facilities.FacilityMath.InvestedCents(type, facility) : 0)
+                   * rules.RemovalPermille / 1000;
         return 0;
     }
 
@@ -48,7 +49,6 @@ public static class StructureRemoval
         {
             if (LiftNetwork.FindOperator(state, lift.OperatorId) is { } op) return $"{lift.Name} belongs to {op.Name}.";
             if (state.ParkingLots.FirstOrDefault(p => p.LiftId == id) is { } lot) return $"{lot.Name} serves {lift.Name}: renaturalize it first.";
-            if (state.Facilities.FirstOrDefault(f => f.LiftId == id) is { } building) return $"{building.Name} serves {lift.Name}: renaturalize it first.";
         }
         if (!PadsOwned(state, id)) return $"{info.Name} stands on land the park doesn't own.";
         long cost = CostCents(state, id);
@@ -73,7 +73,10 @@ public static class StructureRemoval
         state.Platforms.RemoveAll(p => p.Id == id);
         state.Facilities.RemoveAll(f => f.Id == id);
         foreach (var guest in state.Guests.Where(g => g.FacilityId == id))
+        {
             guest.FacilityId = 0; // lunch goes on where they are
+            if (guest.Activity == RiderActivity.Apres) guest.BusyUntilTick = ctx.Tick; // the bar is gone: home
+        }
         state.TerrainEdits.RemoveAll(e => e.OwnerId == id);
         foreach (var way in state.Ways)
         {

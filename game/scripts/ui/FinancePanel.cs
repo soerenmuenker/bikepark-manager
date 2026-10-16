@@ -10,8 +10,9 @@ namespace Bikepark.Game.Ui;
 
 /// <summary>
 /// The park's budget, in the spirit of SimCity's: regular income and expenses per area as bars (yesterday's closed day,
-/// or today so far), the levers the player can pull (entrance fee, lift pass), loans, one-off transactions (land, lifts,
-/// buildings, tools, wood, loans) and the balance. Below: the last days and the bars and shops.
+/// or today so far), the levers the player can pull (entrance fee, lift pass, product prices, beer hours), loans, one-off
+/// transactions (land, lifts, buildings, tools, wood, loans) and the balance. Below: the last days and the bars and shops
+/// (with their upgrades).
 /// </summary>
 public partial class FinancePanel : HudPanel
 {
@@ -23,7 +24,8 @@ public partial class FinancePanel : HudPanel
         new("Entrance", [], [MoneyCategory.EntryFees], "Entrance fees paid on arrival"),
         new("Lifts", [MoneyCategory.LiftFees, MoneyCategory.LiftUpkeep], [MoneyCategory.LiftPasses],
             "Lift day passes sold · bike access booked on company lifts · upkeep of your own lifts"),
-        new("Food & drinks", [MoneyCategory.BarUpkeep], [MoneyCategory.Food], "Lunch and snacks sold · upkeep of the bars"),
+        new("Food & drinks", [MoneyCategory.BarUpkeep, MoneyCategory.FoodGoods], [MoneyCategory.Food, MoneyCategory.Drinks],
+            "Lunch, snacks, coffee and beer sold · the goods sold · upkeep of the bars"),
         new("Merch", [MoneyCategory.ShopUpkeep, MoneyCategory.MerchGoods], [MoneyCategory.Merch], "Merch sold · the goods sold · upkeep of the shops"),
         new("Crew", [MoneyCategory.Wages], [], "Daily wages of your crew (Crew menu: hire and dismiss)"),
         new("Park staff", [MoneyCategory.ParkStaff], [], "Ticket office, first aid and cleaning: every day, open or not"),
@@ -48,8 +50,12 @@ public partial class FinancePanel : HudPanel
     private string _transactionsSignature = "";
     private Label _money = null!, _debtStatus = null!;
 
+    private readonly List<(ProductType Product, Label Price, Label Detail)> _prices = [];
+    private Button? _beerHours;
+    private Label? _beerHoursDetail;
+
     private VBoxContainer? _buildings;
-    private readonly Dictionary<int, (PanelContainer Row, Label Text)> _buildingRows = [];
+    private readonly Dictionary<int, (PanelContainer Row, Label Text, Button Upgrade)> _buildingRows = [];
     private DayChart _chart = null!;
 
     public override string Title => "Finances";
@@ -78,6 +84,7 @@ public partial class FinancePanel : HudPanel
 
         BuildBudget(left);
         BuildLevers(right);
+        BuildPrices(right);
         BuildLoans(right);
         BuildTransactions(right);
         BuildBalance(right);
@@ -88,7 +95,7 @@ public partial class FinancePanel : HudPanel
         left.AddChild(_chart);
         if (Ctx.Sim.State.FacilityTypes.Count > 0)
         {
-            left.AddChild(UiTheme.Label("BARS & SHOPS — built in the Build menu", 11, UiTheme.TextDim, bold: true));
+            left.AddChild(UiTheme.Label("BARS & SHOPS — built in the Build menu, upgraded here", 11, UiTheme.TextDim, bold: true));
             _buildings = new VBoxContainer();
             _buildings.AddThemeConstantOverride("separation", 2);
             left.AddChild(_buildings);
@@ -181,6 +188,71 @@ public partial class FinancePanel : HudPanel
         card.AddChild(_liftTicketDetail);
     }
 
+    /// <summary>One price per product (all bars and shops sell at it) and when riders may drink.</summary>
+    private void BuildPrices(VBoxContainer right)
+    {
+        var state = Ctx.Sim.State;
+        if (state.ProductTypes.Count == 0) return;
+        var card = Card(right, "PRICES — in all bars and shops");
+        foreach (var product in state.ProductTypes)
+        {
+            var row = Row(6);
+            row.AddChild(Cell(product.Name, 80, UiTheme.Text, 13, bold: true));
+            var p = product;
+            row.AddChild(UiTheme.Button("−", () => ChangePrice(p, -PriceStep(p)), $"Cheaper {p.Name.ToLowerInvariant()}: more guests buy it"));
+            var price = Cell("", 64, UiTheme.Text, 14, bold: true, align: HorizontalAlignment.Center);
+            row.AddChild(price);
+            row.AddChild(UiTheme.Button("+", () => ChangePrice(p, PriceStep(p)),
+                $"Dearer {p.Name.ToLowerInvariant()}: fewer buy it, and above the fair price guests feel ripped off"));
+            var detail = Cell("", 0, UiTheme.TextDim, 11);
+            detail.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            row.AddChild(detail);
+            row.TooltipText = ProductTooltip(p);
+            card.AddChild(row);
+            _prices.Add((p, price, detail));
+        }
+        if (!state.ProductTypes.Any(p => p.Alcohol > 0)) return;
+        var beer = Row(6);
+        beer.AddChild(Cell("Beer for riders", 110, UiTheme.Text, 13, bold: true));
+        _beerHours = UiTheme.Button("", CycleBeerHours,
+            "When bars serve alcohol to riders (tipsy riders pick harder trails and crash more). After their last lap guests may always " +
+            "stay for après-bike.");
+        beer.AddChild(_beerHours);
+        card.AddChild(beer);
+        _beerHoursDetail = UiTheme.Label("", 11, UiTheme.TextDim);
+        card.AddChild(_beerHoursDetail);
+    }
+
+    private static long PriceStep(ProductType product) => product.ReferencePriceCents < 1000 ? 50 : 100;
+
+    private void ChangePrice(ProductType product, long delta)
+    {
+        long price = Math.Clamp(FacilityMath.PriceOf(Ctx.Sim.State, product) + delta, 0, product.MaxPriceCents);
+        Ctx.Host.Enqueue(new SetProductPriceCommand(product.Id, price));
+    }
+
+    /// <summary>All day → from 15:00 → after closing → never → all day.</summary>
+    private void CycleBeerHours()
+    {
+        var state = Ctx.Sim.State;
+        int[] options = [0, 15 * GameTime.MinutesPerHour, state.Rules.CloseMinute, GameTime.MinutesPerDay];
+        int index = Array.IndexOf(options, state.Park.BeerFromMinute);
+        Ctx.Host.Enqueue(new SetBeerHoursCommand(options[(index + 1) % options.Length]));
+    }
+
+    private static string ProductTooltip(ProductType p)
+    {
+        var effects = new List<string>();
+        if (p.Lunch) effects.Add($"lunch: a seat for {p.MinMinutes}–{p.MaxMinutes} min");
+        if (p.Merch) effects.Add("merch: guests going home buy it at a shop");
+        if (p.Energy > 0) effects.Add($"+{p.Energy / 10} % energy");
+        if (p.Happiness > 0) effects.Add($"+{p.Happiness / 10} % mood");
+        if (p.CaffeineMinutes > 0) effects.Add($"climbing costs half the energy for {p.CaffeineMinutes} min");
+        if (p.Alcohol > 0) effects.Add("alcohol: bolder trail choices, more crashes");
+        return $"{p.Name}: fair price {UiTheme.MoneyExact(p.ReferencePriceCents)}, at most {UiTheme.MoneyExact(p.MaxPriceCents)} · " +
+               $"goods cost {p.GoodsCostPermille / 10} % of the price\n{string.Join(" · ", effects)}";
+    }
+
     private void BuildLoans(VBoxContainer right)
     {
         if (Ctx.Sim.State.LoanRules.Offers.Count == 0) return;
@@ -250,6 +322,7 @@ public partial class FinancePanel : HudPanel
 
         _advice.Text = Advice(state, yesterday, loansPerDay);
         RefreshLevers(state, yesterday);
+        RefreshPrices(state);
         RefreshLoans();
         RefreshTransactions(state);
         _money.Text = UiTheme.MoneyExact(f.MoneyCents);
@@ -311,6 +384,26 @@ public partial class FinancePanel : HudPanel
         _liftTicketDetail.Text = pass == 0
             ? $"Free lifts: {yesterday.LiftRides} lift rides yesterday"
             : $"Yesterday: {UiTheme.Money(passes)} (≈ {passes / pass} passes) · too dear and guests pedal up";
+    }
+
+    private void RefreshPrices(WorldState state)
+    {
+        foreach (var (product, price, detail) in _prices)
+        {
+            long cents = FacilityMath.PriceOf(state, product);
+            price.Text = UiTheme.MoneyExact(cents);
+            int factor = FacilityMath.BuyFactorPermille(product, cents);
+            var sales = state.Finance.ProductSales.FirstOrDefault(s => s.ProductId == product.Id);
+            string demand = cents > product.ReferencePriceCents ? $"{(1000 - factor) / 10} % fewer buy · rip-off"
+                : cents < product.ReferencePriceCents ? $"+{(factor - 1000) / 10} % buy" : "fair";
+            detail.Text = $"{demand} · {sales?.SoldToday ?? 0} sold today";
+            detail.AddThemeColorOverride("font_color", cents > product.ReferencePriceCents ? UiTheme.Warn : UiTheme.TextDim);
+        }
+        if (_beerHours is null || _beerHoursDetail is null) return;
+        int from = state.Park.BeerFromMinute;
+        _beerHours.Text = from <= 0 ? "all day" : from >= GameTime.MinutesPerDay ? "never"
+            : from >= state.Rules.CloseMinute ? "après-bike only" : $"from {from / 60:00}:{from % 60:00}";
+        _beerHoursDetail.Text = $"Crashes after a drink: {state.Safety.CrashesUnderInfluence} · après-bike guests: {state.Stats.TotalApresGuests}";
     }
 
     /// <summary>The newest one-offs first, and what they added up to over the last 7 days.</summary>
@@ -393,7 +486,7 @@ public partial class FinancePanel : HudPanel
         }
     }
 
-    /// <summary>One line per bar and shop: what it served and earned.</summary>
+    /// <summary>One line per bar and shop: what it sells and earned, and its next upgrade.</summary>
     private void RefreshBuildings()
     {
         if (_buildings is null) return;
@@ -407,23 +500,45 @@ public partial class FinancePanel : HudPanel
             {
                 var row = new PanelContainer();
                 row.AddThemeStyleboxOverride("panel", UiTheme.Box(UiTheme.Card, 6, 8, 4));
+                var line = Row(8);
                 var text = UiTheme.Label("", 12);
-                row.AddChild(text);
+                text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                text.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                line.AddChild(text);
+                int id = facility.Id;
+                var upgrade = UiTheme.Button("", () => Ctx.Host.Enqueue(new UpgradeFacilityCommand(id)));
+                line.AddChild(upgrade);
+                row.AddChild(line);
                 _buildings.AddChild(row);
-                _buildingRows[facility.Id] = (row, text);
+                _buildingRows[facility.Id] = (row, text, upgrade);
             }
             if (state.Facilities.Count == 0)
                 _buildings.AddChild(UiTheme.Label("None yet: without a bar guests bring a packed lunch and buy no snacks.", 12, UiTheme.Warn));
         }
+        int level = Ctx.Kpi.Level;
         foreach (var facility in state.Facilities)
         {
-            var type = FacilityMath.FindType(state, facility.TypeId);
-            string lift = state.Lifts.FirstOrDefault(l => l.Id == facility.LiftId)?.Name ?? "?";
-            string busy = type?.Kind == FacilityKind.Bar
-                ? $"{FacilityMath.SeatsTaken(state, facility)}/{type.Seats} seats · {facility.Customers} lunches"
-                : $"{facility.Customers} sold";
-            _buildingRows[facility.Id].Text.Text = $"{facility.Name} (at {lift}) · {busy} · today {UiTheme.Money(facility.RevenueTodayCents)} · " +
-                                                    $"total {UiTheme.Money(facility.TotalRevenueCents)} · upkeep {UiTheme.Money(type?.UpkeepPerDayCents ?? 0)}/day";
+            var (_, text, button) = _buildingRows[facility.Id];
+            if (FacilityMath.FindType(state, facility.TypeId) is not { } type) continue;
+            string sells = string.Join(", ", FacilityMath.ProductsOf(state, type, facility).Select(p => p.Name.ToLowerInvariant()));
+            string busy = type.Kind == FacilityKind.Bar
+                ? $"{FacilityMath.SeatsTaken(state, facility)}/{FacilityMath.Seats(type, facility)} seats"
+                : $"{FacilityMath.BuyChancePermille(type, facility) / 10} % of happy guests buy";
+            string upgrades = facility.Level == 0 ? "" : $" ({string.Join(", ", FacilityMath.Bought(type, facility).Select(u => u.Name.ToLowerInvariant()))})";
+            text.Text = $"{facility.Name}{upgrades} · {sells} · {busy} · {facility.Customers} sold · today {UiTheme.Money(facility.RevenueTodayCents)} · " +
+                        $"total {UiTheme.Money(facility.TotalRevenueCents)} · upkeep {UiTheme.Money(FacilityMath.Upkeep(type, facility))}/day";
+            if (FacilityMath.NextUpgrade(type, facility) is not { } next)
+            {
+                button.Visible = false;
+                continue;
+            }
+            string? locked = FacilityMath.CannotUpgrade(state, level, type, facility);
+            button.Visible = true;
+            button.Text = state.Rules.UnlockLevel(level) < next.RequiredLevel ? $"{next.Name}: level {next.RequiredLevel}"
+                : $"{next.Name} {UiTheme.Money(next.CostCents)}";
+            button.Disabled = locked is not null;
+            button.TooltipText = (locked is null ? "" : locked + "\n") +
+                                 $"{next.Name}: {next.Description} · +{UiTheme.Money(next.UpkeepPerDayCents)}/day upkeep";
         }
     }
 
@@ -456,6 +571,8 @@ public partial class FinancePanel : HudPanel
         MoneyCategory.EntryFees => "entrance fees",
         MoneyCategory.LiftPasses => "lift passes",
         MoneyCategory.Food => "lunch & snacks",
+        MoneyCategory.Drinks => "coffee & drinks",
+        MoneyCategory.FoodGoods => "food goods",
         MoneyCategory.Merch => "merch",
         MoneyCategory.LiftFees => "bike access fees",
         MoneyCategory.LiftUpkeep => "own lift upkeep",

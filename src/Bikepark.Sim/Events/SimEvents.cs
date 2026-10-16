@@ -43,6 +43,9 @@ public enum GuestLeaveReason
 
     /// <summary>A serious crash: flown out by the rescue helicopter.</summary>
     Evacuated,
+
+    /// <summary>Had too much to drink to ride on.</summary>
+    Drunk,
 }
 
 public sealed record GuestLeft(long Tick, int GuestId, GuestLeaveReason Reason) : ISimEvent;
@@ -132,6 +135,7 @@ public sealed record DayReport(
     long FoodCents = 0,
     long MerchCents = 0,
     long FacilityUpkeepCents = 0,
+    long DrinksCents = 0,
     State.MoneyByCategory? ByCategory = null);
 
 public sealed record DayEnded(long Tick, DayReport Report) : ISimEvent;
@@ -250,4 +254,13 @@ public sealed record ToolWornOut(long Tick, int ToolId, string TypeId) : ISimEve
 public sealed record FacilityBuilt(long Tick, int FacilityId, string TypeName) : ISimEvent;
 
 /// <summary>A guest leaving bought something at a shop.</summary>
+/// <summary>A guest bought a product at a bar or shop (at the park's price).</summary>
+public sealed record ProductSold(long Tick, int GuestId, int FacilityId, string ProductId, long PriceCents) : ISimEvent;
+
+/// <summary>A guest going home stays at a bar for après-bike until <paramref name="UntilTick"/>.</summary>
+public sealed record ApresStarted(long Tick, int GuestId, int FacilityId, long UntilTick) : ISimEvent;
+
+/// <summary>The park bought a building's next upgrade.</summary>
+public sealed record FacilityUpgraded(long Tick, int FacilityId, string UpgradeName, int Level) : ISimEvent;
+
 public sealed record MerchSold(long Tick, int GuestId, int FacilityId, long PriceCents) : ISimEvent;

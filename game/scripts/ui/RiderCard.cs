@@ -91,7 +91,7 @@ internal sealed partial class RiderCard : PanelContainer
             $"Runs: {guest.RunsCompleted}{lastTrail}\n" +
             $"In the park since {Clock(GameTime.MinuteOfDay(guest.ArrivedTick))}, " +
             $"stays until ~{Clock(GameTime.MinuteOfDay(guest.ArrivedTick + guest.PlannedStayMinutes))}\n" +
-            $"Cash: {UiTheme.Money(guest.CashCents)} · {lunch}";
+            $"Cash: {UiTheme.Money(guest.CashCents)} · {lunch}" + Refreshments(guest);
     }
 
     private string Doing(Guest guest)
@@ -128,13 +128,29 @@ internal sealed partial class RiderCard : PanelContainer
                 return $"In the queue at {LiftName()}, heading for {target}";
             case RiderActivity.OnLift:
                 return $"On {LiftName()}, heading for {target}";
+            case RiderActivity.Eating when guest.ResumeLeg >= 0:
+                return $"Stopped for lunch on the way to {target}, until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
             case RiderActivity.Eating:
                 return $"Having lunch until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
+            case RiderActivity.Apres:
+                string bar = state.Facilities.FirstOrDefault(f => f.Id == guest.FacilityId)?.Name ?? "the bar";
+                return $"Après-bike at {bar} until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}, then home";
             case RiderActivity.Idle:
                 return "Taking a break between laps";
             default:
                 return "Looking around";
         }
+    }
+
+    /// <summary>Caffeine and alcohol, when there is any.</summary>
+    private string Refreshments(Guest guest)
+    {
+        var state = _ctx.Sim.State;
+        var parts = new List<string>();
+        if (guest.CaffeineUntilTick > state.Tick) parts.Add($"caffeine boost until {Clock(GameTime.MinuteOfDay(guest.CaffeineUntilTick))}");
+        if (guest.Alcohol >= state.FacilityRules.TipsyAlcohol) parts.Add("tipsy: bolder, more likely to crash");
+        else if (guest.Alcohol > 0) parts.Add("had a drink");
+        return parts.Count == 0 ? "" : "\n" + string.Join(" · ", parts);
     }
 
     private static void SetMeter(Label value, ProgressBar bar, int permille, Color color)

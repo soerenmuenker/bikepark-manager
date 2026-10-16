@@ -60,6 +60,9 @@ public sealed class CrashRules
     public int FatigueBelowEnergy { get; set; } = 350;
     public int FatigueFactorPermille { get; set; } = 1000;
 
+    /// <summary>Alcohol makes riders sloppy: the chance rises by up to this at full alcohol (1000), linearly.</summary>
+    public int AlcoholFactorPermille { get; set; } = 2000;
+
     /// <summary>
     /// Two riders passing a crossing of their ways (or of a way and a T-bar track) who are both within this distance of the
     /// crossing point at the same moment collide, when at least one of them is as fast as <see cref="CollisionMinSpeedCmPerS"/>.
@@ -134,7 +137,7 @@ public sealed class CrashRules
         const string p = "crashRules";
         if (FeatureBasePpm is < 0 or > 1_000_000 || TerrainBasePpm is < 0 or > 1_000_000)
             errors.Add($"{p}: chances (ppm) must be within 0..1000000");
-        if (new[] { JumpFactorPermille, OverSkillPer100Permille, WornFactorPermille, WetFactorPermille, FatigueFactorPermille }.Any(f => f is < 0 or > 100_000))
+        if (new[] { JumpFactorPermille, OverSkillPer100Permille, WornFactorPermille, WetFactorPermille, FatigueFactorPermille, AlcoholFactorPermille }.Any(f => f is < 0 or > 100_000))
             errors.Add($"{p}: factors must be within 0..100000");
         if (MinSkillFactorPermille is < 0 or > 1000) errors.Add($"{p}.minSkillFactorPermille must be within 0..1000");
         if (FatigueBelowEnergy is < 1 or > 1000) errors.Add($"{p}.fatigueBelowEnergy must be within 1..1000");

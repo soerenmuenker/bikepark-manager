@@ -50,6 +50,8 @@ public class LedgerTests
         Assert.True(Ledger.IsIncome(MoneyCategory.Merch));
         Assert.True(Ledger.IsIncome(MoneyCategory.LoanTaken));
         Assert.False(Ledger.IsIncome(MoneyCategory.MerchGoods));
+        Assert.True(Ledger.IsRegular(MoneyCategory.Drinks) && Ledger.IsIncome(MoneyCategory.Drinks));
+        Assert.True(Ledger.IsRegular(MoneyCategory.FoodGoods) && !Ledger.IsIncome(MoneyCategory.FoodGoods));
         Assert.Equal(0, Ledger.Get(null, MoneyCategory.Food));
         Assert.Equal(0, Ledger.Get([1, 2], MoneyCategory.Food));
     }
@@ -75,10 +77,15 @@ public class LedgerTests
             Assert.True(Ledger.Get(day.ByCategory, MoneyCategory.EntryFees) > 0);
             Assert.Equal(day.FoodCents, Ledger.Get(day.ByCategory, MoneyCategory.Food));
             Assert.Equal(day.MerchCents, Ledger.Get(day.ByCategory, MoneyCategory.Merch));
+            Assert.Equal(day.DrinksCents, Ledger.Get(day.ByCategory, MoneyCategory.Drinks));
         }
-        // Upkeep by kind: the Demo has one snack bar and one merch shop.
+        // Upkeep by kind: the Demo has a snack bar (with its espresso machine), a beer rondel and a merch shop.
         var types = sim.State.FacilityTypes;
-        Assert.Equal(types.Single(t => t.Id == "snack_bar").UpkeepPerDayCents, Ledger.Get(days[1].ByCategory, MoneyCategory.BarUpkeep));
+        var snackBar = types.Single(t => t.Id == "snack_bar");
+        Assert.Equal(snackBar.UpkeepPerDayCents + snackBar.Upgrades[0].UpkeepPerDayCents + types.Single(t => t.Id == "beer_rondel").UpkeepPerDayCents,
+            Ledger.Get(days[1].ByCategory, MoneyCategory.BarUpkeep));
+        Assert.True(Ledger.Get(days[1].ByCategory, MoneyCategory.Drinks) > 0);
+        Assert.True(Ledger.Get(days[1].ByCategory, MoneyCategory.FoodGoods) > 0);
         Assert.Equal(types.Single(t => t.Id == "merch_shop").UpkeepPerDayCents, Ledger.Get(days[1].ByCategory, MoneyCategory.ShopUpkeep));
         Assert.All(sim.State.Finance.TodayCents, c => Assert.Equal(0, c));
         Assert.Equal(days[^1].ByCategory, sim.State.DayHistory[^1].ByCategory);

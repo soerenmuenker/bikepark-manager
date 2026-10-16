@@ -26,7 +26,7 @@ public partial class StructureTool : Node3D
         /// <summary>A small square gravel platform to connect paths and trails (click the centre, then a direction).</summary>
         Platform,
 
-        /// <summary>A bar or shop (<see cref="FacilityTypeId"/>) next to a valley station (click the centre, then a direction).</summary>
+        /// <summary>A bar or shop (<see cref="FacilityTypeId"/>) next to a gravel path or hub (click the centre, then a direction).</summary>
         Facility,
     }
 
@@ -87,7 +87,7 @@ public partial class StructureTool : Node3D
             ToolMode.Parking => $"Parking lot ({ParkingSpaces} spaces): click the centre, then where it should point",
             ToolMode.Platform => "Gravel platform: click the centre, then where one side should point",
             ToolMode.Facility => $"{Bikepark.Sim.Facilities.FacilityMath.FindType(_host.Sim.State, FacilityTypeId)?.Name ?? "Building"}: " +
-                                 "click the centre next to a valley station, then where its front should point",
+                                 "click the centre next to a gravel path, platform or station, then where its front should point",
             _ => "",
         };
     }
@@ -208,8 +208,8 @@ public partial class StructureTool : Node3D
             // Debug instant build: free (built like scenario content).
             _host.Enqueue(new BuildFacilityCommand(FacilityTypeId, _points[0], _points[1],
                 Origin: _host.InstantBuild ? WayOrigin.Scenario : WayOrigin.Player));
-            string? lift = sim.State.Lifts.FirstOrDefault(l => l.Id == plan.LiftId)?.Name;
-            Status = $"Built the {Bikepark.Sim.Facilities.FacilityMath.FindType(sim.State, FacilityTypeId)?.Name.ToLowerInvariant()}: it serves the guests at the base of {lift}.";
+            Status = $"Built the {Bikepark.Sim.Facilities.FacilityMath.FindType(sim.State, FacilityTypeId)?.Name.ToLowerInvariant()}: " +
+                     "it serves the guests nearby. Prices and upgrades: Finances menu.";
         }
         else if (Mode == ToolMode.Platform)
         {

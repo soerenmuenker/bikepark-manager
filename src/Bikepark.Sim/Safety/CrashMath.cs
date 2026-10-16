@@ -18,14 +18,14 @@ public static class CrashMath
         if (Reputation.ReviewMath.IsJump(type.Kind)) ppb = ppb * rules.JumpFactorPermille / 1000;
         ppb = ppb * SkillFactor(rules, type.Difficulty, guest.Skill) / 1000;
         ppb = ppb * ConditionFactor(rules, wear, conditionPermille) / 1000;
-        return Clamp(ppb * WetFactor(rules, wetnessPermille) / 1000 * FatigueFactor(rules, guest.Energy) / 1000);
+        return Clamp(ppb * WetFactor(rules, wetnessPermille) / 1000 * FatigueFactor(rules, guest.Energy) / 1000 * AlcoholFactor(rules, guest.Alcohol) / 1000);
     }
 
     /// <summary>Chance of crashing on a 10 m segment of rough or steep trail.</summary>
     public static long TerrainChancePpb(CrashRules rules, Guest guest, WaySegment segment, int wetnessPermille)
     {
         long ppb = rules.TerrainBasePpm * 1000L * SkillFactor(rules, segment.TerrainDifficulty, guest.Skill) / 1000;
-        return Clamp(ppb * WetFactor(rules, wetnessPermille) / 1000 * FatigueFactor(rules, guest.Energy) / 1000);
+        return Clamp(ppb * WetFactor(rules, wetnessPermille) / 1000 * FatigueFactor(rules, guest.Energy) / 1000 * AlcoholFactor(rules, guest.Alcohol) / 1000);
     }
 
     /// <summary>
@@ -69,6 +69,9 @@ public static class CrashMath
         if (energy >= rules.FatigueBelowEnergy) return 1000;
         return 1000 + (rules.FatigueBelowEnergy - Math.Max(0, energy)) * rules.FatigueFactorPermille / rules.FatigueBelowEnergy;
     }
+
+    /// <summary>Drinking riders crash more: 1000 sober, up to 1000 + <see cref="CrashRules.AlcoholFactorPermille"/> at full alcohol.</summary>
+    public static int AlcoholFactor(CrashRules rules, int alcohol) => 1000 + Math.Clamp(alcohol, 0, 1000) * rules.AlcoholFactorPermille / 1000;
 
     /// <summary>Share of crashes that are serious (permille).</summary>
     public static int SeriousPermille(CrashRules rules, CrashCause cause, bool jump, int difficulty, int skill)

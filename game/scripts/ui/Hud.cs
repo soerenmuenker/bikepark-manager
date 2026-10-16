@@ -761,6 +761,8 @@ public partial class Hud : CanvasLayer
         var events = sim.Events;
         _subscriptions.Add(events.Subscribe<FacilityBuilt>(e => Toast(
             $"{_ctx.Sim.State.Facilities.FirstOrDefault(f => f.Id == e.FacilityId)?.Name ?? e.TypeName} is open", UiTheme.Good)));
+        _subscriptions.Add(events.Subscribe<FacilityUpgraded>(e => Toast(
+            $"{_ctx.Sim.State.Facilities.FirstOrDefault(f => f.Id == e.FacilityId)?.Name ?? "The building"}: {e.UpgradeName} is in", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<ToolWornOut>(e => Toast(
             $"A {(_ctx.Sim.State.ToolTypes.FirstOrDefault(t => t.Id == e.TypeId)?.Name ?? "tool").ToLowerInvariant()} is worn out (Crew menu: buy a new one)",
             UiTheme.Warn)));

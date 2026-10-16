@@ -198,9 +198,24 @@ public static class Program
         if (state.FacilityTypes.Count == 0) return null;
         var f = state.Finance;
         return new FacilitiesReport(
-            state.Facilities.Select(x => new FacilityReport(x.Id, x.Name, x.TypeId, state.Lifts.FirstOrDefault(l => l.Id == x.LiftId)?.Name,
-                x.Customers, x.TotalRevenueCents)).ToList(),
-            f.TotalFoodCents, f.TotalSnackCents, f.TotalMerchCents, f.TotalMerchCostCents, f.TotalFacilityBuildCents, f.TotalFacilityUpkeepCents,
+            state.Facilities.Select(x =>
+            {
+                var type = Bikepark.Sim.Facilities.FacilityMath.FindType(state, x.TypeId);
+                return new FacilityReport(x.Id, x.Name, x.TypeId, x.Level,
+                    type is null ? [] : Bikepark.Sim.Facilities.FacilityMath.Bought(type, x).Select(u => u.Name).ToList(),
+                    type is null ? 0 : Bikepark.Sim.Facilities.FacilityMath.Seats(type, x),
+                    type is null ? [] : Bikepark.Sim.Facilities.FacilityMath.ProductsOf(state, type, x).Select(p => p.Id).ToList(),
+                    x.Customers, x.TotalRevenueCents);
+            }).ToList(),
+            f.TotalFoodCents, f.TotalSnackCents, f.TotalDrinksCents, f.TotalMerchCents, f.TotalMerchCostCents, f.TotalFacilityBuildCents,
+            f.TotalFacilityUpkeepCents,
+            state.ProductTypes.Select(p =>
+            {
+                var sales = f.ProductSales.FirstOrDefault(x => x.ProductId == p.Id);
+                return new ProductReport(p.Id, Bikepark.Sim.Facilities.FacilityMath.PriceOf(state, p), p.ReferencePriceCents, sales?.Sold ?? 0,
+                    sales?.RevenueCents ?? 0);
+            }).ToList(),
+            state.Park.BeerFromMinute, state.Stats.TotalApresGuests,
             state.Tools.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.Count()));
     }
 
@@ -223,7 +238,7 @@ public static class Program
         if (!state.CrashRules.Enabled) return null;
         var s = state.Safety;
         return new SafetyReport(
-            s.TotalCrashes, s.TotalSerious, s.TotalCollisions, s.Evacuations,
+            s.TotalCrashes, s.TotalSerious, s.TotalCollisions, s.CrashesUnderInfluence, s.Evacuations,
             s.Evacuations == 0 ? null : (int)(s.SumRescueMinutes / s.Evacuations),
             sim.Network.Crossings.Select(c =>
                 $"{state.Ways.First(w => w.Id == c.WayA).Name} {c.CmA / 100} m x {state.Ways.First(w => w.Id == c.WayB).Name} {c.CmB / 100} m")
@@ -377,10 +392,14 @@ internal sealed record LiftReport(
 
 internal sealed record ParcelReport(string Id, string Name, bool Owned, int RequiredLevel, long PriceCents, long AreaSquareMeters);
 
-internal sealed record FacilityReport(int Id, string Name, string TypeId, string? ServesLift, int Customers, long RevenueCents);
+internal sealed record FacilityReport(int Id, string Name, string TypeId, int Level, List<string> Upgrades, int Seats, List<string> Products,
+    int Customers, long RevenueCents);
 
-internal sealed record FacilitiesReport(List<FacilityReport> Buildings, long LunchCents, long SnackCents, long MerchCents, long MerchCostCents,
-    long BuildCents, long UpkeepCents, Dictionary<string, int> Tools);
+internal sealed record ProductReport(string Id, long PriceCents, long ReferencePriceCents, long Sold, long RevenueCents);
+
+internal sealed record FacilitiesReport(List<FacilityReport> Buildings, long FoodCents, long SnackCents, long DrinksCents, long MerchCents,
+    long MerchCostCents, long BuildCents, long UpkeepCents, List<ProductReport> Products, int BeerFromMinute, long ApresGuests,
+    Dictionary<string, int> Tools);
 
 internal sealed record LoanOfferReport(string Id, string Name, long PrincipalCents, int Weeks, int InterestPermille,
     long InstallmentCents, long TotalRepayCents, int RequiredLevel, string? Locked);
@@ -456,6 +475,7 @@ internal sealed record SafetyReport(
     long Crashes,
     long Serious,
     long Collisions,
+    long CrashesUnderInfluence,
     long Evacuations,
     int? AverageRescueMinutes,
     List<string> Crossings,

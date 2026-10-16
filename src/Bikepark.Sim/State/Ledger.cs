@@ -43,6 +43,12 @@ public enum MoneyCategory : byte
     LoanTaken = 18,
     /// <summary>A loan paid back in full ahead of time.</summary>
     LoanRepaid = 19,
+
+    // Appended (Phase 9.1)
+    /// <summary>Coffee, beer and other drinks (regular income).</summary>
+    Drinks = 20,
+    /// <summary>The goods bars sell (regular expense).</summary>
+    FoodGoods = 21,
 }
 
 /// <summary>A one-off booking, for the recent transactions list. <see cref="Cents"/> is signed (+ in, − out).</summary>
@@ -75,10 +81,12 @@ public static class Ledger
     public static readonly int Count = Enum.GetValues<MoneyCategory>().Length;
 
     /// <summary>Happens every day and depends on the guests (the daily budget), as opposed to a one-off transaction.</summary>
-    public static bool IsRegular(MoneyCategory category) => category <= MoneyCategory.LoanInstallments;
+    public static bool IsRegular(MoneyCategory category) =>
+        category <= MoneyCategory.LoanInstallments || category is MoneyCategory.Drinks or MoneyCategory.FoodGoods;
 
     /// <summary>Money coming in (revenue, or a loan for <see cref="MoneyCategory.LoanTaken"/>).</summary>
-    public static bool IsIncome(MoneyCategory category) => category <= MoneyCategory.Merch || category == MoneyCategory.LoanTaken;
+    public static bool IsIncome(MoneyCategory category) =>
+        category <= MoneyCategory.Merch || category is MoneyCategory.LoanTaken or MoneyCategory.Drinks;
 
     /// <summary>The cents of <paramref name="category"/> in a per-category list (a day report's or today's), 0 if missing.</summary>
     public static long Get(IReadOnlyList<long>? byCategory, MoneyCategory category) =>

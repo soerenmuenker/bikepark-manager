@@ -40,6 +40,9 @@ namespace Bikepark.Sim.Commands;
 [JsonDerivedType(typeof(TakeLoanCommand), "takeLoan")]
 [JsonDerivedType(typeof(RepayLoanCommand), "repayLoan")]
 [JsonDerivedType(typeof(BuildFacilityCommand), "buildFacility")]
+[JsonDerivedType(typeof(SetProductPriceCommand), "setProductPrice")]
+[JsonDerivedType(typeof(UpgradeFacilityCommand), "upgradeFacility")]
+[JsonDerivedType(typeof(SetBeerHoursCommand), "setBeerHours")]
 public interface ICommand
 {
     /// <summary>Returns null if the command can be applied, otherwise a human-readable rejection reason.</summary>

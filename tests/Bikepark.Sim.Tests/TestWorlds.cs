@@ -160,6 +160,10 @@ internal static class TestWorlds
         new(750, new TakeLoanCommand("nowhere")), // rejected: unknown offer
         new(760, new RepayLoanCommand(99)), // rejected: no such loan
         new(760, new BuildFacilityCommand("snack_bar", new PointCm(0, 0), new PointCm(100, 0))), // rejected: no such building here
+        // Food and drink (no products or buildings in the test world): the beer hours apply, the rest is rejected.
+        new(770, new SetProductPriceCommand("beer", 600)), // rejected: unknown product
+        new(770, new UpgradeFacilityCommand(99)), // rejected: no such building
+        new(770, new SetBeerHoursCommand(15 * 60)),
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

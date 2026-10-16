@@ -22,6 +22,9 @@ public sealed class SafetyState
     public long TotalSerious { get; set; }
     public long TotalCollisions { get; set; }
 
+    /// <summary>Crashes of riders who had been drinking (at least <see cref="Facilities.FacilityRules.TipsyAlcohol"/>).</summary>
+    public long CrashesUnderInfluence { get; set; }
+
     public int MinorToday { get; set; }
     public int SeriousToday { get; set; }
 

@@ -50,17 +50,28 @@ internal sealed class RiderSystem : ISimSystem
             if (guest.Activity == RiderActivity.Wandering)
                 PlaceAtBase(state, guest, network);
 
+            if (guest.Activity == RiderActivity.Apres) continue; // done riding: at the bar until they go home
+
             if (guest.Activity == RiderActivity.Eating)
             {
                 if (ctx.Tick < guest.BusyUntilTick) continue;
                 guest.Activity = RiderActivity.Idle;
                 guest.FacilityId = 0;
+                if (guest.ResumeLeg >= 0 && guest.ResumeLeg < guest.Route.Count)
+                {
+                    // Stopped on the way: on with the lap.
+                    int next = guest.ResumeLeg;
+                    guest.ResumeLeg = -1;
+                    ContinueWithLeg(ctx, network, guest, next);
+                }
+                guest.ResumeLeg = -1;
             }
 
             if (guest.Activity == RiderActivity.Idle)
             {
                 if (guest.Injury != InjurySeverity.None) continue; // going home
                 if (!ParkSchedule.IsOpen(state, ctx.Tick)) continue;
+                if (guest.Alcohol >= state.FacilityRules.TooDrunkAlcohol) continue; // going home
                 if (TryStartLunch(ctx, guest)) continue;
                 if (guest.Energy < state.TrailRules.TiredEnergy) continue;
                 if (!StartLap(ctx, network, guest)) continue;
@@ -78,11 +89,11 @@ internal sealed class RiderSystem : ISimSystem
 
     /// <summary>
     /// At their first break between laps after their planned <see cref="Guest.LunchMinute"/>, guests have lunch.
-    /// Scenarios with bars: at a bar at the guest's base with a free seat (its lunch price; guests who can't afford it,
-    /// or who find no seat by the end of the lunch window, eat a packed lunch where they are: no money, little mood);
-    /// while there is no such bar the guest rides on and tries again after the next lap. Scenarios without bars: lunch
-    /// where they are at <see cref="ParkRules.LunchPriceCents"/> (guests who can't afford it bring their own).
-    /// Lunch restores energy and mood.
+    /// Scenarios with bars: at a bar in reach with a free seat serving lunch, at the park's price (guests who find it too
+    /// expensive, can't afford it, or find no seat by the end of the lunch window eat a packed lunch where they are: no
+    /// money, little mood); while there is no such bar the guest rides on and tries again after the next lap (or stops at
+    /// a bar on the way, <see cref="Catering.StopOnTheWay"/>). Scenarios without bars: lunch where they are at
+    /// <see cref="ParkRules.LunchPriceCents"/> (guests who can't afford it bring their own).
     /// </summary>
     private static bool TryStartLunch(SimContext ctx, Guest guest)
     {
@@ -92,46 +103,48 @@ internal sealed class RiderSystem : ISimSystem
         if (guest.HadLunch || guest.LunchMinute < 0 || minute < guest.LunchMinute)
             return false;
 
-        long paid = 0;
-        int facilityId = 0;
-        int happiness = rules.LunchHappiness;
-        if (!FacilityMath.BarsNeeded(state))
+        if (FacilityMath.BarsNeeded(state))
         {
-            if (guest.CashCents >= rules.LunchPriceCents)
+            if (Catering.LunchBar(state, guest, FacilityMath.GuestPoint(state, ctx.Network, guest)) is { } bar)
             {
-                paid = rules.LunchPriceCents;
-                guest.CashCents -= paid;
-                state.Finance.Earn(MoneyCategory.Food, paid);
-                state.Finance.TotalFoodCents += paid;
-                state.Finance.FoodTodayCents += paid;
+                if (Catering.AcceptsLunch(ctx, bar.Lunch))
+                {
+                    Catering.SitDownForLunch(ctx, guest, bar.Bar, bar.Lunch);
+                    return true;
+                }
             }
+            else if (minute < rules.LunchEndMinute && Catering.AnyLunchAffordable(state, guest))
+                return false; // ride on: maybe the next lap ends at a bar with a free seat
+            EatPackedLunch(ctx, guest, rules.PackedLunchHappiness);
+            return true;
         }
-        else if (FacilityMath.FreeBar(state, ctx.Network, guest) is { } bar && guest.CashCents >= bar.Type.LunchPriceCents)
+
+        long paid = 0;
+        if (guest.CashCents >= rules.LunchPriceCents)
         {
-            paid = bar.Type.LunchPriceCents;
-            FacilityMath.Sell(state, bar.Facility, guest, paid, MoneyCategory.Food);
-            bar.Facility.Customers++;
+            paid = rules.LunchPriceCents;
+            guest.CashCents -= paid;
+            state.Finance.Earn(MoneyCategory.Food, paid);
             state.Finance.TotalFoodCents += paid;
             state.Finance.FoodTodayCents += paid;
-            facilityId = bar.Facility.Id;
         }
-        else if (minute < rules.LunchEndMinute && state.Facilities.Any(f =>
-                     FacilityMath.FindType(state, f.TypeId) is { Kind: FacilityKind.Bar } type && guest.CashCents >= type.LunchPriceCents))
-        {
-            return false; // ride on: maybe the next lap ends at a bar with a free seat
-        }
-        else
-        {
-            happiness = rules.PackedLunchHappiness;
-        }
+        guest.Energy = Math.Min(1000, guest.Energy + rules.LunchEnergy);
+        EatPackedLunch(ctx, guest, rules.LunchHappiness, paid);
+        return true;
+    }
+
+    /// <summary>Lunch where the guest is (brought along, or bought where there are no bars).</summary>
+    private static void EatPackedLunch(SimContext ctx, Guest guest, int happiness, long paid = 0)
+    {
+        var rules = ctx.State.Rules;
         guest.HadLunch = true;
         guest.Activity = RiderActivity.Eating;
-        guest.FacilityId = facilityId;
+        guest.FacilityId = 0;
         guest.BusyUntilTick = ctx.Tick + ctx.Rng.Range(rules.LunchMinMinutes, rules.LunchMaxMinutes + 1);
-        guest.Energy = Math.Min(1000, guest.Energy + rules.LunchEnergy);
+        if (paid == 0 && FacilityMath.BarsNeeded(ctx.State))
+            guest.Energy = Math.Min(1000, guest.Energy + rules.LunchEnergy);
         guest.Happiness = Math.Min(1000, guest.Happiness + happiness);
-        ctx.Publish(new GuestAteLunch(ctx.Tick, guest.Id, paid, facilityId));
-        return true;
+        ctx.Publish(new GuestAteLunch(ctx.Tick, guest.Id, paid, 0));
     }
 
     /// <summary>
@@ -188,6 +201,8 @@ internal sealed class RiderSystem : ISimSystem
         guest.TrailId = 0;
         guest.RunFun = 0;
         guest.RunSegments = 0;
+        guest.ResumeLeg = -1;
+        guest.StoppedThisLap = false;
     }
 
     // ---------------------------------------------------------------- choosing a trail
@@ -208,7 +223,7 @@ internal sealed class RiderSystem : ISimSystem
             if (!network.IsRideable(trail)) continue; // closed, worn out or not connected
             var route = BestRoute(state, network, guest, from, network.StartNode(trail));
             if (route is null) continue;
-            options.Add((trail, route, Weight(guest, trail, network.Geometry(trail.Id))));
+            options.Add((trail, route, Weight(guest, trail, network.Geometry(trail.Id), PickingSkill(state, guest))));
         }
         if (options.Count == 0) return false;
 
@@ -262,13 +277,20 @@ internal sealed class RiderSystem : ISimSystem
         return climbCost < liftCost ? climbing : withLifts;
     }
 
-    /// <summary>How much a rider wants this trail: difficulty vs skill, style, and a little variety.</summary>
-    internal static int Weight(Guest guest, Way trail, WayGeometry geometry)
+    /// <summary>
+    /// The skill a rider picks trails with: their own, plus Dutch courage (<see cref="FacilityRules.BoldnessPermille"/> of
+    /// their alcohol). Crashes still roll against the real skill.
+    /// </summary>
+    internal static int PickingSkill(WorldState state, Guest guest) =>
+        Math.Min(1000, guest.Skill + Math.Clamp(guest.Alcohol, 0, 1000) * state.FacilityRules.BoldnessPermille / 1000);
+
+    /// <summary>How much a rider wants this trail: difficulty vs (picking) skill, style, and a little variety.</summary>
+    internal static int Weight(Guest guest, Way trail, WayGeometry geometry, int skill)
     {
         int difficulty = geometry.DifficultyScore;
-        int target = guest.Skill * 85 / 100;
+        int target = skill * 85 / 100;
         int match = Math.Clamp(1000 - Math.Abs(difficulty - target) * 2, 0, 1000);
-        if (difficulty > guest.Skill + 150) match /= 4; // too scary
+        if (difficulty > skill + 150) match /= 4; // too scary
 
         var segments = geometry.Segments;
         int rough = (int)segments.Average(s => Math.Max(s.Rock, s.Roots * 8 / 10));
@@ -411,8 +433,10 @@ internal sealed class RiderSystem : ISimSystem
 
             // Energy: climbing costs per meter gained, more on steep grades (a 100 % grade doubles it);
             // descending costs a little per distance.
+            // A coffee's caffeine halves the climbing cost while it lasts.
             if (gradeAlong > 0)
-                guest.Energy -= (int)(move * gradeAlong / 1000 * rules.ClimbEnergyPerMeterGain * (1000 + gradeAlong) / 100_000);
+                guest.Energy -= (int)(move * gradeAlong / 1000 * rules.ClimbEnergyPerMeterGain * (1000 + gradeAlong) / 100_000
+                                      / (ctx.Tick < guest.CaffeineUntilTick ? 2 : 1));
             else
                 guest.Energy -= (int)(move * rules.DescentEnergyPer100Meters / 10_000);
             guest.Energy = Math.Max(0, guest.Energy);
@@ -583,6 +607,7 @@ internal sealed class RiderSystem : ISimSystem
         if (feature is { } placed) placed.Feature.Crashes++;
         var safety = state.Safety;
         safety.TotalCrashes++;
+        if (guest.Alcohol >= state.FacilityRules.TipsyAlcohol) safety.CrashesUnderInfluence++;
         if (cause == CrashCause.Collision) safety.TotalCollisions++;
         if (serious)
         {
@@ -672,18 +697,27 @@ internal sealed class RiderSystem : ISimSystem
             ctx.Publish(new RiderUnloaded(ctx.Tick, guest.Id, leg.WayId));
         if (legIndex + 1 < guest.Route.Count)
         {
-            // Every trail entrance is checked again: riders whose next leg is a trail that closed since they planned
-            // the lap (their run or a trail on the way to it) don't enter it; they choose again from where they stand.
-            var next = guest.Route[legIndex + 1];
-            if (next.Kind == LegKind.Way && network.FindWay(next.WayId) is { Kind: WayKind.Trail } closed && !network.IsRideable(closed))
-            {
-                ChooseAgainAt(ctx, network, guest, closed, next.FromCm);
-                return;
-            }
-            EnterLeg(ctx, network, guest, legIndex + 1);
+            // A bar on the way: maybe a stop (sitting down pauses the lap until they are done).
+            if (Catering.StopOnTheWay(ctx, network, guest, leg, legIndex + 1)) return;
+            ContinueWithLeg(ctx, network, guest, legIndex + 1);
         }
         else
             FinishRun(ctx, network, guest);
+    }
+
+    /// <summary>
+    /// On with the next leg. Every trail entrance is checked again: riders whose next leg is a trail that closed since they
+    /// planned the lap (their run or a trail on the way to it) don't enter it; they choose again from where they stand.
+    /// </summary>
+    private static void ContinueWithLeg(SimContext ctx, WayNetwork network, Guest guest, int legIndex)
+    {
+        var next = guest.Route[legIndex];
+        if (next.Kind == LegKind.Way && network.FindWay(next.WayId) is { Kind: WayKind.Trail } closed && !network.IsRideable(closed))
+        {
+            ChooseAgainAt(ctx, network, guest, closed, next.FromCm);
+            return;
+        }
+        EnterLeg(ctx, network, guest, legIndex);
     }
 
     /// <summary>A rider at the entrance of a closed trail picks another lap from there (back to the base if there is none).</summary>

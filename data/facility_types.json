@@ -1,17 +1,44 @@
-// Bars and shops (FacilityType). Copied into the world when a scenario starts. The park builds them next to a valley
-// station (within the lifts' stationReachMeters, on its land): paid at once (buildCostCents), open at once, then a daily
-// upkeep (staff, stock). They serve the guests at that lift's base: guests between laps there.
-// Bars (kind "bar"): lunch for up to `seats` guests at a time at lunchPriceCents, and snacks at snackPriceCents. Where a
-// scenario has bars, guests only buy food at a bar: without a seat they ride on and try after the next lap; whoever
-// finds none by the end of the lunch window eats a packed lunch (no money for the park, little mood).
-// Shops (kind "shop"): a guest going home buys merch (merchPriceCents) with buyChancePermille, scaled by their mood;
-// the goods cost the park merchCostPermille of the price.
+// Bars and shops (FacilityType). Copied into the world when a scenario starts. The park builds them anywhere on its land
+// with a gravel path, platform, station or parking lot close by (facilityRules.accessReachMeters): paid at once
+// (buildCostCents), open at once, then a daily upkeep (staff, stock). They serve the guests nearby
+// (facilityRules.serveReachMeters): guests between laps, riders stopping on their way to a trail, guests going home.
+// products: what it sells (data/products.json; one park-wide price per product, Finances menu).
+// Bars (kind "bar"): `seats` guests can sit at a time (lunch, après-bike); impulse buys need no seat. Where a scenario has
+// bars, guests only buy food at a bar: without a seat they ride on and try after the next lap; whoever finds none by the
+// end of the lunch window eats a packed lunch (no money for the park, little mood).
+// Shops (kind "shop"): a guest going home buys merch with buyChancePermille, scaled by their mood and the price.
+// upgrades: bought one after the other (Finances menu → Buildings), each adding seats, products, buy chance (shops) or
+// longer après-bike stays (apresMinutes), with its own cost, upkeep and park level.
 // requiredLevel: the park level needed to build it.
 [
   { "id": "snack_bar", "name": "Snack bar", "kind": "bar", "buildCostCents": 800000, "upkeepPerDayCents": 25000,
-    "lengthMeters": 14, "widthMeters": 10, "requiredLevel": 0, "seats": 24, "lunchPriceCents": 1400, "snackPriceCents": 400 },
+    "lengthMeters": 14, "widthMeters": 10, "requiredLevel": 0, "seats": 24, "products": ["lunch", "snack"],
+    "upgrades": [
+      { "name": "Espresso machine", "description": "Coffee: an energy boost for tired riders", "costCents": 250000,
+        "upkeepPerDayCents": 3000, "requiredLevel": 0, "products": ["coffee"] },
+      { "name": "Terrace", "description": "24 more seats in the sun", "costCents": 600000, "upkeepPerDayCents": 6000,
+        "requiredLevel": 2, "seats": 24 }
+    ] },
   { "id": "merch_shop", "name": "Merch shop", "kind": "shop", "buildCostCents": 1200000, "upkeepPerDayCents": 15000,
-    "lengthMeters": 8, "widthMeters": 6, "requiredLevel": 1, "merchPriceCents": 2500, "merchCostPermille": 450, "buyChancePermille": 120 },
+    "lengthMeters": 8, "widthMeters": 6, "requiredLevel": 1, "products": ["merch"], "buyChancePermille": 120,
+    "upgrades": [
+      { "name": "Bigger shelves", "description": "More to choose from: more guests buy something", "costCents": 500000,
+        "upkeepPerDayCents": 4000, "requiredLevel": 3, "buyChancePermille": 60 }
+    ] },
+  { "id": "beer_rondel", "name": "Beer rondel", "kind": "bar", "buildCostCents": 1200000, "upkeepPerDayCents": 15000,
+    "lengthMeters": 12, "widthMeters": 12, "requiredLevel": 2, "seats": 30, "products": ["beer", "radler", "snack"],
+    "upgrades": [
+      { "name": "Bigger rondel", "description": "30 more places at the bar", "costCents": 800000, "upkeepPerDayCents": 10000,
+        "requiredLevel": 4, "seats": 30 },
+      { "name": "DJ booth", "description": "Après-bike guests stay half an hour longer", "costCents": 600000,
+        "upkeepPerDayCents": 15000, "requiredLevel": 5, "apresMinutes": 30 }
+    ] },
   { "id": "bike_cafe", "name": "Bike café", "kind": "bar", "buildCostCents": 4500000, "upkeepPerDayCents": 70000,
-    "lengthMeters": 16, "widthMeters": 12, "requiredLevel": 6, "seats": 80, "lunchPriceCents": 1800, "snackPriceCents": 500 }
+    "lengthMeters": 16, "widthMeters": 12, "requiredLevel": 6, "seats": 80, "products": ["lunch", "coffee", "snack"],
+    "upgrades": [
+      { "name": "Barista bar", "description": "Radler on tap and 20 more seats", "costCents": 700000, "upkeepPerDayCents": 8000,
+        "requiredLevel": 7, "seats": 20, "products": ["radler"] },
+      { "name": "Sun deck", "description": "40 more seats with a view", "costCents": 1200000, "upkeepPerDayCents": 10000,
+        "requiredLevel": 8, "seats": 40 }
+    ] }
 ]

@@ -463,15 +463,20 @@ public partial class BuildPanel : HudPanel
         Ctx.Structures.SetMode(same ? StructureTool.ToolMode.None : StructureTool.ToolMode.Facility);
     }
 
-    private static string FacilityTooltip(Bikepark.Sim.Facilities.FacilityType type) =>
-        type.Kind == Bikepark.Sim.Facilities.FacilityKind.Bar
-            ? $"{type.Name}: {type.Seats} seats for lunch at {UiTheme.Money(type.LunchPriceCents)}, snacks {UiTheme.Money(type.SnackPriceCents)}. " +
-              $"Build {UiTheme.Money(type.BuildCostCents)}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day, {type.LengthMeters} × {type.WidthMeters} m" +
-              (type.RequiredLevel > 0 ? $", from park level {type.RequiredLevel}." : ".") +
-              " Without a bar guests bring a packed lunch: no money for you, less fun for them."
-            : $"{type.Name}: guests going home buy merch for {UiTheme.Money(type.MerchPriceCents)} (the happier, the likelier; goods cost " +
-              $"{type.MerchCostPermille / 10} %). Build {UiTheme.Money(type.BuildCostCents)}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day" +
-              (type.RequiredLevel > 0 ? $", from park level {type.RequiredLevel}." : ".");
+    private string FacilityTooltip(Bikepark.Sim.Facilities.FacilityType type)
+    {
+        var state = Ctx.Sim.State;
+        string sells = string.Join(", ", type.Products.Select(id => Bikepark.Sim.Facilities.FacilityMath.FindProduct(state, id)?.Name.ToLowerInvariant() ?? id));
+        string what = type.Kind == Bikepark.Sim.Facilities.FacilityKind.Bar
+            ? $"{type.Name}: {sells}; {type.Seats} seats (lunch, après-bike). Riders stop at it on their way, too."
+            : $"{type.Name}: guests going home buy {sells} (the happier, the likelier).";
+        string upgrades = type.Upgrades.Count == 0 ? ""
+            : " Upgrades: " + string.Join(" → ", type.Upgrades.Select(u => $"{u.Name} ({UiTheme.Money(u.CostCents)})")) + ".";
+        return $"{what} Build {UiTheme.Money(type.BuildCostCents)}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day, " +
+               $"{type.LengthMeters} × {type.WidthMeters} m" + (type.RequiredLevel > 0 ? $", from park level {type.RequiredLevel}." : ".") +
+               upgrades + $" Needs a gravel path, platform, station or parking lot within {state.FacilityRules.AccessReachMeters} m; prices in Finances." +
+               (type.Kind == Bikepark.Sim.Facilities.FacilityKind.Bar ? " Without a bar guests bring a packed lunch: no money for you, less fun for them." : "");
+    }
 
     private void ToggleFeature(string typeId) => Ctx.Features.SetType(Ctx.Features.TypeId == typeId ? null : typeId);
 

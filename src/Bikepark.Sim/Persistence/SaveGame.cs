@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -172,6 +172,71 @@ public static class SaveGame
                     }
             }
             version = 8;
+        }
+
+        if (version == 8)
+        {
+            // v9: bars and shops sell products at park-wide prices, can be upgraded and no longer belong to a lift. Old
+            // buildings keep what they sold (lunch and snacks, merch) at their old prices: the products are made from them.
+            if (root["world"] is JsonObject world)
+            {
+                var products = new JsonArray();
+                var prices = new JsonArray();
+                void AddProduct(string id, string name, long price, JsonObject extra)
+                {
+                    if (price <= 0 || products.OfType<JsonObject>().Any(p => p["id"]?.GetValue<string>() == id)) return;
+                    var product = new JsonObject
+                    {
+                        ["id"] = id, ["name"] = name, ["referencePriceCents"] = price, ["maxPriceCents"] = price * 3,
+                    };
+                    foreach (var (key, value) in extra) product[key] = value?.DeepClone();
+                    products.Add(product);
+                }
+                var rules = world["rules"] as JsonObject;
+                long Rule(string key, long fallback) => rules?[key]?.GetValue<long>() ?? fallback;
+                if (world["facilityTypes"] is JsonArray types)
+                    foreach (var type in types.OfType<JsonObject>())
+                    {
+                        var sells = new JsonArray();
+                        long lunch = type["lunchPriceCents"]?.GetValue<long>() ?? 0;
+                        long snack = type["snackPriceCents"]?.GetValue<long>() ?? 0;
+                        long merch = type["merchPriceCents"]?.GetValue<long>() ?? 0;
+                        int merchCost = type["merchCostPermille"]?.GetValue<int>() ?? 0;
+                        if (lunch > 0)
+                        {
+                            AddProduct("lunch", "Lunch", lunch, new JsonObject
+                            {
+                                ["lunch"] = true, ["energy"] = Rule("lunchEnergy", 250), ["happiness"] = Rule("lunchHappiness", 40),
+                                ["minMinutes"] = Rule("lunchMinMinutes", 20), ["maxMinutes"] = Rule("lunchMaxMinutes", 40),
+                            });
+                            sells.Add("lunch");
+                        }
+                        if (snack > 0)
+                        {
+                            AddProduct("snack", "Snack", snack, new JsonObject { ["happiness"] = 15, ["impulsePermille"] = 8 });
+                            sells.Add("snack");
+                        }
+                        if (merch > 0)
+                        {
+                            AddProduct("merch", "Merch", merch, new JsonObject { ["merch"] = true, ["goodsCostPermille"] = merchCost });
+                            sells.Add("merch");
+                        }
+                        foreach (string old in new[] { "lunchPriceCents", "snackPriceCents", "merchPriceCents", "merchCostPermille" })
+                            type.Remove(old);
+                        type["products"] = sells;
+                    }
+                // Two building types with different prices for the same product: the first price is the reference, the
+                // others are dropped (the park sets one price now).
+                world["productTypes"] = products;
+                if (world["park"] is JsonObject park) park["prices"] = prices;
+                if (world["facilities"] is JsonArray facilities)
+                    foreach (var facility in facilities.OfType<JsonObject>())
+                    {
+                        facility.Remove("liftId");
+                        facility["level"] = 0;
+                    }
+            }
+            version = 9;
         }
 
         root["version"] = version;

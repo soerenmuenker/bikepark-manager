@@ -175,12 +175,19 @@ internal sealed class GuestSystem : ISimSystem
         for (int read = 0; read < guests.Count; read++)
         {
             var guest = guests[read];
+            guest.Alcohol = Math.Max(0, guest.Alcohol - state.FacilityRules.AlcoholDecayPerMinute);
             // A seriously injured rider stays where they fell (even after closing) until the helicopter has flown them out.
             GuestLeaveReason? leave = guest.Activity == RiderActivity.Injured
                 ? ctx.Tick >= guest.RescueAtTick ? GuestLeaveReason.Evacuated : null
-                : closed || lastRides && IsBetweenLaps(guest)
-                    ? GuestLeaveReason.ParkClosed
-                    : UpdateGuest(ctx, guest, crowded, raining);
+                : guest.Activity == RiderActivity.Apres
+                    ? Catering.ApresMinute(ctx, guest) ? GuestLeaveReason.StayCompleted : null
+                    : closed || lastRides && IsBetweenLaps(guest)
+                        ? GuestLeaveReason.ParkClosed
+                        : UpdateGuest(ctx, guest, crowded, raining);
+            // Done for the day: maybe a drink at the bar first (après-bike).
+            if (leave is GuestLeaveReason.ParkClosed or GuestLeaveReason.StayCompleted or GuestLeaveReason.Tired
+                && guest.Activity == RiderActivity.Idle && Catering.TryApres(ctx, ctx.Network, guest))
+                leave = null;
             if (leave == GuestLeaveReason.Evacuated)
             {
                 state.Safety.Evacuations++;
@@ -196,7 +203,7 @@ internal sealed class GuestSystem : ISimSystem
                 if (reason == GuestLeaveReason.Unhappy)
                     stats.TotalLeftUnhappy++;
                 if (reason is not (GuestLeaveReason.Evacuated or GuestLeaveReason.Injured))
-                    BuyMerch(ctx, guest);
+                    Catering.BuyMerch(ctx, ctx.Network, guest);
                 ctx.Publish(new GuestLeft(ctx.Tick, guest.Id, reason));
                 ReputationSystem.Review(ctx, guest);
             }
@@ -209,8 +216,8 @@ internal sealed class GuestSystem : ISimSystem
     }
 
     /// <summary>
-    /// Between laps a guest now and then buys a snack: at a bar at their base (scenarios with bars), or anywhere at the
-    /// park's snack price (scenarios without).
+    /// Between laps a guest now and then buys something: at the nearest bar in reach (scenarios with bars, see
+    /// <see cref="Catering.TryImpulse"/>), or a snack anywhere at the park's snack price (scenarios without).
     /// </summary>
     private static void TrySnack(SimContext ctx, Guest guest)
     {
@@ -223,38 +230,7 @@ internal sealed class GuestSystem : ISimSystem
             guest.Happiness += SnackHappinessBoost;
             return;
         }
-        var bar = FacilityMath.At(state, FacilityMath.BaseLiftOf(state, ctx.Network, guest), FacilityKind.Bar).FirstOrDefault();
-        if (bar.Facility is null || bar.Type.SnackPriceCents <= 0 || guest.CashCents < bar.Type.SnackPriceCents) return;
-        if (!ctx.Rng.ChancePermille(SnackChancePermille)) return;
-        FacilityMath.Sell(state, bar.Facility, guest, bar.Type.SnackPriceCents, MoneyCategory.Food);
-        state.Finance.TotalSnackCents += bar.Type.SnackPriceCents;
-        state.Finance.FoodTodayCents += bar.Type.SnackPriceCents;
-        guest.Happiness += SnackHappinessBoost;
-    }
-
-    /// <summary>
-    /// A guest going home passes the shop at their base (or the arrival base) and buys something with the shop's chance,
-    /// scaled by their mood. The goods cost the park <see cref="FacilityType.MerchCostPermille"/> of the price.
-    /// </summary>
-    private static void BuyMerch(SimContext ctx, Guest guest)
-    {
-        var state = ctx.State;
-        if (state.Facilities.Count == 0) return;
-        int liftId = FacilityMath.BaseLiftOf(state, ctx.Network, guest);
-        if (liftId == 0 && ctx.Network.BaseHub is { } hub)
-            liftId = state.ParkingLots.FirstOrDefault(p => p.Id == hub.Id)?.LiftId ?? state.Lifts.FirstOrDefault(l => l.Valley.Id == hub.Id)?.Id ?? 0;
-        var shop = FacilityMath.At(state, liftId, FacilityKind.Shop).FirstOrDefault();
-        if (shop.Facility is null || guest.CashCents < shop.Type.MerchPriceCents || shop.Type.MerchPriceCents <= 0) return;
-        if (!ctx.Rng.ChancePermille(shop.Type.BuyChancePermille * Math.Clamp(guest.Happiness, 0, 1000) / 1000)) return;
-        long price = shop.Type.MerchPriceCents;
-        FacilityMath.Sell(state, shop.Facility, guest, price, MoneyCategory.Merch);
-        shop.Facility.Customers++;
-        state.Finance.TotalMerchCents += price;
-        state.Finance.MerchTodayCents += price;
-        long cost = price * shop.Type.MerchCostPermille / 1000;
-        state.Finance.Spend(MoneyCategory.MerchGoods, cost);
-        state.Finance.TotalMerchCostCents += cost;
-        ctx.Publish(new MerchSold(ctx.Tick, guest.Id, shop.Facility.Id, price));
+        Catering.TryImpulse(ctx, guest, FacilityMath.GuestPoint(state, ctx.Network, guest), 1000);
     }
 
     /// <summary>On a lift whose cabins keep riders dry (T-bars and chairlifts don't).</summary>
@@ -299,6 +275,8 @@ internal sealed class GuestSystem : ISimSystem
             return null;
         if (guest.Injury != InjurySeverity.None)
             return GuestLeaveReason.Injured; // down at last: home to recover
+        if (guest.Activity == RiderActivity.Idle && guest.Alcohol >= ctx.State.FacilityRules.TooDrunkAlcohol)
+            return GuestLeaveReason.Drunk;
         if (guest.Activity == RiderActivity.Idle && guest.Energy < ctx.State.TrailRules.TiredEnergy)
             return GuestLeaveReason.Tired;
         if (guest.Happiness < UnhappyThreshold)
@@ -332,9 +310,11 @@ internal sealed class FinanceSystem : ISimSystem
         long facilityUpkeep = 0;
         foreach (var facility in state.Facilities)
         {
-            if (FacilityMath.FindType(state, facility.TypeId) is not { UpkeepPerDayCents: > 0 } type) continue;
-            state.Finance.Spend(type.Kind == FacilityKind.Bar ? MoneyCategory.BarUpkeep : MoneyCategory.ShopUpkeep, type.UpkeepPerDayCents);
-            facilityUpkeep += type.UpkeepPerDayCents;
+            if (FacilityMath.FindType(state, facility.TypeId) is not { } type) continue;
+            long upkeep = FacilityMath.Upkeep(type, facility);
+            if (upkeep <= 0) continue;
+            state.Finance.Spend(type.Kind == FacilityKind.Bar ? MoneyCategory.BarUpkeep : MoneyCategory.ShopUpkeep, upkeep);
+            facilityUpkeep += upkeep;
         }
         state.Finance.TotalFacilityUpkeepCents += facilityUpkeep;
         foreach (var lift in state.Lifts)
@@ -383,6 +363,7 @@ internal sealed class FinanceSystem : ISimSystem
             FoodCents: state.Finance.FoodTodayCents,
             MerchCents: state.Finance.MerchTodayCents,
             FacilityUpkeepCents: facilityUpkeep,
+            DrinksCents: state.Finance.DrinksTodayCents,
             ByCategory: new MoneyByCategory(state.Finance.TodayCents));
         ctx.Publish(new DayEnded(ctx.Tick, report));
         state.DayHistory.Add(report);
@@ -401,6 +382,12 @@ internal sealed class FinanceSystem : ISimSystem
         state.Finance.LoanPaymentsTodayCents = 0;
         state.Finance.FoodTodayCents = 0;
         state.Finance.MerchTodayCents = 0;
+        state.Finance.DrinksTodayCents = 0;
+        foreach (var sales in state.Finance.ProductSales)
+        {
+            sales.SoldToday = 0;
+            sales.RevenueTodayCents = 0;
+        }
         state.Finance.TodayCents.Clear();
         foreach (var facility in state.Facilities)
             facility.RevenueTodayCents = 0;

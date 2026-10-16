@@ -67,6 +67,14 @@ public sealed class ScenarioDefinition
     /// <summary>Bars and shops the park can build (inline, plus those from <see cref="FacilityTypesFile"/>).</summary>
     public List<Facilities.FacilityType> FacilityTypes { get; set; } = [];
 
+    /// <summary>Product catalog file, relative to the scenario file; loaded into <see cref="ProductTypes"/>.</summary>
+    public string? ProductTypesFile { get; set; }
+
+    /// <summary>What bars and shops sell (inline, plus those from <see cref="ProductTypesFile"/>).</summary>
+    public List<Facilities.ProductType> ProductTypes { get; set; } = [];
+
+    public Facilities.FacilityRules FacilityRules { get; set; } = new();
+
     public Reputation.ReputationRules ReputationRules { get; set; } = new();
 
     public Safety.CrashRules CrashRules { get; set; } = new();
@@ -114,11 +122,19 @@ public static class ScenarioLoader
             scenario.FacilityTypes = [.. scenario.FacilityTypes, .. LoadFacilityCatalog(Path.Combine(directory, facilities))];
             scenario.FacilityTypesFile = null;
         }
+        if (scenario.ProductTypesFile is { Length: > 0 } products)
+        {
+            scenario.ProductTypes = [.. scenario.ProductTypes, .. LoadProductCatalog(Path.Combine(directory, products))];
+            scenario.ProductTypesFile = null;
+        }
         return scenario;
     }
 
     /// <summary>Loads a bar and shop catalog (<c>data/facility_types.json</c>).</summary>
     public static List<Facilities.FacilityType> LoadFacilityCatalog(string path) => LoadCatalog<Facilities.FacilityType>(path, "Facility");
+
+    /// <summary>Loads a product catalog (<c>data/products.json</c>).</summary>
+    public static List<Facilities.ProductType> LoadProductCatalog(string path) => LoadCatalog<Facilities.ProductType>(path, "Product");
 
     /// <summary>Loads a trail feature catalog (<c>data/trail_features.json</c>).</summary>
     public static List<Trails.TrailFeatureType> LoadFeatureCatalog(string path) => LoadCatalog<Trails.TrailFeatureType>(path, "Trail feature");
@@ -156,6 +172,8 @@ public static class ScenarioLoader
             ToolTypes = scenario.ToolTypes,
             WoodStock = scenario.StartingWood,
             FacilityTypes = scenario.FacilityTypes,
+            ProductTypes = scenario.ProductTypes,
+            FacilityRules = scenario.FacilityRules,
             ReputationRules = scenario.ReputationRules,
             CrashRules = scenario.CrashRules,
             Parcels = scenario.Parcels,
@@ -205,6 +223,14 @@ public static class ScenarioLoader
         if (s.FacilityTypesFile is { Length: > 0 }) errors.Add("facilityTypesFile can only be resolved when loading from a file");
         foreach (var type in s.FacilityTypes) errors.AddRange(type.Validate());
         if (s.FacilityTypes.Select(t => t.Id).Distinct().Count() != s.FacilityTypes.Count) errors.Add("facilityTypes: ids must be unique");
+        if (s.ProductTypesFile is { Length: > 0 }) errors.Add("productTypesFile can only be resolved when loading from a file");
+        foreach (var product in s.ProductTypes) errors.AddRange(product.Validate());
+        if (s.ProductTypes.Select(p => p.Id).Distinct().Count() != s.ProductTypes.Count) errors.Add("productTypes: ids must be unique");
+        foreach (var type in s.FacilityTypes)
+            foreach (string id in type.Products.Concat(type.Upgrades.SelectMany(u => u.Products)))
+                if (s.ProductTypes.All(p => p.Id != id))
+                    errors.Add($"facilityTypes[{type.Id}]: unknown product '{id}'");
+        errors.AddRange(s.FacilityRules.Validate());
         errors.AddRange(s.ReputationRules.Validate());
         errors.AddRange(s.CrashRules.Validate());
         errors.AddRange(s.LoanRules.Validate());

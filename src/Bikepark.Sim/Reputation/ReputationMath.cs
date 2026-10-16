@@ -26,7 +26,7 @@ public static class ReviewMath
     public static ReviewScores Score(ReputationRules rules, Guest guest, long tick, int unsafeTrailLoss = 0)
     {
         if (guest.RunsCompleted == 0)
-            return new ReviewScores(0, Safe(guest, 1000), 0, 0, 0, 0, guest.PaidEntryCents == 0 ? 1000 : 0);
+            return new ReviewScores(0, Safe(guest, 1000), 0, 0, 0, 0, guest.PaidEntryCents + guest.OverpaidCents == 0 ? 1000 : 0);
         var values = rules.Values(GroupOf(rules, guest.Skill));
         int runFun = (int)(guest.VisitFunSum / guest.RunsCompleted);
         int fun = (Stretch(rules, runFun) * 2 + guest.Happiness) / 3;
@@ -37,8 +37,10 @@ public static class ReviewMath
         int challenge = Math.Clamp(guest.HardestDifficulty * 1000 / (values?.ChallengeTarget ?? 500), 0, 1000);
         int jumps = guest.JumpCount == 0 ? 0 : Stretch(rules, (int)(guest.JumpFunSum / guest.JumpCount));
         int variety = Math.Min(1000, guest.TrailsRidden.Count * 1000 / rules.VarietyFullAt);
-        int value = guest.PaidEntryCents <= 0 ? 1000
-            : (int)Math.Min(1000, guest.RunsCompleted * rules.FairCentsPerRun * 1000 / guest.PaidEntryCents);
+        // Overpriced food and drink count like paying more to get in.
+        long paid = guest.PaidEntryCents + guest.OverpaidCents;
+        int value = paid <= 0 ? 1000
+            : (int)Math.Min(1000, guest.RunsCompleted * rules.FairCentsPerRun * 1000 / paid);
         return new ReviewScores(fun, safety, smoothness, challenge, jumps, variety, value);
     }
 

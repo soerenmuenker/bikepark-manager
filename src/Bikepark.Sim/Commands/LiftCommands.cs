@@ -123,10 +123,12 @@ public sealed record BuildParkingLotCommand(string Name, PointCm Center, PointCm
 }
 
 /// <summary>
-/// Builds a bar or shop next to a valley station, at once: paid at once (needs its park level and the money; scenario
-/// buildings are free). <see cref="StructurePlanner.PlanFacility"/> validates the spot.
+/// Builds a bar or shop near a gravel path or hub, at once: paid at once (needs its park level and the money; scenario
+/// buildings are free). <see cref="StructurePlanner.PlanFacility"/> validates the spot. <paramref name="Level"/>: built with
+/// its first upgrades already in (scenario content; a player pays for them too).
 /// </summary>
-public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm Toward, string Name = "", WayOrigin Origin = WayOrigin.Player)
+public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm Toward, string Name = "", WayOrigin Origin = WayOrigin.Player,
+    int Level = 0)
     : ICommand
 {
     public const int MaxNameLength = 40;
@@ -135,9 +137,15 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
     {
         if (Name is { Length: > MaxNameLength }) return $"Name cannot exceed {MaxNameLength} characters.";
         if (Facilities.FacilityMath.FindType(ctx.State, TypeId) is not { } type) return $"Unknown building '{TypeId}'.";
-        if (Origin != WayOrigin.Scenario
-            && Facilities.FacilityMath.CannotBuild(ctx.State, Reputation.ParkProgress.CurrentLevel(ctx.State, ctx.Network), type) is { } locked)
-            return locked;
+        if (Level < 0 || Level > type.Upgrades.Count) return $"The {type.Name.ToLowerInvariant()} has {type.Upgrades.Count} upgrades.";
+        if (Origin != WayOrigin.Scenario)
+        {
+            int level = Reputation.ParkProgress.CurrentLevel(ctx.State, ctx.Network);
+            if (Facilities.FacilityMath.CannotBuild(ctx.State, level, type) is { } locked) return locked;
+            if (type.Upgrades.Take(Level).FirstOrDefault(u => ctx.State.Rules.UnlockLevel(level) < u.RequiredLevel) is { } gated)
+                return $"The {gated.Name.ToLowerInvariant()} needs park level {gated.RequiredLevel} (you are level {level}).";
+            if (ctx.State.Finance.MoneyCents < Cost(type)) return $"Not enough money: it costs {Cost(type) / 100:N0} €.";
+        }
         return Plan(ctx).FirstError;
     }
 
@@ -156,15 +164,18 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
             TypeId = TypeId,
             Name = string.IsNullOrWhiteSpace(Name) ? $"{type.Name} {state.Facilities.Count(f => f.TypeId == TypeId) + 1}" : Name.Trim(),
             TerrainEditId = edit.Id,
-            LiftId = plan.LiftId,
+            Level = Level,
         });
-        if (Origin != WayOrigin.Scenario && type.BuildCostCents > 0)
+        if (Origin != WayOrigin.Scenario && Cost(type) > 0)
         {
-            state.Finance.Invest(MoneyCategory.Buildings, type.BuildCostCents, ctx.Tick, $"Built {state.Facilities[^1].Name}");
-            state.Finance.TotalFacilityBuildCents += type.BuildCostCents;
+            state.Finance.Invest(MoneyCategory.Buildings, Cost(type), ctx.Tick, $"Built {state.Facilities[^1].Name}");
+            state.Finance.TotalFacilityBuildCents += Cost(type);
         }
         ctx.Publish(new FacilityBuilt(ctx.Tick, id, type.Name));
     }
+
+    /// <summary>The building and the upgrades it comes with.</summary>
+    private long Cost(Facilities.FacilityType type) => type.BuildCostCents + type.Upgrades.Take(Level).Sum(u => u.CostCents);
 
     private ParkingPlan Plan(SimContext ctx) =>
         StructurePlanner.PlanFacility(ctx.Terrain, ctx.Network, ctx.State, TypeId, Center, Toward, scenario: Origin == WayOrigin.Scenario);

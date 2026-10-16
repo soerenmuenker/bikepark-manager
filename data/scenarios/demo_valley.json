@@ -214,6 +214,14 @@
   "trailFeaturesFile": "../trail_features.json",
   "toolsFile": "../tools.json",
   "facilityTypesFile": "../facility_types.json",
+  "productTypesFile": "../products.json",
+  // Bars and shops (FacilityRules): they need a gravel path or hub within accessReachMeters and serve guests within
+  // serveReachMeters. Après-bike: guests done for the day may stay at a bar serving beer until apresEndMinute (19:30).
+  "facilityRules": {
+    "accessReachMeters": 25,
+    "serveReachMeters": 80,
+    "apresEndMinute": 1170
+  },
   // Crew and building (CrewRules). Planned ways and features are built by crew jobs during opening hours; work is in
   // crew-minutes at base speed. Trees in a planned way's corridor are felled first (each gives woodPerTree wood).
   "crewRules": {

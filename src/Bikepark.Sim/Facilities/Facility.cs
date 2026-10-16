@@ -1,12 +1,13 @@
 using Bikepark.Sim.Lifts;
 using Bikepark.Sim.State;
+using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Facilities;
 
 public enum FacilityKind : byte
 {
-    /// <summary>Food and drink: lunch (with a limited number of seats) and snacks.</summary>
+    /// <summary>Food and drink: lunch (with a limited number of seats), snacks, coffee, beer.</summary>
     Bar = 0,
 
     /// <summary>Merchandise: guests on their way home buy something, the happier the likelier.</summary>
@@ -29,22 +30,17 @@ public sealed class FacilityType
     /// <summary>Park level needed to build it (a sandbox has everything).</summary>
     public int RequiredLevel { get; set; }
 
-    // ---- bar ----
+    /// <summary>What it sells (<see cref="ProductType"/> ids), before upgrades.</summary>
+    public List<string> Products { get; set; } = [];
 
-    /// <summary>Guests who can have lunch at the same time.</summary>
+    /// <summary>Guests who can sit at the same time (bars: lunch and après-bike).</summary>
     public int Seats { get; set; }
-    public long LunchPriceCents { get; set; }
-    public long SnackPriceCents { get; set; }
 
-    // ---- shop ----
-
-    public long MerchPriceCents { get; set; }
-
-    /// <summary>What the goods cost the park, permille of the price.</summary>
-    public int MerchCostPermille { get; set; }
-
-    /// <summary>Chance that a perfectly happy guest leaving buys something, permille (scaled by mood).</summary>
+    /// <summary>Chance that a perfectly happy guest leaving buys something, permille (shops; scaled by mood and price).</summary>
     public int BuyChancePermille { get; set; }
+
+    /// <summary>Upgrades bought one after the other (<see cref="Facility.Level"/>), each adding to the building.</summary>
+    public List<FacilityUpgrade> Upgrades { get; set; } = [];
 
     public List<string> Validate()
     {
@@ -57,15 +53,45 @@ public sealed class FacilityType
         if (LengthMeters is < 4 or > 60 || WidthMeters is < 4 or > 60) errors.Add($"{p}: lengthMeters and widthMeters must be within 4..60");
         if (RequiredLevel is < 0 or > Reputation.ReputationRules.MaxLevel)
             errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
+        if (Products.Count == 0) errors.Add($"{p}.products: it must sell something");
         if (Kind == FacilityKind.Bar && Seats is < 1 or > 1000) errors.Add($"{p}.seats must be within 1..1000");
-        if (LunchPriceCents < 0 || SnackPriceCents < 0 || MerchPriceCents < 0) errors.Add($"{p}: prices must be >= 0");
-        if (MerchCostPermille is < 0 or > 1000) errors.Add($"{p}.merchCostPermille must be within 0..1000");
         if (BuyChancePermille is < 0 or > 1000) errors.Add($"{p}.buyChancePermille must be within 0..1000");
+        foreach (var upgrade in Upgrades) errors.AddRange(upgrade.Validate(p));
         return errors;
     }
 }
 
-/// <summary>A bar or shop the park built next to a valley station; it serves the guests at that lift's base.</summary>
+/// <summary>One step of a building's upgrades: what it costs and what it adds.</summary>
+public sealed class FacilityUpgrade
+{
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public long CostCents { get; set; }
+
+    /// <summary>Added upkeep per day.</summary>
+    public long UpkeepPerDayCents { get; set; }
+    public int RequiredLevel { get; set; }
+
+    /// <summary>More seats, new products, a better buy chance (shops) and longer après-bike stays.</summary>
+    public int Seats { get; set; }
+    public List<string> Products { get; set; } = [];
+    public int BuyChancePermille { get; set; }
+    public int ApresMinutes { get; set; }
+
+    public List<string> Validate(string owner)
+    {
+        var errors = new List<string>();
+        string p = $"{owner}.upgrades[{Name}]";
+        if (string.IsNullOrWhiteSpace(Name)) errors.Add($"{owner}.upgrades: name is required");
+        if (CostCents < 0 || UpkeepPerDayCents < 0) errors.Add($"{p}: costs must be >= 0");
+        if (RequiredLevel is < 0 or > Reputation.ReputationRules.MaxLevel) errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
+        if (Seats is < 0 or > 1000 || BuyChancePermille is < 0 or > 1000 || ApresMinutes is < 0 or > 600)
+            errors.Add($"{p}: seats, buyChancePermille within 0..1000, apresMinutes within 0..600");
+        return errors;
+    }
+}
+
+/// <summary>A bar or shop the park built next to a gravel path or hub; it serves the guests nearby.</summary>
 public sealed class Facility
 {
     public int Id { get; set; }
@@ -73,66 +99,155 @@ public sealed class Facility
     public string Name { get; set; } = "";
     public int TerrainEditId { get; set; }
 
-    /// <summary>The lift whose valley station (base) it serves.</summary>
-    public int LiftId { get; set; }
+    /// <summary>Upgrades bought (0 = as built; the first <see cref="FacilityType.Upgrades"/> up to this count).</summary>
+    public int Level { get; set; }
 
     public long TotalRevenueCents { get; set; }
     public long RevenueTodayCents { get; set; }
 
-    /// <summary>Lunches served (bar) or guests who bought something (shop).</summary>
+    /// <summary>Sales (lunches, drinks, snacks, merch).</summary>
     public int Customers { get; set; }
 }
 
-/// <summary>Which facility serves a guest, and the money they bring. Pure.</summary>
+/// <summary>Which facility serves a guest, what it sells at which price, and the money it brings. Pure.</summary>
 public static class FacilityMath
 {
     public static FacilityType? FindType(WorldState state, string typeId) => state.FacilityTypes.FirstOrDefault(t => t.Id == typeId);
 
-    /// <summary>
-    /// The lift whose base the guest is at (0: none): idle at its valley station, at a parking lot serving it, in its
-    /// queue, or idle on a way within <see cref="LiftRules.StationReachMeters"/> of its valley station.
-    /// </summary>
-    public static int BaseLiftOf(WorldState state, WayNetwork network, Guest guest)
-    {
-        if (guest.Activity == RiderActivity.Queuing)
-            return state.Lifts.FirstOrDefault(l => l.Queue.Contains(guest.Id))?.Id ?? 0;
-        if (guest.Activity is not (RiderActivity.Idle or RiderActivity.Eating)) return 0;
-        if (guest.LocationHubId != 0)
-        {
-            if (state.Lifts.FirstOrDefault(l => l.Valley.Id == guest.LocationHubId) is { } lift) return lift.Id;
-            if (state.ParkingLots.FirstOrDefault(p => p.Id == guest.LocationHubId) is { } lot) return lot.LiftId;
-            return 0;
-        }
-        if (guest.LocationWayId == 0 || !network.TryGetGeometry(guest.LocationWayId, out var geometry)) return 0;
-        var at = geometry.PositionAt(guest.LocationCm);
-        long reach = state.LiftRules.StationReachMeters * 100L;
-        foreach (var lift in state.Lifts)
-            if (LiftNetwork.Pad(state, lift.Valley.TerrainEditId) is { } pad && pad.DistanceOutside(at.X, at.Z) <= reach)
-                return lift.Id;
-        return 0;
-    }
+    public static ProductType? FindProduct(WorldState state, string productId) => state.ProductTypes.FirstOrDefault(p => p.Id == productId);
 
-    /// <summary>The park's facilities of a kind at a lift's base, in build order.</summary>
-    public static IEnumerable<(Facility Facility, FacilityType Type)> At(WorldState state, int liftId, FacilityKind kind)
-    {
-        if (liftId == 0) yield break;
-        foreach (var facility in state.Facilities)
-            if (facility.LiftId == liftId && FindType(state, facility.TypeId) is { } type && type.Kind == kind)
-                yield return (facility, type);
-    }
+    // ---------------------------------------------------------------- upgrades
 
-    /// <summary>Guests having lunch at the bar right now.</summary>
-    public static int SeatsTaken(WorldState state, Facility bar) =>
-        state.Guests.Count(g => g.Activity == RiderActivity.Eating && g.FacilityId == bar.Id);
+    /// <summary>The upgrades a building has (in order).</summary>
+    public static IEnumerable<FacilityUpgrade> Bought(FacilityType type, Facility facility) => type.Upgrades.Take(Math.Clamp(facility.Level, 0, type.Upgrades.Count));
 
-    /// <summary>A bar at the guest's base with a free seat, or null.</summary>
-    public static (Facility Facility, FacilityType Type)? FreeBar(WorldState state, WayNetwork network, Guest guest)
+    /// <summary>The next upgrade to buy, or null.</summary>
+    public static FacilityUpgrade? NextUpgrade(FacilityType type, Facility facility) =>
+        facility.Level >= 0 && facility.Level < type.Upgrades.Count ? type.Upgrades[facility.Level] : null;
+
+    public static int Seats(FacilityType type, Facility facility) => type.Seats + Bought(type, facility).Sum(u => u.Seats);
+
+    public static long Upkeep(FacilityType type, Facility facility) => type.UpkeepPerDayCents + Bought(type, facility).Sum(u => u.UpkeepPerDayCents);
+
+    public static int BuyChancePermille(FacilityType type, Facility facility) =>
+        Math.Min(1000, type.BuyChancePermille + Bought(type, facility).Sum(u => u.BuyChancePermille));
+
+    public static int ApresBonusMinutes(FacilityType type, Facility facility) => Bought(type, facility).Sum(u => u.ApresMinutes);
+
+    /// <summary>Everything paid for the building (built and upgraded).</summary>
+    public static long InvestedCents(FacilityType type, Facility facility) => type.BuildCostCents + Bought(type, facility).Sum(u => u.CostCents);
+
+    /// <summary>True if the building sells the product (as built or after an upgrade).</summary>
+    public static bool Sells(FacilityType type, Facility facility, string productId) =>
+        type.Products.Contains(productId) || Bought(type, facility).Any(u => u.Products.Contains(productId));
+
+    /// <summary>The products it sells, in the order of <see cref="WorldState.ProductTypes"/> (lunch and coffee before snacks).</summary>
+    public static IEnumerable<ProductType> ProductsOf(WorldState state, FacilityType type, Facility facility) =>
+        state.ProductTypes.Where(p => Sells(type, facility, p.Id));
+
+    /// <summary>Why the park can't buy the building's next upgrade now, or null.</summary>
+    public static string? CannotUpgrade(WorldState state, int level, FacilityType type, Facility facility)
     {
-        foreach (var bar in At(state, BaseLiftOf(state, network, guest), FacilityKind.Bar))
-            if (SeatsTaken(state, bar.Facility) < bar.Type.Seats)
-                return bar;
+        if (NextUpgrade(type, facility) is not { } next) return $"{facility.Name} is fully upgraded.";
+        if (state.Rules.UnlockLevel(level) < next.RequiredLevel)
+            return $"The {next.Name.ToLowerInvariant()} needs park level {next.RequiredLevel} (you are level {level}).";
+        if (state.Finance.MoneyCents < next.CostCents)
+            return $"Not enough money: the {next.Name.ToLowerInvariant()} costs {next.CostCents / 100:N0} €.";
         return null;
     }
+
+    // ---------------------------------------------------------------- prices
+
+    /// <summary>The park's price for a product (its reference price unless set).</summary>
+    public static long PriceOf(WorldState state, ProductType product) =>
+        state.Park.Prices.FirstOrDefault(p => p.ProductId == product.Id)?.PriceCents ?? product.ReferencePriceCents;
+
+    /// <summary>
+    /// How the price changes the chance to buy, permille: 1000 at the reference price, less above it
+    /// (<see cref="ProductType.ElasticityPermille"/> per reference price), more below it (at most 1500).
+    /// </summary>
+    public static int BuyFactorPermille(ProductType product, long priceCents)
+    {
+        long reference = Math.Max(1, product.ReferencePriceCents);
+        long factor = 1000 + (reference - priceCents) * product.ElasticityPermille / reference;
+        return (int)Math.Clamp(factor, 0, 1500);
+    }
+
+    /// <summary>Mood a guest loses paying <paramref name="priceCents"/>: <see cref="FacilityRules.RipOffMood"/> per reference price above it.</summary>
+    public static int RipOffMood(FacilityRules rules, ProductType product, long priceCents) =>
+        priceCents <= product.ReferencePriceCents ? 0
+            : (int)Math.Min(1000, (priceCents - product.ReferencePriceCents) * rules.RipOffMood / Math.Max(1, product.ReferencePriceCents));
+
+    // ---------------------------------------------------------------- where
+
+    /// <summary>
+    /// Where a guest between laps is: their hub, their spot on a way, or the valley station of the lift whose queue they
+    /// are in (null: on the way, or nowhere).
+    /// </summary>
+    public static PointCm? GuestPoint(WorldState state, WayNetwork network, Guest guest)
+    {
+        if (guest.Activity == RiderActivity.Queuing)
+            return state.Lifts.FirstOrDefault(l => l.Queue.Contains(guest.Id)) is { } lift ? PadCenter(state, lift.Valley.TerrainEditId) : null;
+        if (guest.Activity is not (RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Apres)) return null;
+        if (guest.LocationHubId != 0)
+            return network.FindHub(guest.LocationHubId) is { } hub ? new PointCm(hub.Pad.CenterX, hub.Pad.CenterZ) : null;
+        if (guest.LocationWayId == 0 || !network.TryGetGeometry(guest.LocationWayId, out var geometry)) return null;
+        var at = geometry.PositionAt(guest.LocationCm);
+        return new PointCm(at.X, at.Z);
+    }
+
+    private static PointCm? PadCenter(WorldState state, int terrainEditId) =>
+        LiftNetwork.Pad(state, terrainEditId) is { } pad ? new PointCm(pad.CenterX, pad.CenterZ) : null;
+
+    /// <summary>The park's facilities of a kind serving a point (within <see cref="FacilityRules.ServeReachMeters"/>), nearest first.</summary>
+    public static List<(Facility Facility, FacilityType Type)> InReach(WorldState state, PointCm? point, FacilityKind kind)
+    {
+        var found = new List<(Facility Facility, FacilityType Type, long Distance)>();
+        if (point is not { } at) return [];
+        long reach = state.FacilityRules.ServeReachMeters * 100L;
+        foreach (var facility in state.Facilities)
+        {
+            if (FindType(state, facility.TypeId) is not { } type || type.Kind != kind) continue;
+            if (LiftNetwork.Pad(state, facility.TerrainEditId) is not { } pad) continue;
+            long d = pad.DistanceOutside(at.X, at.Z);
+            if (d <= reach) found.Add((facility, type, d));
+        }
+        // Stable: nearest first, then build order.
+        return found.OrderBy(f => f.Distance).Select(f => (f.Facility, f.Type)).ToList();
+    }
+
+    /// <summary>
+    /// True if a built gravel path or a hub (station, parking lot, platform) is within <paramref name="reachCm"/> of the pad:
+    /// guests and supplies can get there.
+    /// </summary>
+    public static bool HasAccess(WayNetwork network, TerrainPad pad, long reachCm)
+    {
+        foreach (var hub in network.Hubs)
+            if (PadGap(hub.Pad, pad) <= reachCm) return true;
+        foreach (var way in network.Ways)
+        {
+            if (way.Kind != WayKind.AccessPath || !way.Built || !network.TryGetGeometry(way.Id, out var geometry)) continue;
+            for (int i = 0; i < geometry.SampleCount; i++)
+                if (pad.DistanceOutside(geometry.Xs[i], geometry.Zs[i]) <= reachCm) return true;
+        }
+        return false;
+    }
+
+    /// <summary>About the gap between two pads (corners and centres of each against the other).</summary>
+    private static long PadGap(TerrainPad a, TerrainPad b)
+    {
+        long gap = b.DistanceOutside(a.CenterX, a.CenterZ);
+        foreach (var c in a.Corners()) gap = Math.Min(gap, b.DistanceOutside(c.X, c.Z));
+        gap = Math.Min(gap, a.DistanceOutside(b.CenterX, b.CenterZ));
+        foreach (var c in b.Corners()) gap = Math.Min(gap, a.DistanceOutside(c.X, c.Z));
+        return gap;
+    }
+
+    /// <summary>Guests sitting at the bar right now (lunch or après-bike).</summary>
+    public static int SeatsTaken(WorldState state, Facility bar) =>
+        state.Guests.Count(g => g.FacilityId == bar.Id && g.Activity is RiderActivity.Eating or RiderActivity.Apres);
+
+    public static bool HasFreeSeat(WorldState state, Facility bar, FacilityType type) => SeatsTaken(state, bar) < Seats(type, bar);
 
     /// <summary>
     /// True if lunch and snacks need a bar: the scenario has bars to build. Scenarios without facility content keep
@@ -154,12 +269,56 @@ public static class FacilityMath
     public static Facility? AtPoint(WorldState state, long x, long z, long marginCm = 0) =>
         state.Facilities.FirstOrDefault(f => LiftNetwork.Pad(state, f.TerrainEditId) is { } pad && pad.DistanceOutside(x, z) <= marginCm);
 
-    /// <summary>Takes money from a guest at a facility: revenue for the park and the facility.</summary>
-    public static void Sell(WorldState state, Facility facility, Guest guest, long cents, MoneyCategory category)
+    /// <summary>The money category a product's sales are booked under.</summary>
+    public static MoneyCategory CategoryOf(ProductType product) =>
+        product.Merch ? MoneyCategory.Merch : product.IsDrink ? MoneyCategory.Drinks : MoneyCategory.Food;
+
+    /// <summary>
+    /// A guest buys a product at a facility at the park's price: revenue for the park and the facility, the goods' cost,
+    /// sales stats, the product's effects and a little lost mood (and value) when it was overpriced.
+    /// </summary>
+    public static long Sell(WorldState state, long tick, Facility facility, Guest guest, ProductType product)
     {
-        guest.CashCents -= cents;
-        state.Finance.Earn(category, cents);
-        facility.TotalRevenueCents += cents;
-        facility.RevenueTodayCents += cents;
+        long price = PriceOf(state, product);
+        var finance = state.Finance;
+        guest.CashCents -= price;
+        finance.Earn(CategoryOf(product), price);
+        facility.TotalRevenueCents += price;
+        facility.RevenueTodayCents += price;
+        facility.Customers++;
+        long goods = price * product.GoodsCostPermille / 1000;
+        if (goods > 0)
+            finance.Spend(product.Merch ? MoneyCategory.MerchGoods : MoneyCategory.FoodGoods, goods);
+        if (product.Merch)
+        {
+            finance.TotalMerchCents += price;
+            finance.MerchTodayCents += price;
+            finance.TotalMerchCostCents += goods;
+        }
+        else if (product.IsDrink)
+        {
+            finance.TotalDrinksCents += price;
+            finance.DrinksTodayCents += price;
+        }
+        else
+        {
+            // Lunch in the food total, snacks apart (both in today's food money).
+            if (product.Lunch) finance.TotalFoodCents += price;
+            else finance.TotalSnackCents += price;
+            finance.FoodTodayCents += price;
+        }
+        var sales = finance.ProductSales.FirstOrDefault(s => s.ProductId == product.Id);
+        if (sales is null) finance.ProductSales.Add(sales = new ProductSales { ProductId = product.Id });
+        sales.Sold++;
+        sales.SoldToday++;
+        sales.RevenueCents += price;
+        sales.RevenueTodayCents += price;
+
+        guest.Energy = Math.Min(1000, guest.Energy + product.Energy);
+        guest.Happiness = Math.Clamp(guest.Happiness + product.Happiness - RipOffMood(state.FacilityRules, product, price), 0, 1000);
+        guest.Alcohol = Math.Min(1000, guest.Alcohol + product.Alcohol);
+        if (product.CaffeineMinutes > 0) guest.CaffeineUntilTick = Math.Max(guest.CaffeineUntilTick, tick + product.CaffeineMinutes);
+        guest.OverpaidCents += Math.Max(0, price - product.ReferencePriceCents);
+        return price;
     }
 }

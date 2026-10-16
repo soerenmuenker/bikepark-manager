@@ -10,7 +10,7 @@ using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Tests;
 
-/// <summary>Bars and shops next to valley stations: lunch, snacks and merch.</summary>
+/// <summary>Bars and shops near gravel paths and hubs: lunch, snacks, drinks and merch at the park's prices; upgrades.</summary>
 public class FacilityTests
 {
     private static readonly PointCm BarSpot = new(17500, 83000), ShopSpot = new(19500, 89500); // demo_facilities.json
@@ -48,17 +48,17 @@ public class FacilityTests
     }
 
     [Fact]
-    public void Building_NeedsAValleyStationNearby_AndCostsItsPrice()
+    public void Building_NeedsGravelAccess_AndCostsItsPrice()
     {
         var sim = Demo();
         var type = FacilityMath.FindType(sim.State, "snack_bar")!;
-        Assert.Contains("valley station", Reject(sim, new BuildFacilityCommand("snack_bar", new PointCm(50_000, 50_000), new PointCm(51_000, 50_000))));
+        Assert.Contains("gravel path", Reject(sim, new BuildFacilityCommand("snack_bar", new PointCm(50_000, 50_000), new PointCm(51_000, 50_000))));
         Assert.Contains("Unknown building", Reject(sim, new BuildFacilityCommand("casino", BarSpot, East(BarSpot))));
 
         long money = sim.State.Finance.MoneyCents;
         Assert.Null(Reject(sim, new BuildFacilityCommand("snack_bar", BarSpot, East(BarSpot))));
         var bar = Assert.Single(sim.State.Facilities);
-        Assert.Equal(1, bar.LiftId); // the gondola
+        Assert.Equal(0, bar.Level);
         Assert.Equal(money - type.BuildCostCents, sim.State.Finance.MoneyCents);
         Assert.Equal(type.BuildCostCents, sim.State.Finance.TotalFacilityBuildCents);
         Assert.Contains("overlaps another structure", Reject(sim, new BuildFacilityCommand("merch_shop", BarSpot, East(BarSpot))));
@@ -93,10 +93,11 @@ public class FacilityTests
         var packed = lunches.Where(l => l.FacilityId == 0).ToList();
         Assert.True(atBar.Count > 10, $"{atBar.Count} lunches at the bar");
         Assert.Equal(5, most); // never more than the seats
-        Assert.All(atBar, l => Assert.Equal(type.LunchPriceCents, l.PaidCents));
+        long lunchPrice = FacilityMath.PriceOf(sim.State, FacilityMath.FindProduct(sim.State, "lunch")!);
+        Assert.All(atBar, l => Assert.Equal(lunchPrice, l.PaidCents));
         Assert.All(packed, l => Assert.Equal(0, l.PaidCents));
         Assert.All(packed, l => Assert.True(GameTime.MinuteOfDay(l.Tick) >= sim.State.Rules.LunchEndMinute || l.PaidCents == 0));
-        Assert.Equal(atBar.Count, bar.Customers);
+        Assert.Equal(atBar.Count, sim.State.Finance.ProductSales.Single(p => p.ProductId == "lunch").Sold);
         Assert.True(bar.TotalRevenueCents >= atBar.Sum(l => l.PaidCents)); // plus snacks
         Assert.Equal(atBar.Sum(l => l.PaidCents), sim.State.Finance.TotalFoodCents);
     }
@@ -131,8 +132,9 @@ public class FacilityTests
 
         Assert.True(sold.Count > 3, $"{sold.Count} sold");
         Assert.Equal(sold.Count, shop.Customers);
-        Assert.Equal(sold.Count * type.MerchPriceCents, sim.State.Finance.TotalMerchCents);
-        Assert.Equal(sold.Count * (type.MerchPriceCents * type.MerchCostPermille / 1000), sim.State.Finance.TotalMerchCostCents);
+        var merch = FacilityMath.FindProduct(sim.State, "merch")!;
+        Assert.Equal(sold.Count * merch.ReferencePriceCents, sim.State.Finance.TotalMerchCents);
+        Assert.Equal(sold.Count * (merch.ReferencePriceCents * merch.GoodsCostPermille / 1000), sim.State.Finance.TotalMerchCostCents);
     }
 
     [Fact]
@@ -161,7 +163,7 @@ public class FacilityTests
         var sim = Demo(s => s.StartingMoneyCents = 100_000_000);
         foreach (var c in TestWorlds.DemoFacilities()) sim.Commands.Enqueue(c.Command);
         sim.RunTicks(12 * 60);
-        Assert.Equal(2, sim.State.Facilities.Count);
+        Assert.Equal(3, sim.State.Facilities.Count);
         var loaded = new Simulation(SaveGame.Clone(sim.State));
         sim.RunTicks(300);
         loaded.RunTicks(300);

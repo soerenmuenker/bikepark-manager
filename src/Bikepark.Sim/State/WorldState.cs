@@ -90,6 +90,11 @@ public sealed class WorldState
     /// <summary>Bars and shops the park built, in build order.</summary>
     public List<Facilities.Facility> Facilities { get; set; } = [];
 
+    /// <summary>What bars and shops sell (content); the park's prices are in <see cref="ParkState.Prices"/>.</summary>
+    public List<Facilities.ProductType> ProductTypes { get; set; } = [];
+
+    public Facilities.FacilityRules FacilityRules { get; set; } = new();
+
     /// <summary>Land the park can own (content, from the scenario). None = all land is the park's.</summary>
     public List<Parcel> Parcels { get; set; } = [];
 
@@ -167,6 +172,12 @@ public sealed class ParkState
 
     /// <summary>The lift day pass, paid once per visit when a guest first boards a lift (0 = lifts are free).</summary>
     public long LiftTicketCents { get; set; }
+
+    /// <summary>Prices the park set per product (products without one sell at their reference price).</summary>
+    public List<Facilities.ProductPrice> Prices { get; set; } = [];
+
+    /// <summary>Bars serve alcohol to riders from this minute of the day (0 = all day; after closing, après-bike always may).</summary>
+    public int BeerFromMinute { get; set; }
 
     /// <summary>Game over: the books stayed below zero for <see cref="ParkRules.BankruptcyDays"/> days. The park never opens again.</summary>
     public bool Bankrupt { get; set; }
@@ -267,6 +278,13 @@ public sealed class FinanceState
     /// <summary>Lunch sales (included in the revenue).</summary>
     public long TotalFoodCents { get; set; }
 
+    /// <summary>Coffee, beer and other drinks sold (included in the revenue).</summary>
+    public long TotalDrinksCents { get; set; }
+    public long DrinksTodayCents { get; set; }
+
+    /// <summary>Sales per product, in the order first sold.</summary>
+    public List<Facilities.ProductSales> ProductSales { get; set; } = [];
+
     /// <summary>Bike access fees paid to lift companies (included in the expenses).</summary>
     public long TotalLiftFeesCents { get; set; }
     public long LiftFeesTodayCents { get; set; }
@@ -292,7 +310,7 @@ public sealed class FinanceState
     public long TotalLiftUpkeepCents { get; set; }
     public long LiftUpkeepTodayCents { get; set; }
 
-    /// <summary>Bar sales (lunch and snacks) and merch sold (included in <see cref="TotalFoodCents"/>/the revenue).</summary>
+    /// <summary>Snacks and merch sold (in the revenue; lunch is in <see cref="TotalFoodCents"/>; today's food money has both).</summary>
     public long TotalSnackCents { get; set; }
     public long TotalMerchCents { get; set; }
     public long MerchTodayCents { get; set; }
@@ -378,6 +396,9 @@ public sealed class ParkStats
     public long TotalGuestsLeft { get; set; }
     public long TotalLeftUnhappy { get; set; }
 
+    /// <summary>Guests who stayed for après-bike.</summary>
+    public long TotalApresGuests { get; set; }
+
     /// <summary>Sum of happiness of all guests at the moment they left; divide by <see cref="TotalGuestsLeft"/>.</summary>
     public long SumExitHappiness { get; set; }
 }
@@ -417,6 +438,9 @@ public enum RiderActivity : byte
 
     /// <summary>Seriously injured: lies where they fell on the trail (blocking it) until the helicopter at <see cref="Guest.RescueAtTick"/>.</summary>
     Injured = 8,
+
+    /// <summary>Après-bike: done riding, sitting at a bar (<see cref="Guest.FacilityId"/>) until <see cref="Guest.BusyUntilTick"/>, then home.</summary>
+    Apres = 9,
 }
 
 public sealed class Guest
@@ -487,8 +511,25 @@ public sealed class Guest
     /// <summary>When the current break (<see cref="RiderActivity.Eating"/>) ends.</summary>
     public long BusyUntilTick { get; set; }
 
-    /// <summary>The bar the guest is having lunch at (0: a packed lunch where they are, or not eating).</summary>
+    /// <summary>The bar the guest is having lunch at or sitting at for après-bike (0: a packed lunch where they are, or not eating).</summary>
     public int FacilityId { get; set; }
+
+    /// <summary>Stopped at a bar on the way: the route leg they go on with afterwards (-1: not stopped on the way).</summary>
+    public int ResumeLeg { get; set; } = -1;
+
+    /// <summary>Already stopped at a bar on the way this lap (one stop per lap).</summary>
+    public bool StoppedThisLap { get; set; }
+
+    // ---- Food and drink (see Facilities.FacilityRules) ----
+
+    /// <summary>Alcohol, 0..1000: bolder trail choices, more crashes; wears off by the minute.</summary>
+    public int Alcohol { get; set; }
+
+    /// <summary>A coffee's boost: climbing costs half the energy until then.</summary>
+    public long CaffeineUntilTick { get; set; }
+
+    /// <summary>Paid above the reference prices this visit (lowers the value-for-money part of the review).</summary>
+    public long OverpaidCents { get; set; }
 
     // ---- Visit, for the review written on leaving (see Reputation.ReviewMath) ----
 
