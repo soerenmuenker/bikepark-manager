@@ -53,15 +53,69 @@ public static class ReviewMath
         return 10 + (int)(Math.Clamp(score, 0, 1000) * 40 / 1000);
     }
 
-    /// <summary>The guest's review, as of <paramref name="tick"/>.</summary>
-    public static Review Write(ReputationRules rules, Guest guest, long tick, int unsafeTrailLoss = 0)
+    public const int MaxTrails = 5, MaxFacilities = 5, MaxLifts = 3;
+
+    /// <summary>The guest's review, as of <paramref name="tick"/>, with what the visit was (trails, buildings, lifts, money).</summary>
+    public static Review Write(ReputationRules rules, Guest guest, long tick, int unsafeTrailLoss = 0,
+        Events.GuestLeaveReason reason = default)
     {
         var group = GroupOf(rules, guest.Skill);
         var s = Score(rules, guest, tick, unsafeTrailLoss);
         int stars = guest.RunsCompleted == 0 ? 10 : Stars(rules, group, s);
+        // Most ridden first; ties in the order first ridden.
+        var trails = guest.TrailsRidden
+            .Select((id, i) => (Id: id, Runs: i < guest.TrailRuns.Count ? guest.TrailRuns[i] : 0, Index: i))
+            .OrderByDescending(t => t.Runs).ThenBy(t => t.Index)
+            .Take(MaxTrails).Select(t => t.Id).ToList();
         return new Review(GameTime.Day(tick), guest.Id, group, stars, s.Fun, s.Safety, s.Smoothness, s.Challenge, s.Jumps, s.Variety,
-            guest.IsInfluencer, s.Value);
+            guest.IsInfluencer, s.Value)
+        {
+            LeftTick = tick,
+            TrailIds = trails,
+            FacilityIds = guest.FacilitiesUsed.Take(MaxFacilities).ToList(),
+            LiftIds = guest.LiftsUsed.Take(MaxLifts).ToList(),
+            SpentCents = Math.Max(0, guest.BroughtCents - guest.CashCents),
+            Reason = reason,
+            Crashed = guest.Injury != Safety.InjurySeverity.None,
+        };
     }
+
+    /// <summary>
+    /// The average of each aspect (0..1000, rounded) over <paramref name="reviews"/>, and how many there were; all 0 for none.
+    /// Use it on the whole window, one group, or the reviews that mention a trail, lift or building.
+    /// </summary>
+    public static (ReviewScores Average, int Count) AspectAverages(IEnumerable<Review> reviews)
+    {
+        long fun = 0, safety = 0, smooth = 0, challenge = 0, jumps = 0, variety = 0, value = 0;
+        int n = 0;
+        foreach (var r in reviews)
+        {
+            fun += r.Fun; safety += r.Safety; smooth += r.Smoothness; challenge += r.Challenge;
+            jumps += r.Jumps; variety += r.Variety; value += r.Value;
+            n++;
+        }
+        if (n == 0) return (default, 0);
+        int Avg(long sum) => (int)((sum * 2 + n) / (2L * n));
+        return (new ReviewScores(Avg(fun), Avg(safety), Avg(smooth), Avg(challenge), Avg(jumps), Avg(variety), Avg(value)), n);
+    }
+
+    /// <summary>Average stars (tenths, rounded) of <paramref name="reviews"/>, or null for none.</summary>
+    public static int? AverageStars(IEnumerable<Review> reviews)
+    {
+        long sum = 0;
+        int n = 0;
+        foreach (var r in reviews)
+        {
+            sum += r.StarsTenths;
+            n++;
+        }
+        return n == 0 ? null : (int)((sum * 2 + n) / (2L * n));
+    }
+
+    /// <summary>The reviews in the window that mention a trail, lift or building.</summary>
+    public static IEnumerable<Review> Mentioning(ReputationState state, int trailId = 0, int liftId = 0, int facilityId = 0) =>
+        state.Reviews.Where(r => (trailId != 0 && r.TrailIds.Contains(trailId)) || (liftId != 0 && r.LiftIds.Contains(liftId))
+                                 || (facilityId != 0 && r.FacilityIds.Contains(facilityId)));
 
     /// <summary>
     /// Crashes override how safe the day felt: nothing is safe about a helicopter ride, a minor crash caps it low, and

@@ -137,6 +137,17 @@ public sealed class Facility
 
     /// <summary>Sales (lunches, drinks, snacks, merch).</summary>
     public int Customers { get; set; }
+    public int CustomersToday { get; set; }
+
+    /// <summary>Guests who wanted a seat, workbench or bike here and found none (today and all time).</summary>
+    public int TurnedAwayToday { get; set; }
+    public long TurnedAway { get; set; }
+
+    /// <summary>Sales today above the product's reference price (the guest felt ripped off a little).</summary>
+    public int OverpricedToday { get; set; }
+
+    /// <summary>Sales per product at this building, in the order first sold.</summary>
+    public List<ProductSales> Sales { get; set; } = [];
 
     /// <summary>Rental stations: the bikes the park owns there, in id order.</summary>
     public List<RentalBike> Fleet { get; set; } = [];
@@ -422,6 +433,15 @@ public static class FacilityMath
             facility.TotalRevenueCents += price;
             facility.RevenueTodayCents += price;
             facility.Customers++;
+            facility.CustomersToday++;
+            if (price > product.ReferencePriceCents) facility.OverpricedToday++;
+            var own = facility.Sales.FirstOrDefault(s => s.ProductId == product.Id);
+            if (own is null) facility.Sales.Add(own = new ProductSales { ProductId = product.Id });
+            own.Sold++;
+            own.SoldToday++;
+            own.RevenueCents += price;
+            own.RevenueTodayCents += price;
+            if (!guest.FacilitiesUsed.Contains(facility.Id)) guest.FacilitiesUsed.Add(facility.Id);
         }
         // A sponsor (brewery, bike brand, ...) may supply the goods cheaper.
         long goods = Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.GoodsDiscount, price * product.GoodsCostPermille / 1000, product.Id);

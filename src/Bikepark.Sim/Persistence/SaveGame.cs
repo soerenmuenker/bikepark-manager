@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 9;
+    public const int CurrentVersion = 10;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -237,6 +237,17 @@ public static class SaveGame
                     }
             }
             version = 9;
+        }
+
+        if (version == 9)
+        {
+            // v10: reviews remember the visit (trails, buildings, lifts, money spent, why the guest left); buildings and
+            // lifts keep their own stats. Old reviews and stats start empty; guests in the park get what they paid so far
+            // as the money they came with.
+            if (root["world"]?["guests"] is JsonArray guests)
+                foreach (var guest in guests.OfType<JsonObject>())
+                    guest["broughtCents"] = (guest["cashCents"]?.GetValue<long>() ?? 0) + (guest["paidEntryCents"]?.GetValue<long>() ?? 0);
+            version = 10;
         }
 
         root["version"] = version;

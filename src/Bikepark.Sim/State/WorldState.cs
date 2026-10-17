@@ -618,6 +618,18 @@ public sealed class Guest
     /// <summary>Distinct trails ridden, in the order first ridden.</summary>
     public List<int> TrailsRidden { get; set; } = [];
 
+    /// <summary>Runs per trail, parallel to <see cref="TrailsRidden"/>.</summary>
+    public List<int> TrailRuns { get; set; } = [];
+
+    /// <summary>Bars and shops the guest bought something at, in the order first used.</summary>
+    public List<int> FacilitiesUsed { get; set; } = [];
+
+    /// <summary>Lifts the guest rode, in the order first ridden.</summary>
+    public List<int> LiftsUsed { get; set; } = [];
+
+    /// <summary>The money the guest came with (what they spent = this minus <see cref="CashCents"/>).</summary>
+    public long BroughtCents { get; set; }
+
     public long JumpFunSum { get; set; }
     public int JumpCount { get; set; }
 

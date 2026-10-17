@@ -59,6 +59,21 @@ internal static class Catering
         return null;
     }
 
+    /// <summary>
+    /// A guest looked for a seat (or workbench) at <paramref name="point"/> and found none: the nearest full building of the
+    /// kind counts them as turned away.
+    /// </summary>
+    public static void NoteNoSeat(WorldState state, PointCm? point, FacilityKind kind)
+    {
+        foreach (var (facility, type) in FacilityMath.InReach(state, point, kind))
+        {
+            if (FacilityMath.HasFreeSeat(state, facility, type)) continue;
+            facility.TurnedAwayToday++;
+            facility.TurnedAway++;
+            return;
+        }
+    }
+
     /// <summary>True if some bar of the park serves a lunch the guest could afford (worth riding on to find a seat).</summary>
     public static bool AnyLunchAffordable(WorldState state, Guest guest) =>
         state.Facilities.Any(f => FacilityMath.FindType(state, f.TypeId) is { Kind: FacilityKind.Bar } type

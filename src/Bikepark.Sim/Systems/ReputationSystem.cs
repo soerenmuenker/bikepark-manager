@@ -50,7 +50,7 @@ internal sealed class ReputationSystem : ISimSystem
     /// A leaving guest may write a review (only after at least one run, with <see cref="ReputationRules.ReviewChancePermille"/>);
     /// an influencer always does, and it becomes their post.
     /// </summary>
-    internal static void Review(SimContext ctx, Guest guest)
+    internal static void Review(SimContext ctx, Guest guest, GuestLeaveReason reason = default)
     {
         var state = ctx.State;
         var rules = state.ReputationRules;
@@ -60,7 +60,7 @@ internal sealed class ReputationSystem : ISimSystem
         if (!guest.IsInfluencer && ((guest.RunsCompleted == 0 && !injured) || !ctx.Rng.ChancePermille(chance)))
             return;
 
-        var review = ReviewMath.Write(rules, guest, ctx.Tick, Safety.CrashMath.UnsafeTrailLoss(state, ctx.Network, guest));
+        var review = ReviewMath.Write(rules, guest, ctx.Tick, Safety.CrashMath.UnsafeTrailLoss(state, ctx.Network, guest), reason);
         ReputationMath.Add(state, review);
         ctx.Publish(new ReviewWritten(ctx.Tick, guest.Id, review.Group, review.StarsTenths, guest.IsInfluencer));
         if (!guest.IsInfluencer) return;

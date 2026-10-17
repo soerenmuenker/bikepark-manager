@@ -186,6 +186,8 @@ public static class Program
             Level: level,
             NextLevelXp: ParkProgress.NextLevelXp(rules, level),
             XpParts: xp,
+            Aspects: ReviewMath.AspectAverages(state.Reputation.Reviews) is var (a, n)
+                ? new AspectsReport(n, a.Fun, a.Safety, a.Smoothness, a.Challenge, a.Jumps, a.Variety, a.Value) : null!,
             Posts: state.Reputation.Posts.Select(p =>
                 $"day {p.Day} {p.Name}: {Stars(p.StarsTenths)} stars, demand {p.EffectPermille / 10:+0;-0;0} % until day {p.EndsDay}").ToList(),
             Log: log);
@@ -229,7 +231,8 @@ public static class Program
                     type is null ? 0 : type.Kind == Bikepark.Sim.Facilities.FacilityKind.Campground
                         ? Bikepark.Sim.Facilities.FacilityMath.Pitches(type, x) : Bikepark.Sim.Facilities.FacilityMath.Seats(type, x),
                     type is null ? [] : Bikepark.Sim.Facilities.FacilityMath.ProductsOf(state, type, x).Select(p => p.Id).ToList(),
-                    x.Customers, x.TotalRevenueCents);
+                    x.Customers, x.TotalRevenueCents, x.TurnedAway,
+                    x.Sales.Select(s => new ProductSalesReport(s.ProductId, s.Sold, s.RevenueCents)).ToList());
             }).ToList(),
             f.TotalFoodCents, f.TotalSnackCents, f.TotalDrinksCents, f.TotalMerchCents, f.TotalMerchCostCents, f.TotalFacilityBuildCents,
             f.TotalFacilityUpkeepCents,
@@ -398,7 +401,8 @@ public static class Program
                 tier?.DailyFeeCents,
                 l.Derelict ? l.ReadyTick > 0 ? "restoring" : "derelict" : l.ReadyTick > 0 ? "under construction" : "running",
                 l.ReadyTick > 0 ? GameTime.Format(l.ReadyTick) : null,
-                l.OperatorId is null ? type.UpkeepPerDayCents : null);
+                l.OperatorId is null ? type.UpkeepPerDayCents : null,
+                l.Stats.PassesSold, l.Stats.PassRevenueCents);
         }).ToList();
     }
 }
@@ -421,7 +425,9 @@ internal sealed record LiftReport(
     long? DailyFeeCents,
     string Status,
     string? ReadyAt,
-    long? UpkeepPerDayCents);
+    long? UpkeepPerDayCents,
+    long PassesSold,
+    long PassRevenueCents);
 
 internal sealed record ParcelReport(string Id, string Name, bool Owned, int RequiredLevel, long PriceCents, long AreaSquareMeters);
 
@@ -434,7 +440,12 @@ internal sealed record SponsorsReport(List<DealReport> Deals, string ParkTitle, 
     int BuzzPermille, List<string> Log);
 
 internal sealed record FacilityReport(int Id, string Name, string TypeId, int Level, List<string> Upgrades, int Seats, List<string> Products,
-    int Customers, long RevenueCents);
+    int Customers, long RevenueCents, long TurnedAway, List<ProductSalesReport> Sales);
+
+internal sealed record ProductSalesReport(string Product, long Sold, long RevenueCents);
+
+/// <summary>Average aspect scores of the reviews in the window (0..1000).</summary>
+internal sealed record AspectsReport(int Reviews, int Fun, int Safety, int Smoothness, int Challenge, int Jumps, int Variety, int Value);
 
 internal sealed record ProductReport(string Id, long PriceCents, long ReferencePriceCents, long Sold, long RevenueCents);
 
@@ -547,6 +558,7 @@ internal sealed record ReputationReport(
     int Level,
     int? NextLevelXp,
     ParkProgress.XpBreakdown XpParts,
+    AspectsReport Aspects,
     List<string> Posts,
     List<string> Log);
 

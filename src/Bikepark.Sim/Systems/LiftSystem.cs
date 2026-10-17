@@ -110,6 +110,7 @@ internal sealed class LiftSystem : ISimSystem
                     guest.RouteProgressCm += Math.Min(headStartCm, Math.Max(0, guest.Route[guest.LegIndex].LengthCm - 1));
                 lift.Stats.Riders++;
                 lift.Stats.RidersToday++;
+                if (!guest.LiftsUsed.Contains(lift.Id)) guest.LiftsUsed.Add(lift.Id);
                 lift.Stats.SumWaitMinutes += wait;
                 ctx.Publish(new RiderBoarded(ctx.Tick, guest.Id, lift.Id, wait));
             }

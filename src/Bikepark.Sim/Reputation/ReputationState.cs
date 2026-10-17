@@ -16,7 +16,31 @@ public sealed record Review(
     int Jumps,
     int Variety,
     bool Influencer = false,
-    int Value = 0);
+    int Value = 0)
+{
+    /// <summary>When the guest left (tick).</summary>
+    public long LeftTick { get; init; }
+
+    /// <summary>Trails ridden, most runs first (at most <see cref="ReviewMath.MaxTrails"/>).</summary>
+    public List<int> TrailIds { get; init; } = [];
+
+    /// <summary>Bars and shops the guest bought something at, in the order first used (at most <see cref="ReviewMath.MaxFacilities"/>).</summary>
+    public List<int> FacilityIds { get; init; } = [];
+
+    /// <summary>Lifts the guest rode, in the order first ridden (at most <see cref="ReviewMath.MaxLifts"/>).</summary>
+    public List<int> LiftIds { get; init; } = [];
+
+    /// <summary>Everything the guest paid during the visit (entry, parking, lift pass, food, nights, rental...).</summary>
+    public long SpentCents { get; init; }
+
+    public Events.GuestLeaveReason Reason { get; init; }
+
+    /// <summary>The guest was hurt in a crash.</summary>
+    public bool Crashed { get; init; }
+
+    /// <summary>The visit's aspect scores.</summary>
+    public ReviewScores Scores => new(Fun, Safety, Smoothness, Challenge, Jumps, Variety, Value);
+}
 
 /// <summary>
 /// An influencer's FakeSocial post: their visit's stars and the demand change it brings (on its day; it fades to 0 by

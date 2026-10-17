@@ -126,6 +126,11 @@ internal sealed class GuestArrivalSystem : ISimSystem
             if (rental is null)
             {
                 state.Stats.RentersWithoutBike++;
+                if (state.Facilities.FirstOrDefault(f => FacilityMath.FindType(state, f.TypeId)?.Kind == FacilityKind.Rental) is { } station)
+                {
+                    station.TurnedAwayToday++;
+                    station.TurnedAway++;
+                }
                 state.Stats.TotalTurnedAway++;
                 state.Stats.TurnedAwayToday++;
                 ctx.Publish(new GuestTurnedAway(ctx.Tick, TurnAwayReason.NoRentalBike));
@@ -173,6 +178,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
             LunchMinute = lunchMinute,
             Id = state.AllocateEntityId(),
             CashCents = cash - fee - parking,
+            BroughtCents = cash,
             PaidEntryCents = fee + parking,
             Happiness = Math.Clamp(ctx.Rng.Range(550, 801) - feePenalty, 0, 1000),
             ArrivedTick = ctx.Tick,
@@ -307,7 +313,7 @@ internal sealed class GuestSystem : ISimSystem
                     Catering.BuyMerch(ctx, ctx.Network, guest);
                 Bikes.Return(ctx, guest);
                 ctx.Publish(new GuestLeft(ctx.Tick, guest.Id, reason));
-                ReputationSystem.Review(ctx, guest);
+                ReputationSystem.Review(ctx, guest, reason);
             }
             else
                 guests[write++] = guest;
@@ -500,6 +506,9 @@ internal sealed class FinanceSystem : ISimSystem
         {
             lift.Stats.RidersToday = 0;
             lift.Stats.MaxQueueToday = 0;
+            lift.Stats.PassesSoldToday = 0;
+            lift.Stats.PassRevenueTodayCents = 0;
+            lift.Stats.NoPassToday = 0;
         }
         state.Finance.LiftFeesTodayCents = 0;
         state.Finance.LiftTicketsTodayCents = 0;
@@ -520,7 +529,17 @@ internal sealed class FinanceSystem : ISimSystem
         }
         state.Finance.TodayCents.Clear();
         foreach (var facility in state.Facilities)
+        {
             facility.RevenueTodayCents = 0;
+            facility.CustomersToday = 0;
+            facility.TurnedAwayToday = 0;
+            facility.OverpricedToday = 0;
+            foreach (var sales in facility.Sales)
+            {
+                sales.SoldToday = 0;
+                sales.RevenueTodayCents = 0;
+            }
+        }
         state.Finance.WagesTodayCents = 0;
         state.Stats.VisitorsToday = 0;
         state.Reputation.ReviewsToday = 0;

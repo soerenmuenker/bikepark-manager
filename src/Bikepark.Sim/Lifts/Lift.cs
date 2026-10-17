@@ -80,6 +80,15 @@ public sealed class LiftStats
     public long SumWaitMinutes { get; set; }
     public int MaxQueueToday { get; set; }
     public int MaxQueue { get; set; }
+
+    /// <summary>Lift day passes bought at this lift (the first lift of a visit), and their money.</summary>
+    public long PassesSold { get; set; }
+    public int PassesSoldToday { get; set; }
+    public long PassRevenueCents { get; set; }
+    public long PassRevenueTodayCents { get; set; }
+
+    /// <summary>Riders today who reached this lift but couldn't pay the day pass.</summary>
+    public int NoPassToday { get; set; }
 }
 
 /// <summary>A parking lot: guests arrive here by car and walk to the valley station of <see cref="LiftId"/>.</summary>

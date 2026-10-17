@@ -108,7 +108,8 @@ internal sealed class RiderSystem : ISimSystem
 
         if (FacilityMath.BarsNeeded(state))
         {
-            if (Catering.LunchBar(state, guest, FacilityMath.GuestPoint(state, ctx.Network, guest)) is { } bar)
+            var point = FacilityMath.GuestPoint(state, ctx.Network, guest);
+            if (Catering.LunchBar(state, guest, point) is { } bar)
             {
                 if (Catering.AcceptsLunch(ctx, bar.Lunch))
                 {
@@ -116,8 +117,12 @@ internal sealed class RiderSystem : ISimSystem
                     return true;
                 }
             }
-            else if (minute < rules.LunchEndMinute && Catering.AnyLunchAffordable(state, guest))
-                return false; // ride on: maybe the next lap ends at a bar with a free seat
+            else
+            {
+                Catering.NoteNoSeat(state, point, FacilityKind.Bar);
+                if (minute < rules.LunchEndMinute && Catering.AnyLunchAffordable(state, guest))
+                    return false; // ride on: maybe the next lap ends at a bar with a free seat
+            }
             EatPackedLunch(ctx, guest, rules.PackedLunchHappiness);
             return true;
         }
@@ -763,7 +768,7 @@ internal sealed class RiderSystem : ISimSystem
                     PlaceAtBase(ctx.State, guest, network);
                     return;
                 }
-                if (!guest.HasLiftPass && !BuyLiftPass(ctx, guest))
+                if (!guest.HasLiftPass && !BuyLiftPass(ctx, guest, lift))
                 {
                     // Can't afford the day pass any more: back to the base, where lifts are out of the route choice.
                     PlaceAtBase(ctx.State, guest, network);
@@ -781,10 +786,21 @@ internal sealed class RiderSystem : ISimSystem
     }
 
     /// <summary>Buys the day pass on the first lift of a visit. False if the guest can't pay for it.</summary>
-    private static bool BuyLiftPass(SimContext ctx, Guest guest)
+    private static bool BuyLiftPass(SimContext ctx, Guest guest, Lift lift)
     {
         long ticket = ctx.State.Park.LiftTicketCents;
-        if (guest.CashCents < ticket) return false;
+        if (guest.CashCents < ticket)
+        {
+            lift.Stats.NoPassToday++;
+            return false;
+        }
+        if (ticket > 0)
+        {
+            lift.Stats.PassesSold++;
+            lift.Stats.PassesSoldToday++;
+            lift.Stats.PassRevenueCents += ticket;
+            lift.Stats.PassRevenueTodayCents += ticket;
+        }
         guest.CashCents -= ticket;
         guest.PaidEntryCents += ticket;
         guest.HasLiftPass = true;
@@ -814,8 +830,14 @@ internal sealed class RiderSystem : ISimSystem
             guest.HardestDifficulty = Math.Max(guest.HardestDifficulty, difficulty);
             if (difficulty > guest.Skill + ctx.State.ReputationRules.ScaredMargin)
                 guest.ScaredRuns++;
-            if (!guest.TrailsRidden.Contains(trailId))
+            int ridden = guest.TrailsRidden.IndexOf(trailId);
+            if (ridden < 0)
+            {
                 guest.TrailsRidden.Add(trailId);
+                ridden = guest.TrailsRidden.Count - 1;
+            }
+            while (guest.TrailRuns.Count <= ridden) guest.TrailRuns.Add(0);
+            guest.TrailRuns[ridden]++;
             trail.Stats.Runs++;
             Bikes.Wear(ctx.State, guest, ctx.State.FacilityRules.RentalWearPerRun + difficulty / 200);
             trail.Stats.RunsToday++;

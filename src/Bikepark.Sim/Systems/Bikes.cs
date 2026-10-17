@@ -68,7 +68,8 @@ internal static class Bikes
             ctx.Publish(new BikeFixed(ctx.Tick, guest.Id, stationId, Swapped: true));
             return true;
         }
-        foreach (var (shop, type) in FacilityMath.InReach(state, FacilityMath.GuestPoint(state, ctx.Network, guest), FacilityKind.Service))
+        var point = FacilityMath.GuestPoint(state, ctx.Network, guest);
+        foreach (var (shop, type) in FacilityMath.InReach(state, point, FacilityKind.Service))
         {
             if (!FacilityMath.HasFreeSeat(state, shop, type)) continue;
             if (FacilityMath.ProductsOf(state, type, shop).FirstOrDefault(p => p.Repair) is not { } repair) continue;
@@ -84,6 +85,7 @@ internal static class Bikes
             ctx.Publish(new BikeFixed(ctx.Tick, guest.Id, shop.Id, Swapped: false));
             return true;
         }
+        Catering.NoteNoSeat(state, point, FacilityKind.Service);
         return false;
     }
 }
