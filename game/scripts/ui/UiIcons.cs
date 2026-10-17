@@ -345,7 +345,7 @@ public partial class RoundButton : Control
         _caption = caption;
         TooltipText = tooltip;
         Pressed += onPressed;
-        CustomMinimumSize = new Vector2(Math.Max(diameter, caption.Length == 0 ? 0 : 58), diameter + (caption.Length == 0 ? 0 : 18));
+        CustomMinimumSize = new Vector2(Math.Max(diameter, caption.Length == 0 ? 0 : 55), diameter + (caption.Length == 0 ? 0 : 18));
         MouseFilter = MouseFilterEnum.Stop;
         MouseDefaultCursorShape = CursorShape.PointingHand;
         MouseEntered += () => { _hover = true; QueueRedraw(); };
@@ -353,6 +353,8 @@ public partial class RoundButton : Control
     }
 
     public event Action? Pressed;
+
+    public override GodotObject? _MakeCustomTooltip(string forText) => forText.Length == 0 ? null : UiTheme.Tooltip(forText);
 
     public bool Active
     {

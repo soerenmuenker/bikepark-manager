@@ -283,6 +283,8 @@ public partial class ToolCard : PanelContainer
     }
 
     private void UpdateStyle() => AddThemeStyleboxOverride("panel", _isActive ? _active : _isHover ? _hover : _normal);
+
+    public override GodotObject? _MakeCustomTooltip(string forText) => forText.Length == 0 ? null : UiTheme.Tooltip(forText);
 }
 
 // ==================================================================== Build
@@ -301,13 +303,13 @@ public partial class BuildPanel : HudPanel
     {
         var cards = Row(10);
         Body.AddChild(cards);
-        _path = new ToolCard(UiIcon.Path, "Gravel path", "P", "Two-way access path riders can pedal up (max gradient ±4.0); the crew builds it",
+        _path = new ToolCard(UiIcon.Path, "Gravel path", "P", "Gravel path  [P]\nTwo-way access path riders can pedal up and walk on; the crew builds it.\n\n• Max gradient ±4.0\n• Bars and shops need one nearby",
             () => ToggleWay(WayTool.ToolMode.AccessPath));
-        _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "One-way downhill trail; start it on a plateau or path. The crew fells the trees in the way, then digs it",
+        _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "Trail  [T]\nOne-way downhill trail. Start it on a plateau, path or loose trail end.\n\n• The crew fells the trees in the way, then digs it\n• Its rating comes from steepness and features",
             () => ToggleWay(WayTool.ToolMode.Trail));
-        _parking = new ToolCard(UiIcon.Parking, "Parking lot", "K", "Parking next to a valley station (free); on your land",
+        _parking = new ToolCard(UiIcon.Parking, "Parking lot", "K", "Parking lot  [K]\nParking next to a valley station; guests arriving by car park here.\n\n• Free to build, on your land\n• Parking fee: click the park name in the bar",
             () => ToggleStructure(StructureTool.ToolMode.Parking));
-        _fell = new ToolCard(UiIcon.Felling, "Fell trees", "area", "Mark an area of forest: the crew cuts the trees, each gives wood",
+        _fell = new ToolCard(UiIcon.Felling, "Fell trees", "area", "Fell trees\nMark an area of forest: the crew cuts the trees.\n\n• Each tree gives wood for features and signs",
             () => Ctx.Clearing.SetActive(!Ctx.Clearing.Active));
         var demo = new ToolCard(UiIcon.Demo, "Demo trails", "", "Builds two example trails from the plateau (at once)", Ctx.Host.LoadDemoNetwork);
         var demoFeatures = new ToolCard(UiIcon.Demo, "Demo features", "", "Plans berms, jumps and wood features on the demo trails",
@@ -316,13 +318,14 @@ public partial class BuildPanel : HudPanel
                 _demoStatus.Text = Ctx.Host.LoadDemoFeatures() ? "" : "Build the demo trails first.";
                 _demoStatus.Visible = _demoStatus.Text.Length > 0;
             });
-        _platform = new ToolCard(UiIcon.Parking, "Gravel platform", "12 × 12 m", "A small gravel pad where paths and trails can start and end, to link them up (free); on your land",
+        _platform = new ToolCard(UiIcon.Parking, "Gravel platform", "12 × 12 m", "Gravel platform\nA small gravel pad where paths and trails can start and end, to link them up.\n\n• 12 × 12 m, free, on your land",
             () => ToggleStructure(StructureTool.ToolMode.Platform));
         _renaturalize = new ToolCard(UiIcon.Felling, "Renaturalize", "remove",
-            "Give something back to nature. Trails and gravel paths (free): click where a section starts and where it ends; what is " +
-            "left keeps loose ends, a trail cut in two becomes Part 1 and Part 2 and stays closed until connected (draw a trail from " +
-            "the loose end, or put a gravel path or platform in between). Lifts and parking lots: click them, a contractor tears " +
-            "them down at once for a fee. Platforms: free",
+            "Renaturalize\nGive something back to nature.\n\n" +
+            "• Trails and gravel paths (free): click where a section starts, then where it ends\n" +
+            "• A trail cut in two becomes Part 1 and Part 2 and stays closed until connected again\n" +
+            "• Lifts and parking lots: click them; a contractor tears them down for a fee\n" +
+            "• Platforms: free",
             () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize));
         foreach (var card in new[] { _path, _trail, _fell, _parking, _platform, _renaturalize }) cards.AddChild(card);
         if (Ctx.Sim.State.Parcels.Count == 0)
@@ -370,7 +373,7 @@ public partial class BuildPanel : HudPanel
                 buildings.AddChild(card);
                 _facilities.Add((type, card));
             }
-            Body.AddChild(UiTheme.Label("Click the centre near a gravel path, platform, station or parking lot, then where its front points · Enter builds it (paid at once) · prices and upgrades: Finances", 12, UiTheme.TextDim));
+            Body.AddChild(UiTheme.Label("Click the centre near a gravel path, platform, station or parking lot, then where its front points · Enter builds it (paid at once) · prices and upgrades: click the building", 12, UiTheme.TextDim));
         }
 
         Body.AddChild(UiTheme.Separator());
@@ -440,9 +443,11 @@ public partial class BuildPanel : HudPanel
                           ? $"; needs a clear {type.LandingMeters} m landing after it, {Gradient.Format(type.LandingMaxGradient)} to {Gradient.Format(type.LandingMinGradient)} down"
                           : "");
         string build = type.Wood > 0 ? $"{HudContext.CrewTime(type.WorkMinutes)} and {type.Wood} wood" : HudContext.CrewTime(type.WorkMinutes);
-        return $"{type.Name}: {type.LengthMeters} m, difficulty {type.Difficulty} ({DifficultyWord(type.Difficulty)}); {where}{bend}. " +
-               $"Flow riders {type.FlowAffinity / 10}%, technical riders {type.TechAffinity / 10}%. Building it takes {build}." +
-               (type.RequiredLevel > 0 ? $" From park level {type.RequiredLevel}." : "");
+        return $"{type.Name}\n{type.LengthMeters} m, difficulty {type.Difficulty} ({DifficultyWord(type.Difficulty)})\n\n" +
+               $"• Where: {where}{bend}\n" +
+               $"• Fun: flow riders {type.FlowAffinity / 10} %, technical riders {type.TechAffinity / 10} %\n" +
+               $"• Building: {build}" +
+               (type.RequiredLevel > 0 ? $"\n• From park level {type.RequiredLevel}" : "");
     }
 
     private void ToggleTrailEdit(TrailEditTool.ToolMode mode)
@@ -482,10 +487,13 @@ public partial class BuildPanel : HudPanel
     }
 
     private static string LiftTooltip(LiftType type) =>
-        $"{type.Name}: {type.BikesPerCarrier} bike{(type.BikesPerCarrier == 1 ? "" : "s")} every {type.IntervalSeconds} s " +
-        $"({LiftMath.BikeRidersPerHour(type, 1000)} riders/h), {type.SpeedCmPerS / 100.0:0.#} m/s, {type.MinLengthMeters}–{type.MaxLengthMeters} m" +
-        $"{(type.Sheltered ? ", closed cabins" : ", open (riders get wet in the rain)")}. Build {UiTheme.Money(type.BuildCostCents)} in {type.BuildDays} days, " +
-        $"upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day, from park level {type.RequiredLevel}.";
+        $"{type.Name}\n{type.BikesPerCarrier} bike{(type.BikesPerCarrier == 1 ? "" : "s")} every {type.IntervalSeconds} s: " +
+        $"{LiftMath.BikeRidersPerHour(type, 1000)} riders an hour\n\n" +
+        $"• {type.SpeedCmPerS / 100.0:0.#} m/s, {type.MinLengthMeters}–{type.MaxLengthMeters} m long\n" +
+        $"• {(type.Sheltered ? "Closed cabins" : "Open: riders get wet in the rain")}\n" +
+        $"• Build {UiTheme.Money(type.BuildCostCents)}, running after {type.BuildDays} days\n" +
+        $"• Upkeep {UiTheme.Money(type.UpkeepPerDayCents)} a day\n" +
+        $"• From park level {type.RequiredLevel}";
 
     private void ToggleFacility(string typeId)
     {
@@ -502,25 +510,28 @@ public partial class BuildPanel : HudPanel
     {
         var state = Ctx.Sim.State;
         string sells = string.Join(", ", type.Products.Select(id => Bikepark.Sim.Facilities.FacilityMath.FindProduct(state, id)?.Name.ToLowerInvariant() ?? id));
-        string what = type.Kind switch
+        var (what, facts) = type.Kind switch
         {
-            Bikepark.Sim.Facilities.FacilityKind.Bar => $"{type.Name}: {sells}; {type.Seats} seats (lunch, après-bike). Riders stop at it on their way, too.",
-            Bikepark.Sim.Facilities.FacilityKind.Campground =>
-                $"{type.Name}: {type.Pitches} pitches. Some arriving guests camp {state.FacilityRules.MinNights}–{state.FacilityRules.MaxNights} nights: " +
-                "they pay their nights, park here and ride again every morning.",
-            Bikepark.Sim.Facilities.FacilityKind.Rental =>
-                $"{type.Name}: rents bikes by the day to extra guests without one (mostly beginners). Buy its fleet in Finances " +
-                $"({UiTheme.Money(type.BikeCostCents)} a bike, up to {type.MaxFleet}); bikes wear and are retired at 0 %.",
-            Bikepark.Sim.Facilities.FacilityKind.Service =>
-                $"{type.Name}: {type.Seats} workbenches. Riders whose bike broke in a crash get it fixed here and ride on, instead of going home.",
-            _ => $"{type.Name}: guests buy {sells} (protectors between laps; merch on the way home, the happier, the likelier).",
+            Bikepark.Sim.Facilities.FacilityKind.Bar => ("Lunch, drinks and après-bike; riders stop at it on their way, too.",
+                new[] { $"Sells {sells}", $"{type.Seats} seats", "Without a bar guests bring a packed lunch: no money for you, less fun for them" }),
+            Bikepark.Sim.Facilities.FacilityKind.Campground => ("Some arriving guests stay for a few nights and ride again every morning.",
+                new[] { $"{type.Pitches} pitches", $"Stays of {state.FacilityRules.MinNights}–{state.FacilityRules.MaxNights} nights, paid on arrival" }),
+            Bikepark.Sim.Facilities.FacilityKind.Rental => ("Rents bikes by the day to extra guests without one (mostly beginners).",
+                new[] { $"Bikes {UiTheme.Money(type.BikeCostCents)} each, up to {type.MaxFleet}", "Bikes wear and are retired at 0 %" }),
+            Bikepark.Sim.Facilities.FacilityKind.Service => ("Riders whose bike broke in a crash get it fixed here and ride on instead of going home.",
+                new[] { $"{type.Seats} workbenches" }),
+            _ => ("Guests shop here between laps and on their way home: the happier, the likelier.", new[] { $"Sells {sells}" }),
         };
-        string upgrades = type.Upgrades.Count == 0 ? ""
-            : " Upgrades: " + string.Join(" → ", type.Upgrades.Select(u => $"{u.Name} ({UiTheme.Money(u.CostCents)})")) + ".";
-        return $"{what} Build {UiTheme.Money(type.BuildCostCents)}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day, " +
-               $"{type.LengthMeters} × {type.WidthMeters} m" + (type.RequiredLevel > 0 ? $", from park level {type.RequiredLevel}." : ".") +
-               upgrades + $" Needs a gravel path, platform, station or parking lot within {state.FacilityRules.AccessReachMeters} m; prices in Finances." +
-               (type.Kind == Bikepark.Sim.Facilities.FacilityKind.Bar ? " Without a bar guests bring a packed lunch: no money for you, less fun for them." : "");
+        var lines = new List<string>(facts)
+        {
+            $"Build {UiTheme.Money(type.BuildCostCents)}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)} a day",
+            $"{type.LengthMeters} × {type.WidthMeters} m, within {state.FacilityRules.AccessReachMeters} m of a gravel path, platform, station or parking lot",
+        };
+        if (type.Upgrades.Count > 0)
+            lines.Add("Upgrades: " + string.Join(" → ", type.Upgrades.Select(u => $"{u.Name} ({UiTheme.Money(u.CostCents)})")));
+        if (type.RequiredLevel > 0) lines.Add($"From park level {type.RequiredLevel}");
+        lines.Add("Prices and upgrades: click the building once it stands");
+        return $"{type.Name}\n{what}\n\n" + string.Join("\n", lines.Select(l => "• " + l));
     }
 
     private void ToggleFeature(string typeId) => Ctx.Features.SetType(Ctx.Features.TypeId == typeId ? null : typeId);
@@ -937,7 +948,7 @@ public partial class CrewPanel : HudPanel
             bool locked = state.Rules.UnlockLevel(level) < tool.RequiredLevel;
             string condition = owned.Count == 0 || tool.LifeMinutes <= 0 ? ""
                 : $" · {owned.Average(t => WorkCosts.ConditionPermille(tool, t)) / 10:0} %";
-            var button = new Button
+            var button = new TipButton
             {
                 Text = $"{tool.Name}{(owned.Count > 0 ? $"  ×{owned.Count}" : "")}\n{WorkWord(tool.WorkType)} +{tool.SpeedBonusPermille / 10} % · " +
                        (locked ? $"level {tool.RequiredLevel}" : UiTheme.Money(tool.PriceCents)) + condition,
@@ -1286,7 +1297,7 @@ public partial class LiftsPanel : HudPanel
                     var tier = op.BikeAccessTiers[i];
                     int index = i;
                     string mark = i == access.TierIndex ? "  ● now" : i == access.PendingTierIndex ? "  ◌ booked" : "";
-                    var button = new Button
+                    var button = new TipButton
                     {
                         Text = $"{tier.Name}{mark}\n{tier.BikeCarrierPermille / 10}% of cabins · {UiTheme.Money(tier.DailyFeeCents)}/day",
                         ToggleMode = true,
@@ -1355,7 +1366,7 @@ public partial class MapPanel : HudPanel
         foreach (var mode in Enum.GetValues<TerrainView.OverlayMode>())
         {
             var m = mode;
-            var button = new Button { Text = mode.ToString(), ToggleMode = true, FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(110, 36) };
+            var button = new TipButton { Text = mode.ToString(), ToggleMode = true, FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(110, 36) };
             button.Pressed += () => Ctx.Terrain.SetOverlay(m);
             row.AddChild(button);
             _modes.Add((mode, button));

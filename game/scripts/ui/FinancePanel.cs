@@ -762,7 +762,7 @@ public partial class FinancePanel : HudPanel
 
     private Button Toggle(string text, ButtonGroup group, bool today, string tooltip)
     {
-        var button = new Button { Text = text, ToggleMode = true, ButtonGroup = group, FocusMode = FocusModeEnum.None, TooltipText = tooltip };
+        var button = new TipButton { Text = text, ToggleMode = true, ButtonGroup = group, FocusMode = FocusModeEnum.None, TooltipText = tooltip };
         button.Pressed += () =>
         {
             _showToday = today;

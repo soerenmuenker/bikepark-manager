@@ -119,6 +119,18 @@ public partial class Hud : CanvasLayer
             else if (arg.StartsWith("--tool=", StringComparison.Ordinal)) StartTool(arg[7..]);
             else if (arg.StartsWith("--features=", StringComparison.Ordinal) && int.TryParse(arg[11..], out int wayId)) _repairDialog.Open(wayId);
             else if (arg.StartsWith("--rename=", StringComparison.Ordinal) && int.TryParse(arg[9..], out int renameId)) _ctx.RenameTrail(renameId);
+            else if (arg.StartsWith("--hover=", StringComparison.Ordinal) && arg[8..].Split(',') is [var hx, var hy]
+                     && float.TryParse(hx, System.Globalization.CultureInfo.InvariantCulture, out float hoverX)
+                     && float.TryParse(hy, System.Globalization.CultureInfo.InvariantCulture, out float hoverY))
+            {
+                // Debug: rest the mouse on a screen point (pixels) so the screenshot shows its hover tip.
+                GetTree().CreateTimer(2.0).Timeout += () =>
+                {
+                    var at = new Vector2(hoverX, hoverY);
+                    GetViewport().WarpMouse(at);
+                    Input.ParseInputEvent(new InputEventMouseMotion { Position = at, GlobalPosition = at, Relative = new Vector2(1, 0) });
+                };
+            }
             else if (arg.StartsWith("--pick=", StringComparison.Ordinal) && arg[7..].Split(',') is [var px, var pz]
                      && float.TryParse(px, System.Globalization.CultureInfo.InvariantCulture, out float pickX)
                      && float.TryParse(pz, System.Globalization.CultureInfo.InvariantCulture, out float pickZ))
@@ -154,13 +166,13 @@ public partial class Hud : CanvasLayer
 
         // Bottom bar.
         _bar = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Stop };
-        var barStyle = UiTheme.Box(UiTheme.Bar, 0, 18, 8, null);
+        var barStyle = UiTheme.Box(UiTheme.Bar, 0, 12, 8, null);
         barStyle.BorderColor = new Color(UiTheme.Accent, 0.55f);
         barStyle.BorderWidthTop = 2;
         _bar.AddThemeStyleboxOverride("panel", barStyle);
         _root.AddChild(_bar);
         var bar = new HBoxContainer();
-        bar.AddThemeConstantOverride("separation", 14);
+        bar.AddThemeConstantOverride("separation", 6);
         _bar.AddChild(bar);
 
         bar.AddChild(ClockBlock());
@@ -189,8 +201,8 @@ public partial class Hud : CanvasLayer
         bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
         var zoom = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         zoom.AddThemeConstantOverride("separation", 4);
-        zoom.AddChild(new RoundButton(UiIcon.ZoomIn, 30, "", "Zoom in  [+]", _ctx.Camera.ZoomIn));
-        zoom.AddChild(new RoundButton(UiIcon.ZoomOut, 30, "", "Zoom out  [−]", _ctx.Camera.ZoomOut));
+        zoom.AddChild(new RoundButton(UiIcon.ZoomIn, 28, "", "Zoom in  [+]", _ctx.Camera.ZoomIn));
+        zoom.AddChild(new RoundButton(UiIcon.ZoomOut, 28, "", "Zoom out  [−]", _ctx.Camera.ZoomOut));
         bar.AddChild(zoom);
         bar.AddChild(StatsBlock());
         var system = new RoundButton(UiIcon.Menu, 36, "", "Game: save, load, skip time", () => Toggle(Menu.System));
@@ -267,12 +279,24 @@ public partial class Hud : CanvasLayer
         _root.MoveChild(_toasts, 0); // drawn under the menus and dialogs: a toast never hides a menu's close button
     }
 
+    /// <summary>
+    /// The clock (left: time and open state over the speed buttons) and the park (right: name and weather). Two columns,
+    /// so it fits the bar's height.
+    /// </summary>
     private Control ClockBlock()
     {
+        var block = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        block.AddThemeConstantOverride("separation", 16);
         var box = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
-        box.AddThemeConstantOverride("separation", 2);
+        box.AddThemeConstantOverride("separation", 4);
+        block.AddChild(box);
+        var park = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        park.AddThemeConstantOverride("separation", 2);
         _parkName = UiTheme.Label("", 11, UiTheme.TextDim, bold: true);
-        box.AddChild(_parkName);
+        _parkName.CustomMinimumSize = new Vector2(170, 0);
+        _parkName.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        _parkName.ClipText = true;
+        park.AddChild(_parkName);
         var time = new HBoxContainer();
         _clock = UiTheme.Label("", 20, bold: true);
         time.AddChild(_clock);
@@ -281,9 +305,13 @@ public partial class Hud : CanvasLayer
         time.AddChild(_openState);
         box.AddChild(time);
         _weather = UiTheme.Label("", 11, UiTheme.TextDim);
-        _weather.TooltipText = "Today's weather and tomorrow's forecast. Rain keeps guests away and wears wet trails faster.";
+        _weather.TooltipText = "Weather\nToday's weather and tomorrow's forecast.\n\n• Rain keeps guests away\n• Wet trails wear faster";
         _weather.MouseFilter = Control.MouseFilterEnum.Stop;
-        box.AddChild(_weather);
+        _weather.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _weather.MaxLinesVisible = 2;
+        _weather.CustomMinimumSize = new Vector2(170, 0);
+        park.AddChild(_weather);
+        block.AddChild(park);
 
         var speeds = new HBoxContainer();
         speeds.AddThemeConstantOverride("separation", 4);
@@ -298,47 +326,40 @@ public partial class Hud : CanvasLayer
         }
         speeds.AddChild(new RoundButton(UiIcon.Skip, 26, "", "Skip to opening hours", _ctx.Host.SkipToOpeningHours));
         box.AddChild(speeds);
-        return box;
+        return block;
     }
 
     private Control StatsBlock()
     {
         var box = new HBoxContainer();
-        box.AddThemeConstantOverride("separation", 4);
-        box.AddChild(Chip(UiIcon.Finance, "Money", Menu.Finance, out _moneyValue, out _));
-        box.AddChild(Chip(UiIcon.Person, "Guests", Menu.Riders, out _guestsValue, out _));
-        box.AddChild(Chip(UiIcon.Mood, "Mood", Menu.Riders, out _moodValue, out _moodIcon));
-        box.AddChild(Chip(UiIcon.Star, "Rating", Menu.Reputation, out _ratingValue, out _ratingIcon));
-        _queueChip = Chip(UiIcon.Queue, "Queue", Menu.Lifts, out _queueValue, out _);
+        box.AddThemeConstantOverride("separation", 3);
+        box.AddChild(Chip(UiIcon.Finance, "Money", StatTips.Money, out _moneyValue, out _));
+        box.AddChild(Chip(UiIcon.Person, "Guests", StatTips.Guests, out _guestsValue, out _));
+        box.AddChild(Chip(UiIcon.Mood, "Mood", StatTips.Mood, out _moodValue, out _moodIcon));
+        box.AddChild(Chip(UiIcon.Star, "Rating", StatTips.Rating, out _ratingValue, out _ratingIcon));
+        _queueChip = Chip(UiIcon.Queue, "Queue", StatTips.Queue, out _queueValue, out _);
         box.AddChild(_queueChip);
-        box.AddChild(Chip(UiIcon.Crew, "Crew", Menu.Crew, out _crewValue, out _));
-        box.AddChild(Chip(UiIcon.Wood, "Wood", Menu.Crew, out _woodValue, out _));
+        box.AddChild(Chip(UiIcon.Crew, "Crew", StatTips.Crew, out _crewValue, out _));
+        box.AddChild(Chip(UiIcon.Wood, "Wood", StatTips.Wood, out _woodValue, out _));
         return box;
     }
 
-    private Control Chip(UiIcon icon, string caption, Menu menu, out Label value, out IconView iconView)
+    /// <summary>A headline stat: display only (the category buttons open the menus); hovering shows a breakdown.</summary>
+    private Control Chip(UiIcon icon, string caption, Func<HudContext, string> tip, out Label value, out IconView iconView)
     {
-        var chip = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Stop, MouseDefaultCursorShape = Control.CursorShape.PointingHand, TooltipText = $"{caption} — click for details" };
-        var normal = UiTheme.Box(new Color(1, 1, 1, 0.04f), 10, 7, 6);
-        var hover = UiTheme.Box(new Color(1, 1, 1, 0.10f), 10, 7, 6);
-        chip.AddThemeStyleboxOverride("panel", normal);
-        chip.MouseEntered += () => chip.AddThemeStyleboxOverride("panel", hover);
-        chip.MouseExited += () => chip.AddThemeStyleboxOverride("panel", normal);
-        chip.GuiInput += e =>
-        {
-            if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true }) Toggle(menu);
-        };
+        var chip = new StatChip(() => tip(_ctx)) { TooltipText = caption };
+        chip.AddThemeStyleboxOverride("panel", UiTheme.Box(new Color(1, 1, 1, 0.04f), 10, 6, 6));
         chip.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 6);
         chip.AddChild(row);
-        iconView = new IconView(icon, 24, UiTheme.Accent) { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        iconView = new IconView(icon, 20, UiTheme.Accent) { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         row.AddChild(iconView);
         var texts = new VBoxContainer();
         texts.AddThemeConstantOverride("separation", -2);
         texts.AddChild(UiTheme.Label(caption.ToUpperInvariant(), 10, UiTheme.TextDim, bold: true));
         value = UiTheme.Label("", 18, bold: true);
-        value.CustomMinimumSize = new Vector2(caption switch { "Money" => 84, "Crew" => 60, "Rating" => 62, _ => 44 }, 0);
+        value.CustomMinimumSize = new Vector2(caption == "Money" ? 76 : 0, 0);
         texts.AddChild(value);
         row.AddChild(texts);
         return chip;
@@ -385,24 +406,26 @@ public partial class Hud : CanvasLayer
     private void Layout()
     {
         var view = _root.GetViewportRect().Size;
-        _bar.Position = new Vector2(0, view.Y - UiTheme.BarHeight);
-        _bar.Size = new Vector2(view.X, UiTheme.BarHeight);
+        // Never shorter than its content: a taller bar grows upwards instead of pushing its bottom row out of the window.
+        float barHeight = MathF.Max(UiTheme.BarHeight, _bar.GetCombinedMinimumSize().Y);
+        _bar.Position = new Vector2(0, view.Y - barHeight);
+        _bar.Size = new Vector2(view.X, barHeight);
 
         if (_open != Menu.None && _panels[_open] is { } panel)
         {
             // Never taller or wider than the window above the bar: the menu's body scrolls instead.
-            panel.FitInto(new Vector2(view.X - 2 * UiTheme.Gap, view.Y - UiTheme.BarHeight - 2 * UiTheme.Gap));
+            panel.FitInto(new Vector2(view.X - 2 * UiTheme.Gap, view.Y - barHeight - 2 * UiTheme.Gap));
             var size = panel.GetCombinedMinimumSize();
             panel.Size = size;
             panel.Position = new Vector2(Math.Max(UiTheme.Gap, MathF.Round((view.X - size.X) / 2)),
-                Math.Max(UiTheme.Gap, view.Y - UiTheme.BarHeight - UiTheme.Gap - size.Y));
+                Math.Max(UiTheme.Gap, view.Y - barHeight - UiTheme.Gap - size.Y));
         }
 
         if (_toolChip.Visible)
         {
             var size = _toolChip.GetCombinedMinimumSize();
             _toolChip.Size = size;
-            _toolChip.Position = new Vector2(MathF.Round((view.X - size.X) / 2), view.Y - UiTheme.BarHeight - UiTheme.Gap - size.Y);
+            _toolChip.Position = new Vector2(MathF.Round((view.X - size.X) / 2), view.Y - barHeight - UiTheme.Gap - size.Y);
         }
 
         if (_repairDialog.Visible)
@@ -510,7 +533,7 @@ public partial class Hud : CanvasLayer
         _parkName.Text = Bikepark.Sim.Sponsors.SponsorMath.ParkTitle(state).ToUpperInvariant();
         _clock.Text = $"Day {GameTime.Day(state.Tick) + 1}  {GameTime.Format(state.Tick)[^5..]}";
         var (text, color) = _ctx.Host.IsSkippingNight ? ("NIGHT ⏩", UiTheme.TextDim)
-            : _ctx.Host.IsSkipping ? ("FAST-FORWARD", UiTheme.Warn)
+            : _ctx.Host.IsSkipping ? ("SKIPPING", UiTheme.Warn)
             : ParkSchedule.Phase(state, state.Tick) switch
             {
                 DayPhase.Open => ("OPEN", UiTheme.Good),
@@ -522,8 +545,8 @@ public partial class Hud : CanvasLayer
         var weather = state.Weather;
         bool raining = WeatherMath.IsRaining(state, state.Tick);
         _weather.Text = (raining ? "RAINING" : WeatherText(weather.Today)) +
-                        (weather.Tomorrow is { } tomorrow ? $"  ·  tomorrow {WeatherText(tomorrow)}" : "") +
-                        (weather.WetnessPermille >= 100 ? $"  ·  ground {weather.WetnessPermille / 10} % wet" : "");
+                        (weather.WetnessPermille >= 100 ? $" · ground {weather.WetnessPermille / 10} % wet" : "") +
+                        (weather.Tomorrow is { } tomorrow ? $"\ntomorrow {WeatherText(tomorrow)}" : "");
         _weather.AddThemeColorOverride("font_color", raining ? UiTheme.Accent : UiTheme.TextDim);
         for (int i = 0; i < _speedButtons.Count; i++)
             _speedButtons[i].Active = !_ctx.Host.IsSkipping && _ctx.Host.SpeedIndex == i;
@@ -542,11 +565,9 @@ public partial class Hud : CanvasLayer
         _moodIcon.Set(UiIcon.Mood, mood == 0 ? UiTheme.TextDim : UiTheme.MoodColor(mood), mood == 0 ? 500 : mood);
 
         _ratingValue.Text = $"{ReputationPanel.StarsText(k.RatingTenths)} · L{k.Level}";
-        _ratingValue.TooltipText = k.RatingTenths is null ? $"No rating yet ({k.TotalReviews} reviews) · park level {k.Level}" : $"{k.TotalReviews} reviews · park level {k.Level}";
         _ratingIcon.Set(UiIcon.Star, k.RatingTenths is { } stars ? UiTheme.MoodColor((stars - 10) * 25) : UiTheme.TextDim);
 
         _crewValue.Text = $"{state.Crew.Count} · {state.Jobs.Count}";
-        _crewValue.TooltipText = $"{state.Crew.Count} workers, {state.Jobs.Count} jobs";
         _woodValue.Text = $"{state.WoodStock}";
         bool waiting = state.Jobs.Any(j => j.Wood > 0 && !j.WoodTaken && j.Wood > state.WoodStock);
         _woodValue.AddThemeColorOverride("font_color", waiting ? UiTheme.Warn : UiTheme.Text);
@@ -557,7 +578,6 @@ public partial class Hud : CanvasLayer
         {
             int wait = LiftMath.ExpectedWaitMinutes(type, lift.BikeCarrierPermille, lift.Queue.Count);
             _queueValue.Text = !lift.InService ? "–" : lift.IsStopped(state.Tick) ? "stop" : wait < 0 ? "no bikes" : wait == 0 ? $"{lift.Queue.Count}" : $"{lift.Queue.Count} · {wait}′";
-            _queueValue.TooltipText = $"{lift.Name}: riders in the queue · expected wait";
             _queueValue.AddThemeColorOverride("font_color", !lift.InService ? UiTheme.TextDim : lift.IsStopped(state.Tick) ? UiTheme.Bad : wait < 0 || wait > 20 ? UiTheme.Bad : wait > 8 ? UiTheme.Warn : UiTheme.Text);
         }
     }

@@ -121,9 +121,41 @@ internal static class UiTheme
 
     public static Button Button(string text, Action onPressed, string tooltip = "")
     {
-        var button = new Button { Text = text, FocusMode = Control.FocusModeEnum.None, TooltipText = tooltip };
+        var button = new TipButton { Text = text, FocusMode = Control.FocusModeEnum.None, TooltipText = tooltip };
         button.Pressed += onPressed;
         return button;
+    }
+
+    public const float TooltipWidth = 340f;
+
+    /// <summary>
+    /// The content of a hover tip (for <c>_MakeCustomTooltip</c>): wraps at <see cref="TooltipWidth"/> instead of one
+    /// endless line. A text with several lines shows its first line bold as a title; empty lines separate paragraphs.
+    /// </summary>
+    public static Control Tooltip(string text)
+    {
+        var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        box.AddThemeConstantOverride("separation", 4);
+        var lines = text.Replace("\r", "").Split('\n');
+        bool titled = lines.Length > 1 && lines[0].Length <= 60;
+        float width = 0;
+        foreach (var line in lines)
+            width = Math.Max(width, Regular.GetStringSize(line, HorizontalAlignment.Left, -1, 13).X + 4);
+        width = Math.Min(width, TooltipWidth);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Length == 0)
+            {
+                box.AddChild(new Control { CustomMinimumSize = new Vector2(0, 2), MouseFilter = Control.MouseFilterEnum.Ignore });
+                continue;
+            }
+            bool title = titled && i == 0;
+            var label = Label(lines[i], title ? 14 : 13, title ? Text : new Color(Text, 0.88f), bold: title);
+            label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            label.CustomMinimumSize = new Vector2(width, 0);
+            box.AddChild(label);
+        }
+        return box;
     }
 
     public static HSeparator Separator()
@@ -141,4 +173,10 @@ internal static class UiTheme
         : $"{euros:N0} €";
 
     public static string MoneyExact(long cents) => $"{cents / 100.0:N2} €";
+}
+
+/// <summary>A button whose hover tip wraps (<see cref="UiTheme.Tooltip"/>).</summary>
+public partial class TipButton : Button
+{
+    public override GodotObject? _MakeCustomTooltip(string forText) => forText.Length == 0 ? null : UiTheme.Tooltip(forText);
 }
