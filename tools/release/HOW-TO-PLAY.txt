@@ -1,0 +1,20 @@
+BIKEPARK MANAGER - how to play
+==============================
+
+Nothing to install. Unzip this folder anywhere and start the game:
+
+WINDOWS
+  Double-click BikeparkManager.exe (keep the "data" folder next to it).
+  If "Windows protected your PC" appears: click "More info", then "Run anyway".
+
+MAC
+  Drag "Bikepark Manager.app" into Applications (or anywhere) and double-click it.
+  If macOS says it "can't be opened" or "can't check it for malicious software":
+  open System Settings > Privacy & Security, scroll down, click "Open Anyway". Only needed once.
+
+CONTROLS
+  Move: WASD / arrow keys or middle-drag    Zoom: mouse wheel    Rotate: Q/E or right-drag
+  Pause: Space    Speed: 1-4    Menus: the bottom bar    Close: Esc
+  Click riders, trails, lifts or buildings to open their window.
+
+Your career is saved automatically when you quit.

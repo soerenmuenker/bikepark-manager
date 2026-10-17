@@ -111,6 +111,10 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 # cameras with clips sold, buzz and a log of offers, answers, signs and endings; --daily adds sponsorCents, clipCents, foodCents, drinksCents, merchCents, parkingCents, campingCents, rentalCents, repairCents, facilityUpkeepCents
 # ... with the demo trail features (planned, built by the crew: per-trail feature list, crew block with completed jobs, wood, wages)
 dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_valley.json --days 10 --commands data/scripts/demo_lift_network.json --commands data/scripts/demo_features.json --commands data/scripts/demo_crew.json
+# Shareable zips (Windows .exe + Mac .app, .NET runtime and data/ bundled) into game/builds/; a pushed tag v* does the
+# same in CI (.github/workflows/release.yml) and publishes a GitHub Release. Exports look for data/ next to the
+# executable (Mac: Contents/Resources), see SimHost.ResolveContentPath
+tools/release/export.sh 0.1.0
 # Godot (from game/): compile, then run headless with the demo trails at 60x, printing KPIs (incl. queues) every game hour
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --build-solutions --quit
 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --fixed-fps 60 --quit-after 2400 -- --demo --speed=4 --report

@@ -375,10 +375,15 @@ public partial class SimHost : Node
     private static string ResolveContentPath(string relative)
     {
         // In the editor the project lives in <repo>/game and content in <repo>/data.
-        // Exports are expected to ship the data folder next to the executable.
-        string root = OS.HasFeature("editor")
-            ? Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), ".."))
-            : Path.GetDirectoryName(OS.GetExecutablePath())!;
+        // Exports ship the data folder next to the executable (tools/release/export.sh); in a macOS
+        // bundle that is Contents/Resources, one up from the executable in Contents/MacOS.
+        if (OS.HasFeature("editor"))
+            return Path.Combine(Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "..")), relative);
+        string exeDir = Path.GetDirectoryName(OS.GetExecutablePath())!;
+        string bundleResources = Path.GetFullPath(Path.Combine(exeDir, "..", "Resources"));
+        string root = !Directory.Exists(Path.Combine(exeDir, "data")) && Directory.Exists(Path.Combine(bundleResources, "data"))
+            ? bundleResources
+            : exeDir;
         return Path.Combine(root, relative);
     }
 }

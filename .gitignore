@@ -12,7 +12,6 @@ TestResults/
 .godot/
 /game/android/
 /game/.mono/
-/game/export_presets.cfg
 /game/builds/
 
 # OS
