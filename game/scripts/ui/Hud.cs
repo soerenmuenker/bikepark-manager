@@ -651,7 +651,7 @@ public partial class Hud : CanvasLayer
         _toolChip.Visible = active;
         if (!active) return;
 
-        var (icon, name) = _ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Renaturalize ? (UiIcon.Felling, "Renaturalize")
+        var (icon, name) = _ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Renaturalize ? (UiIcon.Bulldozer, "Renaturalize")
             : _ctx.Structures.Mode == StructureTool.ToolMode.Platform ? (UiIcon.Parking, "Gravel platform")
             : _ctx.Clearing.Active ? (UiIcon.Felling, "Fell trees")
             : _ctx.Features.Active && TrailFeatures.FindType(_ctx.Sim.State.TrailFeatureTypes, _ctx.Features.TypeId!) is { } type

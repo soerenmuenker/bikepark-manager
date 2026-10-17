@@ -50,6 +50,7 @@ public enum UiIcon
     Level,
     Land,
     Tent,
+    Bulldozer,
 }
 
 /// <summary>Line icons drawn with canvas primitives (no image assets), scaled to any square.</summary>
@@ -262,6 +263,17 @@ internal static class UiIcons
                 Line(0.30f, 0.62f, 0.30f, 0.86f);
                 Line(0.58f, 0.86f, 0.86f, 0.40f);
                 Poly(0.80f, 0.30f, 0.94f, 0.40f, 0.86f, 0.52f, 0.74f, 0.46f);
+                break;
+            case UiIcon.Bulldozer: // side view, blade to the left: tracks, body, cab, exhaust
+                Polyline(0.36f, 0.68f, 0.86f, 0.68f, 0.92f, 0.77f, 0.86f, 0.86f, 0.36f, 0.86f, 0.30f, 0.77f, 0.36f, 0.68f);
+                Disc(0.40f, 0.77f, 0.04f, color);
+                Disc(0.61f, 0.77f, 0.04f, color);
+                Disc(0.82f, 0.77f, 0.04f, color);
+                Poly(0.36f, 0.66f, 0.36f, 0.48f, 0.88f, 0.48f, 0.88f, 0.66f);
+                Polyline(0.60f, 0.48f, 0.60f, 0.24f, 0.82f, 0.24f, 0.86f, 0.48f);
+                Line(0.46f, 0.48f, 0.46f, 0.34f);
+                Line(0.36f, 0.60f, 0.20f, 0.66f);
+                Poly(0.06f, 0.48f, 0.18f, 0.50f, 0.22f, 0.86f, 0.04f, 0.86f);
                 break;
             case UiIcon.Tool: // wrench
                 Circle(0.34f, 0.34f, 0.16f);

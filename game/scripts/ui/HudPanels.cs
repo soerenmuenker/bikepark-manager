@@ -242,11 +242,12 @@ public partial class ToolCard : PanelContainer
         if (_hint is not null && _hint.Text != hint) _hint.Text = hint;
     }
 
-    public ToolCard(UiIcon icon, string name, string hint, string tooltip, Action onPressed)
+    /// <param name="accent">A colour that sets the card apart (border and icon), e.g. for removing things.</param>
+    public ToolCard(UiIcon icon, string name, string hint, string tooltip, Action onPressed, Color? accent = null)
     {
-        _normal = UiTheme.Box(UiTheme.Card, 10, 10, 10);
-        _hover = UiTheme.Box(UiTheme.CardHover, 10, 10, 10);
-        _active = UiTheme.Box(UiTheme.AccentDark, 10, 10, 10, UiTheme.Accent, 2);
+        _normal = UiTheme.Box(UiTheme.Card, 10, 10, 10, accent is { } a ? new Color(a, 0.7f) : null, accent is null ? 0 : 2);
+        _hover = UiTheme.Box(UiTheme.CardHover, 10, 10, 10, accent, accent is null ? 0 : 2);
+        _active = UiTheme.Box(UiTheme.AccentDark, 10, 10, 10, accent ?? UiTheme.Accent, 2);
         foreach (var box in new[] { _normal, _hover, _active }) box.ShadowSize = 0;
         CustomMinimumSize = new Vector2(118, 112);
         TooltipText = tooltip;
@@ -256,7 +257,7 @@ public partial class ToolCard : PanelContainer
         var box2 = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         box2.AddThemeConstantOverride("separation", 4);
         AddChild(box2);
-        var iconView = new IconView(icon, 42) { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        var iconView = new IconView(icon, 42, accent) { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
         box2.AddChild(iconView);
         var title = UiTheme.Label(name, 14, bold: true);
         title.HorizontalAlignment = HorizontalAlignment.Center;
@@ -323,20 +324,24 @@ public partial class BuildPanel : HudPanel
             });
         _platform = new ToolCard(UiIcon.Parking, "Gravel platform", "12 × 12 m", "Gravel platform\nA small gravel pad where paths and trails can start and end, to link them up.\n\n• 12 × 12 m, free, on your land",
             () => ToggleStructure(StructureTool.ToolMode.Platform));
-        _renaturalize = new ToolCard(UiIcon.Felling, "Renaturalize", "remove",
-            "Renaturalize\nGive something back to nature.\n\n" +
+        _renaturalize = new ToolCard(UiIcon.Bulldozer, "Renaturalize", "remove anything",
+            "Renaturalize (bulldozer)\nRemove anything you built and give the land back to nature.\n\n" +
             "• Trails and gravel paths (free): click where a section starts, then where it ends\n" +
             "• A trail cut in two becomes Part 1 and Part 2 and stays closed until connected again\n" +
             "• Lifts and parking lots: click them; a contractor tears them down for a fee\n" +
             "• Platforms: free",
-            () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize));
-        foreach (var card in new[] { _path, _trail, _fell, _parking, _platform, _renaturalize }) cards.AddChild(card);
+            () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize), UiTheme.Warn);
+        foreach (var card in new[] { _path, _trail, _fell, _parking, _platform }) cards.AddChild(card);
         if (Ctx.Sim.State.Parcels.Count == 0)
         {
             // Sandbox only: the demo content.
             cards.AddChild(demo);
             cards.AddChild(demoFeatures);
         }
+        // Removing things sits apart, at the right end of the row.
+        cards.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(16, 0) });
+        cards.AddChild(new VSeparator());
+        cards.AddChild(_renaturalize);
         _demoStatus = UiTheme.Label("", 12, UiTheme.Warn);
         _demoStatus.Visible = false;
         Body.AddChild(_demoStatus);
