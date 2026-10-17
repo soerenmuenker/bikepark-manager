@@ -138,7 +138,9 @@ public partial class Hud : CanvasLayer
                     Inspect(new InspectTarget(inspectKind, id, tab));
                 };
             }
-            else if (arg.StartsWith("--panel=", StringComparison.Ordinal) && Enum.TryParse<Menu>(arg[8..], true, out var menu)) Toggle(menu);
+            else if (arg.StartsWith("--panel=", StringComparison.Ordinal) && arg[8..].Split(':') is [var panelName, .. var panelFocus]
+                     && Enum.TryParse<Menu>(panelName, true, out var menu))
+                ShowMenu(menu, panelFocus.Length > 0 ? panelFocus[0] : null); // --panel=reputation:reviews opens a tab or item
             else if (arg.StartsWith("--tool=", StringComparison.Ordinal)) StartTool(arg[7..]);
             else if (arg.StartsWith("--features=", StringComparison.Ordinal) && int.TryParse(arg[11..], out int wayId)) _repairDialog.Open(wayId);
             else if (arg.StartsWith("--rename=", StringComparison.Ordinal) && int.TryParse(arg[9..], out int renameId)) _ctx.RenameTrail(renameId);
