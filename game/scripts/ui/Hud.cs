@@ -82,6 +82,11 @@ public partial class Hud : CanvasLayer
     private NameDialog _nameDialog = null!;
     private WorldPicker _picker = null!;
 
+    /// <summary>Open inspector windows, the topmost last.</summary>
+    private readonly List<InspectorWindow> _inspectors = [];
+    private Control _inspectLayer = null!;
+    private const int MaxInspectors = 3;
+
     private LandView _land = null!;
     private StartScreen _startScreen = null!;
     private string? _screenshotPath;
@@ -115,6 +120,24 @@ public partial class Hud : CanvasLayer
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             if (arg.StartsWith("--screenshot=", StringComparison.Ordinal)) _screenshotPath = arg[13..];
+            else if (arg.StartsWith("--inspect=", StringComparison.Ordinal) && arg[10..].Split(':') is [var kind, var idText, .. var rest]
+                     && Enum.TryParse<InspectKind>(kind, true, out var inspectKind) && int.TryParse(idText, out int inspectId))
+            {
+                // Debug: open a window (after the scenario's tick-0 commands have built things), optionally at a tab.
+                string? tab = rest.Length > 0 ? rest[0] : null;
+                GetTree().CreateTimer(1.0).Timeout += () =>
+                {
+                    var state = _ctx.Sim.State;
+                    int id = inspectId != 0 ? inspectId : inspectKind switch
+                    {
+                        InspectKind.Facility => state.Facilities.FirstOrDefault()?.Id ?? 0,
+                        InspectKind.Lift => state.Lifts.FirstOrDefault(l => l.InService)?.Id ?? state.Lifts.FirstOrDefault()?.Id ?? 0,
+                        InspectKind.Trail => state.Ways.FirstOrDefault(w => w.Kind == WayKind.Trail && w.Built)?.Id ?? 0,
+                        _ => 0,
+                    };
+                    Inspect(new InspectTarget(inspectKind, id, tab));
+                };
+            }
             else if (arg.StartsWith("--panel=", StringComparison.Ordinal) && Enum.TryParse<Menu>(arg[8..], true, out var menu)) Toggle(menu);
             else if (arg.StartsWith("--tool=", StringComparison.Ordinal)) StartTool(arg[7..]);
             else if (arg.StartsWith("--features=", StringComparison.Ordinal) && int.TryParse(arg[11..], out int wayId)) _repairDialog.Open(wayId);
@@ -222,6 +245,12 @@ public partial class Hud : CanvasLayer
         AddPanel(Menu.Map, new MapPanel());
         AddPanel(Menu.System, new SystemPanel());
 
+        // Inspector windows (buildings, lifts, trails, the park) float above the menus.
+        _inspectLayer = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _inspectLayer.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        _root.AddChild(_inspectLayer);
+        _ctx.Inspect = Inspect;
+
         // Floating: tool panel (top centre), follow chip, toasts (top right).
         // While a build tool is active the Build menu folds into this narrow chip above the bar.
         _toolChip = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
@@ -296,6 +325,13 @@ public partial class Hud : CanvasLayer
         _parkName.CustomMinimumSize = new Vector2(170, 0);
         _parkName.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
         _parkName.ClipText = true;
+        _parkName.MouseFilter = Control.MouseFilterEnum.Stop;
+        _parkName.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
+        _parkName.TooltipText = "Park window: entrance fee, parking, drinks for riders, opening hours";
+        _parkName.GuiInput += e =>
+        {
+            if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true }) Inspect(new InspectTarget(InspectKind.Park, 0));
+        };
         park.AddChild(_parkName);
         var time = new HBoxContainer();
         _clock = UiTheme.Label("", 20, bold: true);
@@ -473,6 +509,14 @@ public partial class Hud : CanvasLayer
             _riderCard.Position = new Vector2(14, 14);
         }
 
+        foreach (var window in _inspectors)
+        {
+            var size = window.GetCombinedMinimumSize();
+            window.Size = size;
+            window.Position = new Vector2(Math.Clamp(window.Position.X, 0, Math.Max(0, view.X - size.X)),
+                Math.Clamp(window.Position.Y, 0, Math.Max(0, view.Y - barHeight - size.Y)));
+        }
+
         var toastSize = _toasts.GetCombinedMinimumSize();
         _toasts.Size = toastSize;
         _toasts.Position = new Vector2(view.X - toastSize.X - 14, 14);
@@ -492,6 +536,11 @@ public partial class Hud : CanvasLayer
             if (_open != Menu.None) _panels[_open].Refresh();
             _repairDialog.Refresh();
             _liftStopDialog.Refresh();
+            foreach (var window in _inspectors.ToList())
+            {
+                if (window.IsGone) CloseInspector(window);
+                else window.Refresh();
+            }
         }
         _land.ShowLabels = _open == Menu.Land;
         if (_startScreen.Visible != _ctx.Host.ShowStartScreen)
@@ -746,6 +795,7 @@ public partial class Hud : CanvasLayer
             case Key.U: Toggle(Menu.Reputation); break;
             case Key.N: Toggle(Menu.Land); break;
             case Key.O: Toggle(Menu.Map); break;
+            case Key.Escape when !toolActive && _inspectors.Count > 0: CloseInspector(_inspectors[^1]); break;
             case Key.Escape when !toolActive && _open != Menu.None: Toggle(Menu.None); break;
             case Key.Space: _ctx.Host.SetSpeedIndex(_ctx.Host.SpeedIndex == 0 ? 1 : 0); break;
             case Key.Key1 or Key.Key2 or Key.Key3 or Key.Key4: _ctx.Host.SetSpeedIndex((int)(key.PhysicalKeycode - Key.Key0)); break;
@@ -757,6 +807,55 @@ public partial class Hud : CanvasLayer
             default: return;
         }
         GetViewport().SetInputAsHandled();
+    }
+
+    /// <summary>
+    /// Opens the window of a building, lift, trail or the park (brought to the front, at its tab, if it is open). At most
+    /// <see cref="MaxInspectors"/> stay open: the oldest closes. New ones open cascaded at the right.
+    /// </summary>
+    private void Inspect(InspectTarget target)
+    {
+        if (_inspectors.FirstOrDefault(w => w.Target.Kind == target.Kind && w.Target.Id == target.Id) is { } open)
+        {
+            RaiseInspector(open);
+            open.ShowTab(target.Tab);
+            return;
+        }
+        InspectorWindow window = target.Kind switch
+        {
+            InspectKind.Facility => new FacilityInspector(_ctx, target),
+            InspectKind.Lift => new LiftInspector(_ctx, target),
+            InspectKind.Trail => new TrailInspector(_ctx, target),
+            _ => new ParkInspector(_ctx, target),
+        };
+        if (window.IsGone)
+        {
+            window.QueueFree();
+            return;
+        }
+        while (_inspectors.Count >= MaxInspectors) CloseInspector(_inspectors[0]);
+        window.CloseRequested += CloseInspector;
+        window.Raised += RaiseInspector;
+        _inspectLayer.AddChild(window);
+        window.Open(target.Tab);
+        int n = _inspectors.Count;
+        // Left side (toasts are on the right), below the rider card when following someone.
+        float top = _riderCard.Visible ? _riderCard.Position.Y + _riderCard.Size.Y + 12 : 14;
+        window.Position = new Vector2(14 + n * 28, top + n * 28);
+        _inspectors.Add(window);
+    }
+
+    private void RaiseInspector(InspectorWindow window)
+    {
+        if (!_inspectors.Remove(window)) return;
+        _inspectors.Add(window);
+        _inspectLayer.MoveChild(window, -1);
+    }
+
+    private void CloseInspector(InspectorWindow window)
+    {
+        _inspectors.Remove(window);
+        window.QueueFree();
     }
 
     /// <summary>"Sunny", "Showers 13–15 h", "Rain 06–14 h".</summary>

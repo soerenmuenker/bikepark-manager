@@ -117,7 +117,8 @@ internal sealed partial class WorldPicker : Node
             if (state.Lifts.FirstOrDefault(l => l.Id == owner) is { } lift)
                 return LiftPick(lift, hub.Kind == HubKind.ValleyStation ? "valley station" : "top station");
             if (state.ParkingLots.FirstOrDefault(p => p.Id == owner) is { } lot && state.Lifts.FirstOrDefault(l => l.Id == lot.LiftId) is { } served)
-                return new WorldPick($"{lot.Name} · {lot.Spaces} spaces · click for {served.Name}", () => _show(Hud.Menu.Lifts, served.Id.ToString()));
+                return new WorldPick($"{lot.Name} · {lot.Spaces} spaces · click for arrivals and parking",
+                    () => _ctx.Inspect(new InspectTarget(InspectKind.Park, 0, "Arrivals")));
             if (state.Platforms.FirstOrDefault(p => p.Id == owner) is { } platform)
                 return new WorldPick("Gravel platform",
                     () => _note($"{platform.Name}: a gravel platform where paths and trails start and end. Build → Renaturalize removes it."));
@@ -135,8 +136,9 @@ internal sealed partial class WorldPicker : Node
                     $" · {Bikepark.Sim.Facilities.FacilityMath.PitchesTaken(state, facility)}/{Bikepark.Sim.Facilities.FacilityMath.Pitches(type, facility)} pitches booked",
                 _ => "",
             };
-            return new WorldPick($"{facility.Name}{busy} · {UiTheme.Money(facility.RevenueTodayCents)} today · click for finances",
-                () => _show(Hud.Menu.Finance, facility.Id.ToString()));
+            int facilityId = facility.Id;
+            return new WorldPick($"{facility.Name}{busy} · {UiTheme.Money(facility.RevenueTodayCents)} today · click for details",
+                () => _ctx.Inspect(new InspectTarget(InspectKind.Facility, facilityId)));
         }
 
         // Ways: the closest one (a trail's feature counts as the trail), unless a lift line is closer.
@@ -158,7 +160,7 @@ internal sealed partial class WorldPicker : Node
     {
         int liftId = lift.Id;
         string status = !lift.InService ? lift.Derelict && lift.ReadyTick == 0 ? " · rusty" : " · under construction" : $" · {lift.Queue.Count} queuing";
-        return new WorldPick($"{lift.Name} ({part}){status} · click for lift stats", () => _show(Hud.Menu.Lifts, liftId.ToString()));
+        return new WorldPick($"{lift.Name} ({part}){status} · click for details", () => _ctx.Inspect(new InspectTarget(InspectKind.Lift, liftId)));
     }
 
     private WorldPick WayPick(Way way, long atCm)
@@ -178,10 +180,12 @@ internal sealed partial class WorldPicker : Node
                 () => _note($"{(way.Name.Length > 0 ? way.Name : "A gravel path")}: {g.LengthCm / 100} m, {Math.Abs(g.EndHeightCm - g.StartHeightCm) / 100} m up. " +
                             "Riders pedal up and walk on it; gravel paths have no menu."));
 
-        string what = network.FeaturesOn(wayId).FirstOrDefault(f => f.StartCm - 300 <= atCm && atCm <= f.EndCm + 300) is { Type: not null } f
+        var onFeature = network.FeaturesOn(wayId).FirstOrDefault(f => f.StartCm - 300 <= atCm && atCm <= f.EndCm + 300);
+        string what = onFeature is { Type: not null } f
             ? $"{f.Type.Name} on {way.Name} · {(f.Feature.Built ? $"{TrailCondition.Permille(f.Feature) / 10} %" : "planned")}"
             : $"{way.Name} · {WayMeshes.RatingText(g)}{(network.IsRideable(way) ? "" : " · closed")}";
-        return new WorldPick($"{what} · click for features and repairs", () => _ctx.OpenRepair(wayId));
+        string? tab = onFeature.Type is not null ? "Features" : null;
+        return new WorldPick($"{what} · click for details", () => _ctx.Inspect(new InspectTarget(InspectKind.Trail, wayId, tab)));
     }
 
     /// <summary>The lift whose line (valley to top station) passes closest, within the radius.</summary>

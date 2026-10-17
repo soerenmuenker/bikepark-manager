@@ -186,10 +186,11 @@ internal sealed partial class RepairDialog : PanelContainer
 
         foreach (var child in _rows.GetChildren()) child.QueueFree();
         foreach (var feature in worn)
-            _rows.AddChild(Row(state, way, feature));
+            _rows.AddChild(FeatureRow(_ctx, state, way, feature, _workers));
     }
 
-    private Control Row(Bikepark.Sim.State.WorldState state, Way way, TrailFeature feature)
+    /// <summary>A feature's condition, crashes and camera, with Camera and Repair buttons (also the trail window's Features tab).</summary>
+    internal static Control FeatureRow(HudContext ctx, Bikepark.Sim.State.WorldState state, Way way, TrailFeature feature, int workers)
     {
         var type = TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId)!;
         int permille = TrailCondition.Permille(feature);
@@ -209,9 +210,9 @@ internal sealed partial class RepairDialog : PanelContainer
         else
         {
             long minutes = WorkCosts.RepairMinutes(state.CrewRules, type, feature);
-            long speed = WorkCosts.CrewSpeedPermille(state, WorkCosts.RepairWorkType(type), _workers);
+            long speed = WorkCosts.CrewSpeedPermille(state, WorkCosts.RepairWorkType(type), workers);
             long minutesWithCrew = Math.Max(1, (minutes * 1000 + speed - 1) / speed);
-            detail = $"{HudContext.CrewTime(minutes)} · about {Duration(minutesWithCrew)} with {_workers} workers";
+            detail = $"{HudContext.CrewTime(minutes)} · about {Duration(minutesWithCrew)} with {workers} workers";
         }
         if (feature.Crashes > 0)
             detail += $" · {feature.Crashes} crash{(feature.Crashes == 1 ? "" : "es")} here";
@@ -222,21 +223,21 @@ internal sealed partial class RepairDialog : PanelContainer
 
         row.AddChild(UiTheme.Label($"{permille / 10} %", 15, color, bold: true));
 
-        int wayId = way.Id, featureId = feature.Id, workers = _workers;
+        int wayId = way.Id, featureId = feature.Id;
         // Photo spots: a camera at a jump or drop sells riders their clip.
         if (Bikepark.Sim.Reputation.ReviewMath.IsJump(type.Kind))
         {
             long cost = state.SponsorRules.CameraCostCents;
             var camera = feature.Camera
-                ? UiTheme.Button("Camera ✕", () => _ctx.Host.Enqueue(new RemoveCameraCommand(wayId, featureId)), "Take the camera down")
-                : UiTheme.Button($"Camera {UiTheme.Money(cost)}", () => _ctx.Host.Enqueue(new PlaceCameraCommand(wayId, featureId)),
-                    $"A photo spot: riders landing it may buy their clip after the run (price in Finances); clips shared online bring a little " +
+                ? UiTheme.Button("Camera ✕", () => ctx.Host.Enqueue(new RemoveCameraCommand(wayId, featureId)), "Take the camera down")
+                : UiTheme.Button($"Camera {UiTheme.Money(cost)}", () => ctx.Host.Enqueue(new PlaceCameraCommand(wayId, featureId)),
+                    $"A photo spot: riders landing it may buy their clip after the run (price: the trail window); clips shared online bring a little " +
                     $"demand. Upkeep {UiTheme.Money(state.SponsorRules.CameraUpkeepPerDayCents)}/day");
             camera.Disabled = !feature.Built || !feature.Camera && state.Finance.MoneyCents < cost;
             row.AddChild(camera);
         }
         var button = UiTheme.Button(job is not null ? "Repairing…" : "Repair",
-            () => _ctx.Host.Enqueue(new RepairFeatureCommand(wayId, featureId, workers)),
+            () => ctx.Host.Enqueue(new RepairFeatureCommand(wayId, featureId, workers)),
             "Send the crew: the repair goes to the front of the queue, the trail is closed while they work");
         button.Disabled = job is not null || state.Crew.Count == 0 || feature.Condition >= TrailCondition.Perfect;
         if (state.Crew.Count == 0) button.TooltipText = "Hire workers first (Crew menu)";
@@ -244,5 +245,5 @@ internal sealed partial class RepairDialog : PanelContainer
         return row;
     }
 
-    private static string Duration(long minutes) => minutes >= 90 ? $"{(minutes + 30) / 60} h" : $"{minutes} min";
+    internal static string Duration(long minutes) => minutes >= 90 ? $"{(minutes + 30) / 60} h" : $"{minutes} min";
 }

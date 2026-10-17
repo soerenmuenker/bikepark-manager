@@ -69,6 +69,9 @@ internal sealed class HudContext
     /// <summary>Opens a menu (set by the HUD).</summary>
     public Action<Hud.Menu> OpenMenu { get; set; } = _ => { };
 
+    /// <summary>Opens the window of a building, lift, trail or the park (set by the HUD).</summary>
+    public Action<InspectTarget> Inspect { get; set; } = _ => { };
+
     /// <summary>Opens the repair pop-up for a trail (set by the HUD).</summary>
     public Action<int> OpenRepair { get; set; } = _ => { };
 
@@ -641,7 +644,7 @@ public partial class TrailsPanel : HudPanel
     }
 
     /// <summary>The worst feature and what happens next: "Worst feature: Berm 40 m 63 %", closed, or repairing.</summary>
-    private static string ConditionSummary(WorldState state, Way way, WayGeometry g)
+    internal static string ConditionSummary(WorldState state, Way way, WayGeometry g)
     {
         var built = way.Features.Where(f => f.Built).ToList();
         if (built.Count == 0) return "Nothing to wear: only features wear";
@@ -656,7 +659,7 @@ public partial class TrailsPanel : HudPanel
     }
 
     /// <summary>"3 crashes (1 serious) · 2.4 per 1000 runs · most at the Double" and riders lying on it now.</summary>
-    private static string CrashSummary(WorldState state, Way way, WayNetwork network)
+    internal static string CrashSummary(WorldState state, Way way, WayNetwork network)
     {
         var s = way.Stats;
         int down = state.Guests.Count(g => g.Activity == RiderActivity.Injured && g.CrashWayId == way.Id);
@@ -669,7 +672,7 @@ public partial class TrailsPanel : HudPanel
     }
 
     /// <summary>The recent crash rate against what the trail's rating allows: above it, guests rate the park less safe.</summary>
-    private static string RateSummary(WorldState state, Way way, WayNetwork network)
+    internal static string RateSummary(WorldState state, Way way, WayNetwork network)
     {
         if (!network.TryGetGeometry(way.Id, out var g)) return "";
         var rules = state.CrashRules;
@@ -680,7 +683,7 @@ public partial class TrailsPanel : HudPanel
     }
 
     /// <summary>"2 berms · Tabletop · Drop" (in the order types first appear along the trail).</summary>
-    private static string FeatureSummary(IReadOnlyList<PlacedFeature> features)
+    internal static string FeatureSummary(IReadOnlyList<PlacedFeature> features)
     {
         if (features.Count == 0) return "No features yet (Build → trail features)";
         var parts = features.GroupBy(f => f.Type.Id).Select(g => g.Count() == 1 ? g.First().Type.Name : $"{g.Count()} × {g.First().Type.Name}");
@@ -701,7 +704,7 @@ public partial class TrailsPanel : HudPanel
         box.AddThemeConstantOverride("separation", 3);
         Button Small(Button b) { b.AddThemeFontSizeOverride("font_size", 12); return b; }
 
-        box.AddChild(Small(UiTheme.Button("Features…", () => Ctx.OpenRepair(id), "Feature condition and repairs (or click the trail)")));
+        box.AddChild(Small(UiTheme.Button("Open…", () => Ctx.Inspect(new InspectTarget(InspectKind.Trail, id)), "The trail's window: stats, features and repairs, safety, sponsor, reviews (or click the trail)")));
         box.AddChild(Small(UiTheme.Button("Rename", () => Ctx.RenameTrail(id), "Give the trail a new name")));
 
         box.AddChild(Small(UiTheme.Button(way.Closed ? "Open" : "Close", () => Ctx.Host.Enqueue(new SetTrailClosedCommand(id, !way.Closed)),
@@ -729,10 +732,10 @@ public partial class TrailsPanel : HudPanel
                 // Click a trail for its feature overview and repairs.
                 int clicked = way.Id;
                 row.MouseDefaultCursorShape = CursorShape.PointingHand;
-                row.TooltipText = "Click for feature condition and repairs";
+                row.TooltipText = "Click for the trail's window";
                 row.GuiInput += e =>
                 {
-                    if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }) Ctx.OpenRepair(clicked);
+                    if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }) Ctx.Inspect(new InspectTarget(InspectKind.Trail, clicked));
                 };
             }
             var box = UiTheme.Box(UiTheme.Card, 8, 10, 6);
@@ -1126,28 +1129,12 @@ public partial class LiftsPanel : HudPanel
     private string _signature = "";
     private readonly List<Action> _updates = [];
     private readonly Dictionary<int, PanelContainer> _cards = [];
-    private Label _pass = null!, _passSales = null!;
     private const int MaxListHeight = 460;
 
     public override string Title => "Lifts";
 
     protected override void Build()
     {
-        // The lift day pass (one price for all lifts, bought once per visit).
-        var pass = Row(8);
-        pass.AddChild(UiTheme.Label("LIFT PASS", 11, UiTheme.TextDim, bold: true));
-        pass.AddChild(UiTheme.Button("−", () => Ctx.ChangeLiftTicket(-HudContext.FeeStepCents), "Lower the lift day pass"));
-        _pass = UiTheme.Label("", 18, bold: true);
-        _pass.CustomMinimumSize = new Vector2(80, 0);
-        _pass.HorizontalAlignment = HorizontalAlignment.Center;
-        pass.AddChild(_pass);
-        pass.AddChild(UiTheme.Button("+", () => Ctx.ChangeLiftTicket(HudContext.FeeStepCents),
-            "Raise the lift day pass (paid once per visit by guests who use a lift; too dear and they pedal instead)"));
-        _passSales = UiTheme.Label("", 12, UiTheme.TextDim);
-        _passSales.SizeFlagsVertical = SizeFlags.ShrinkCenter;
-        pass.AddChild(_passSales);
-        Body.AddChild(pass);
-
         var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(700, 0), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         _list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _list.AddThemeConstantOverride("separation", 10);
@@ -1174,12 +1161,6 @@ public partial class LiftsPanel : HudPanel
         }
         foreach (var update in _updates) update();
 
-        var park = state.Park;
-        var finance = state.Finance;
-        _pass.Text = park.LiftTicketCents == 0 ? "free" : UiTheme.MoneyExact(park.LiftTicketCents);
-        _passSales.Text = park.LiftTicketCents == 0 ? "Lifts are free to use"
-            : $"sold today: {finance.LiftTicketsTodayCents / park.LiftTicketCents} ({UiTheme.Money(finance.LiftTicketsTodayCents)}) · " +
-              $"in total {UiTheme.Money(finance.TotalLiftTicketsCents)}";
         var scroll = (ScrollContainer)_list.GetParent();
         scroll.CustomMinimumSize = new Vector2(700, Math.Min(MaxListHeight, Math.Max(40, _list.GetCombinedMinimumSize().Y)));
     }
@@ -1218,9 +1199,14 @@ public partial class LiftsPanel : HudPanel
             var names = new VBoxContainer();
             names.AddThemeConstantOverride("separation", 0);
             names.AddChild(UiTheme.Label(lift.Name, 17, bold: true));
+            names.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             names.AddChild(UiTheme.Label($"{type.Name} · run by {op?.Name ?? "the park"}" +
                                          (op is null ? $" · upkeep {UiTheme.Money(type.UpkeepPerDayCents)}/day" : ""), 12, UiTheme.TextDim));
             header.AddChild(names);
+            var open = UiTheme.Button("Open…", () => Ctx.Inspect(new InspectTarget(InspectKind.Lift, liftId)),
+                "The lift's window: queue, bike access, lift pass and its money, reviews");
+            open.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+            header.AddChild(open);
             body.AddChild(header);
             foreach (var lot in state.ParkingLots.Where(p => p.LiftId == liftId))
                 body.AddChild(UiTheme.Label($"Parking: {lot.Name} · {lot.Spaces} spaces (≈ {lot.Spaces * state.LiftRules.GuestsPerCarPermille / 1000} guests)",
