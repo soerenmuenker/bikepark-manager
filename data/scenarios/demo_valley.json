@@ -3,7 +3,7 @@
   "name": "Demo",
   "description": "A quiet mountain with a gondola run by Alpine Lift Co. and an old gravel hiking route. Rent bike access on the gondola, build trails from the top plateau, keep the books balanced and the riders happy.",
   "seed": 1337,
-  "parkName": "Starter Valley Bikepark",
+  "parkName": "Demo Bikepark",
   "startingMoneyCents": 5000000,
   "entryFeeCents": 1500,
   // Daily rhythm (minutes of the day): open 09:00-18:00.
