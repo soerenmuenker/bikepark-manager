@@ -39,8 +39,10 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Trails/TrailCondition.cs` – `WearRules` and feature condition (wear per rider pass, more when wet; worn
     features slower/less fun); `Systems/TrailCareSystem.cs` raises the repair warning and closes worn-out trails
   - `Reputation/` – `ReputationRules` (content: skill groups and what they value, demand curves, influencers, XP and
-    level thresholds), `ReputationState` (reviews window, posts, visitor history), `ReviewMath` (a visit → aspects →
-    stars), `ReputationMath` (rating, demand), `ParkProgress` (derived XP and level); `Systems/ReputationSystem.cs`
+    level thresholds), `ReputationState` (reviews window, posts, visitor history; a `Review` also remembers the visit:
+    left tick, trails (most ridden first), buildings, lifts, money spent, leave reason, crashed), `ReviewMath` (a visit →
+    aspects → stars; `AspectAverages`/`AverageStars`/`Mentioning` for sub-ratings overall, per group or per trail, lift,
+    building), `ReputationMath` (rating, demand), `ParkProgress` (derived XP and level); `Systems/ReputationSystem.cs`
     books influencers and announces level changes
   - `Safety/` – `CrashRules` (content: crash chances, severity, helicopter, crash closures, expected crash rates),
     `CrashMath` (pure chances in parts per billion, trail crash rate, review safety loss), `SafetyState` (counts, accident
@@ -52,7 +54,10 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
 - `tools/scenario-editor/` – local browser editor for a scenario's parcels, tick-0 structures and terrain sculpting (Python stdlib server + one HTML page)
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
-- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel` and `FinancePanel` (the budget), drawn icons, theme in code),
+- `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel` (rating, sub-ratings, review browser) and `FinancePanel` (the budget), drawn icons, theme in code,
+  wrapping hover tips (`UiTheme.Tooltip`, `TipButton`), `StatChips.cs` (bar stats + their hover breakdowns), `ui/inspect/`
+  inspector windows with tabs (`InspectorWindow`, `FacilityInspector`, `LiftInspector`, `TrailInspector`, `ParkInspector`;
+  `Reviews.cs`: `ReviewBrowser`, generated review names/texts, sub-rating bars)),
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
@@ -179,7 +184,9 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
     (`Catering.StopOnTheWay`), riders buy with `StopScalePermille` or sit down for a due lunch (`Guest.ResumeLeg`: the lap goes
     on afterwards). Scenarios without bar types keep lunch and snacks anywhere at `ParkRules` prices. A guest going home buys merch
     at the shop in reach (or at the arrival base). Bookings: `Food` (lunch, snacks), `Drinks`, `Merch`, goods in `FoodGoods` /
-    `MerchGoods`; per product in `Finance.ProductSales`. The Demo's buildings come from `data/scripts/demo_facilities.json`.
+    `MerchGoods`; per product in `Finance.ProductSales`. Each building also keeps its own: sales per product (`Facility.Sales`), customers
+    today, guests turned away for want of a seat, bench or bike (`Catering.NoteNoSeat`, rental arrivals) and overpriced sales;
+    a lift counts the day passes bought there (`LiftStats.PassesSold`, `PassRevenueCents`, `NoPassToday`) — for the windows. The Demo's buildings come from `data/scripts/demo_facilities.json`.
 14d. **Coffee and beer:** `CaffeineMinutes` halve the climbing energy cost (`Guest.CaffeineUntilTick`). `Guest.Alcohol` (0..1000)
     decays per minute (`GuestSystem`), multiplies crash chances (`CrashMath.AlcoholFactor`, `CrashRules.AlcoholFactorPermille`),
     makes riders pick trails with a higher skill (`RiderSystem.PickingSkill`, `BoldnessPermille`; crashes roll the real skill) and
@@ -348,17 +355,21 @@ career, or play the Demo (sandbox, demo trails built, never saved). A new career
 (`SimHost._ExitTree`, WM close) and on System menu → Save & back to menu; there is no manual save. Saves are written
 atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · U rating
 (reputation: stars per skill group and what they value, demand, park level, FakeSocial posts) · N land (parcels: buy,
-level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (click to open their menu) · click on things in the world (no build tool active;
+level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (display only: hover for a breakdown) · click on things in the world (no build tool active;
 `scripts/ui/WorldPicker.cs`, hover: hand cursor + a tip naming it): a rider → follow, a worker → Crew menu at their job,
-a lift station / line or parking lot → Lifts menu at that lift (stats, bike access, lift pass, parking), a trail or
-feature → its feature overview, a planned way → Crew menu at its job, land for sale → Land menu at the parcel; menus
-scroll to and highlight the item (`HudPanel.Focus`) · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
+a building, lift station / line or trail (a feature: its Features tab) → its **window**, a parking lot → the park window
+(Arrivals), a planned way → Crew menu at its job, land for sale → Land menu at the parcel; menus scroll to and highlight
+the item (`HudPanel.Focus`) · **windows** (RollerCoaster Tycoon style, drag by the header, up to 3 open, Esc closes the top
+one, ◎ shows it on the map): building (Overview · Prices (park-wide, per product it sells) · Fleet (rental) · Upgrades ·
+Finances · Reviews · Info), lift (Overview · Bike access · Finances (lift pass) · Reviews · Info), trail (Overview ·
+Features (repairs, cameras, clip price) · Safety · Sponsor · Reviews), park (click the park name in the bar: Arrivals
+(entrance and parking fee) · Drinks (beer hours) · Info); the Trails and Lifts menus link to them · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter finishes it: a trail asks for its name
 in a pop-up (not when it continues a trail), then it is planned for the crew; Esc cancel; preview colored by gradient, tool
-panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's ends onto loose trail ends, joined in line) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) · Build → Gravel platform (centre, then direction; link paths and trails) · Build → Buildings: snack bar, merch shop, service shop, beer rondel, rental station, campground, pro shop, bike café (centre near a gravel path, platform, station or parking lot, then direction, Enter builds; click one in the world → Finances menu, which lists them with their Upgrade button) · Finances menu → Levers: entrance fee, lift pass, parking fee per car · Prices: one price per product (− / +, incl. a campground night), beer hours · Sponsors: offers (Accept / No), running deals (End), brands to apply to (Park / best trail) · feature overview: Camera on jumps and drops for riders (all day / from 15:00 / après-bike only / never) · Build → Renaturalize (click where a section of a trail or gravel path starts and ends: it's removed, a trail cut in two becomes Part 1 / Part 2 and the pieces stay closed until connected; draw a trail from a loose end to join it again, or put a gravel path or platform between them; click a lift station, parking lot or platform to tear it down, lifts and parking lots for a fee) · a warning lists unconnected trails when you leave the Build menu, the Trails menu marks them ·
+panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's ends onto loose trail ends, joined in line) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) · Build → Gravel platform (centre, then direction; link paths and trails) · Build → Buildings: snack bar, merch shop, service shop, beer rondel, rental station, campground, pro shop, bike café (centre near a gravel path, platform, station or parking lot, then direction, Enter builds; click one in the world → its window: prices, upgrades, fleet) · Finances menu: budget, last days, income by place (click → window), sponsors (offers Accept / No, running deals End, brands to apply to: Park / best trail), loans, transactions, balance · Rating menu: Overview (trend, sub-ratings per group, biggest complaints → the lowest-rated place), Reviews (sort, filter by stars, group, influencers, what they mention), Level & social · trail window Features: Camera on jumps and drops · Build → Renaturalize (click where a section of a trail or gravel path starts and ends: it's removed, a trail cut in two becomes Part 1 / Part 2 and the pieces stay closed until connected; draw a trail from a loose end to join it again, or put a gravel path or platform between them; click a lift station, parking lot or platform to tear it down, lifts and parking lots for a fee) · a warning lists unconnected trails when you leave the Build menu, the Trails menu marks them ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
-Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu (trails only, gravel paths aren't listed) per trail: worst feature, click the trail (or Features…) for the feature overview + repairs, Rename, Close/Open ·
+Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu (trails only, gravel paths aren't listed) per trail: worst feature, click the trail (or Open…) for its window, Rename, Close/Open ·
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →
 Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire/dismiss, tools, buy wood, job queue (↑ first,
 ✕ cancel) · System menu: Instant build (debug) · F follow next rider, or click a rider to follow it (a card at the top left shows
@@ -366,7 +377,7 @@ their stats; ✕ or panning stops following; influencers wear pink; injured ride
 block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--new-career=<park name>` / `--career=<id>` (start or continue a career, saved on quit), `--list-careers`, `--scenario=<demo|starter|file>` (default the Demo; skips the start screen like `--demo`, `--script=`, `--advance=`), `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
-`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>`, `--tool=<trail|path|fell|lift|parking|platform|renaturalize|featureId>`, `--rename=<wayId>` (opens the rename pop-up), `--pick=<x>,<z>` (after 2 s points the mouse at that spot, meters, and clicks it), `--look=<x>,<z>,<distance>` (camera focus, meters),
+`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-crew`, `--instant`, `--panel=<menu>[:<focus>]` (e.g. `reputation:reviews`), `--inspect=<facility|lift|trail|park>:<id>[:<tab>]` (open a window; id 0 = the first one), `--hover=<x>,<y>` (rest the mouse there, screen pixels, to screenshot a hover tip), `--tool=<trail|path|fell|lift|parking|platform|renaturalize|featureId>`, `--rename=<wayId>` (opens the rename pop-up), `--pick=<x>,<z>` (after 2 s points the mouse at that spot, meters, and clicks it), `--look=<x>,<z>,<distance>` (camera focus, meters),
 `--features=<wayId>` (open the feature overview), `--follow` (follow the first rider, shows the rider card), `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
 (queue a command script, before `--advance`), `--no-night-skip`
 (turn off the automatic night skip, e.g. for screenshots at night with `--speed=0`).
