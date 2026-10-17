@@ -209,7 +209,7 @@ public partial class StructureTool : Node3D
             _host.Enqueue(new BuildFacilityCommand(FacilityTypeId, _points[0], _points[1],
                 Origin: _host.InstantBuild ? WayOrigin.Scenario : WayOrigin.Player));
             Status = $"Built the {Bikepark.Sim.Facilities.FacilityMath.FindType(sim.State, FacilityTypeId)?.Name.ToLowerInvariant()}: " +
-                     "it serves the guests nearby. Prices and upgrades: Finances menu.";
+                     "it serves the guests nearby. Click it for prices and upgrades.";
         }
         else if (Mode == ToolMode.Platform)
         {

@@ -60,6 +60,9 @@ public partial class SimHost : Node
     /// <summary>Debug: the build tools build ways and features at once instead of planning crew jobs.</summary>
     public bool InstantBuild { get; set; }
 
+    /// <summary>The Demo was started from the start screen: the HUD shows its welcome once (not for debug starts).</summary>
+    public bool DemoWelcomePending { get; set; }
+
     /// <summary>Fast-forward through quiet nights (closed, empty park) automatically.</summary>
     public bool AutoSkipNights { get; set; } = true;
 
@@ -138,6 +141,7 @@ public partial class SimHost : Node
             }
             else if (arg == "--demo-crew") LoadDemoCrew();
             else if (arg == "--instant") InstantBuild = true;
+            else if (arg == "--demo-welcome") DemoWelcomePending = true; // show the Demo's welcome as if started from the menu
             else if (arg == "--report") _report = true;
             else if (arg == "--no-night-skip") AutoSkipNights = false;
             else if (arg.StartsWith("--script=", StringComparison.Ordinal))

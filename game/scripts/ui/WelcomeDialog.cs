@@ -46,11 +46,32 @@ internal sealed partial class WelcomeDialog : PanelContainer
         box.AddChild(buttons);
     }
 
-    /// <summary>Shows the world's welcome if it has one and hasn't started yet (tick 0); otherwise stays hidden.</summary>
+    /// <summary>The Demo's welcome (game-side: the sandbox's scenario has none, so tests and debug runs never pause).</summary>
+    private static readonly WelcomeNote DemoNote = new()
+    {
+        Title = "Welcome to the Demo sandbox!",
+        Paragraphs =
+        [
+            "The whole mountain is yours and everything is unlocked: the gondola runs with rented bike access, two demo trails " +
+            "with features and a few bars and shops are built, and there is plenty of money. Nothing here is saved, so try anything.",
+            "The demo trails were laid out in a hurry: they cross each other and the hiking route in plenty of places, and riders " +
+            "collide at crossings. Untangle them with the bulldozer (Build → Renaturalize, at the right end of the tools): click where " +
+            "a section starts and where it ends to remove it, then redraw the trail elsewhere or put a gravel path or platform in between.",
+            "Want to build fast? Open the game menu (☰ at the bottom right) and switch on \"Instant build\": every path, trail, " +
+            "feature, lift and building you place then appears at once, without a crew job and without costing money.",
+        ],
+    };
+
+    /// <summary>
+    /// Shows the world's welcome if it has one and hasn't started yet (tick 0), or the Demo's when it was just started from
+    /// the start screen; otherwise stays hidden.
+    /// </summary>
     public void OpenIfNew()
     {
         var state = _ctx.Sim.State;
-        if (state.Tick != 0 || state.Welcome is not { } note)
+        WelcomeNote? note = _ctx.Host.DemoWelcomePending ? DemoNote : state.Tick == 0 ? state.Welcome : null;
+        _ctx.Host.DemoWelcomePending = false;
+        if (note is null)
         {
             Clear();
             return;

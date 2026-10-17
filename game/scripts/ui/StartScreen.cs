@@ -48,8 +48,10 @@ public partial class StartScreen : PanelContainer
         var (card, box) = Card(520);
         box.AddChild(UiTheme.Label("CAREER", 12, UiTheme.Accent, bold: true));
         box.AddChild(UiTheme.Label("Starter Valley", 26, bold: true));
-        var text = UiTheme.Label("Start on the old beginner ski hill at the foot of the mountain: a rusty T-bar, a gravel track and " +
-                                 "150,000 €. Restore the lift, build trails, earn a reputation and buy more land.", 14, UiTheme.TextDim);
+        var text = UiTheme.Label("The snow is gone and the old beginner ski hill is yours: a rusty T-bar, a gravel track, a half-finished " +
+                                 "blue trail and 25,000 €. Finish Easy Peasy, hire a crew, take a bank loan to restore the lift, build " +
+                                 "bars and trails, earn a reputation to unlock more and buy the land around you. Keep an eye on the " +
+                                 "books: 14 days in the red and the bank closes the park.", 14, UiTheme.TextDim);
         text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         text.CustomMinimumSize = new Vector2(476, 0);
         box.AddChild(text);
@@ -160,13 +162,18 @@ public partial class StartScreen : PanelContainer
         var (card, box) = Card(340);
         box.AddChild(UiTheme.Label("SANDBOX", 12, UiTheme.Accent, bold: true));
         box.AddChild(UiTheme.Label("Demo", 26, bold: true));
-        var text = UiTheme.Label("The whole mountain is yours, the gondola runs with rented bike access and two demo trails with " +
-                                 "features are built. Plenty of money: try everything. The Demo is never saved.", 14, UiTheme.TextDim);
+        var text = UiTheme.Label("The whole mountain is yours and everything is unlocked: the gondola runs with rented bike access, two " +
+                                 "demo trails with features, bars and shops are built, and there is plenty of money. Try everything, " +
+                                 "untangle the trail crossings with the bulldozer. The Demo is never saved.", 14, UiTheme.TextDim);
         text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         text.CustomMinimumSize = new Vector2(296, 0);
         box.AddChild(text);
         box.AddChild(new Control { SizeFlagsVertical = SizeFlags.ExpandFill });
-        box.AddChild(UiTheme.Button("Start Demo", () => _host.NewGame(SimHost.DemoScenarioFile, demoContent: true)));
+        box.AddChild(UiTheme.Button("Start Demo", () =>
+        {
+            _host.DemoWelcomePending = true; // the HUD greets with what to try first
+            _host.NewGame(SimHost.DemoScenarioFile, demoContent: true);
+        }));
         return card;
     }
 
