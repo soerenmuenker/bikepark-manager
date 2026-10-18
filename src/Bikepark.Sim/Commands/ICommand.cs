@@ -51,6 +51,8 @@ namespace Bikepark.Sim.Commands;
 [JsonDerivedType(typeof(EndSponsorshipCommand), "endSponsorship")]
 [JsonDerivedType(typeof(PlaceCameraCommand), "placeCamera")]
 [JsonDerivedType(typeof(RemoveCameraCommand), "removeCamera")]
+[JsonDerivedType(typeof(SetJobWorkersCommand), "setJobWorkers")]
+[JsonDerivedType(typeof(SetStaffCommand), "setStaff")]
 public interface ICommand
 {
     /// <summary>Returns null if the command can be applied, otherwise a human-readable rejection reason.</summary>

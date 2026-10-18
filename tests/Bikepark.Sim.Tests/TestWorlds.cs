@@ -129,6 +129,10 @@ internal static class TestWorlds
         new(20, new FellTreesCommand(new PointCm(72_000, 52_000), 2_000)),
         new(20, new BuyToolCommand("chainsaw")), // tools 15, 16: two of them
         new(20, new BuyToolCommand("chainsaw")),
+        new(25, new SetJobWorkersCommand(14, 1)), // the felling: one worker
+        new(25, new HireCrewCommand(ApplicantId: 99)), // rejected: no applicants in the test world
+        new(25, new SetStaffCommand("manager", 1)), // rejected: no staff roles in the test world
+        new(400, new SetJobWorkersCommand(14, 0)), // back to as many as possible
         new(30, new PrioritizeJobCommand(9)), // the drop: waits for wood, so the crew skips it
         new(30, new PrioritizeJobCommand(14)), // the felling first (it yields the drop's wood)
         new(700, new CancelJobCommand(14)), // trees cut so far stay cut

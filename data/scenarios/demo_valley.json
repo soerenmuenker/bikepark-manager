@@ -228,10 +228,18 @@
   },
   // Crew and building (CrewRules). Planned ways and features are built by crew jobs during opening hours; work is in
   // crew-minutes at base speed. Trees in a planned way's corridor are felled first (each gives woodPerTree wood).
+  // No crew limit: a way is built in sections of sectionMeters, each by up to workersPerSection workers at once (features,
+  // repairs and signs: one spot). Applicants (a fresh list at every opening) come in grades: speed and wage.
   "crewRules": {
     "wagePerDayCents": 18000,
-    "maxCrew": 12,
-    "maxWorkersPerJob": 3,
+    "sectionMeters": 20,
+    "workersPerSection": 2,
+    "grades": [
+      { "id": "apprentice", "name": "Apprentice", "speedPermille": 750, "wagePerDayCents": 13000, "weight": 4 },
+      { "id": "skilled", "name": "Skilled", "speedPermille": 1000, "wagePerDayCents": 18000, "weight": 4 },
+      { "id": "expert", "name": "Expert", "speedPermille": 1350, "wagePerDayCents": 27000, "weight": 2 }
+    ],
+    "applicantCount": 4,
     "trailWorkMinutesPerMeter": 4,
     "pathWorkMinutesPerMeter": 3,
     "steepExtraPermille": 500,

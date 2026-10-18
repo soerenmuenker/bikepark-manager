@@ -52,6 +52,8 @@ public enum UiIcon
     Land,
     Tent,
     Bulldozer,
+    Gate,
+    Toolbox,
 }
 
 /// <summary>Line icons drawn with canvas primitives (no image assets), scaled to any square.</summary>
@@ -292,6 +294,19 @@ internal static class UiIcons
             case UiIcon.Star:
                 ci.DrawColoredPolygon(StarsView.Star(new Rect2(P(0.1f, 0.1f), new Vector2(0.8f, 0.8f) * s)), color);
                 break;
+            case UiIcon.Gate: // the park entrance: two posts and an arch with a banner
+                Line(0.18f, 0.88f, 0.18f, 0.34f);
+                Line(0.82f, 0.88f, 0.82f, 0.34f);
+                Polyline(0.12f, 0.36f, 0.30f, 0.20f, 0.50f, 0.15f, 0.70f, 0.20f, 0.88f, 0.36f);
+                Poly(0.32f, 0.30f, 0.68f, 0.30f, 0.68f, 0.44f, 0.32f, 0.44f);
+                Line(0.08f, 0.88f, 0.92f, 0.88f);
+                break;
+            case UiIcon.Toolbox: // a toolbox with its handle and a wrench across it
+                Polyline(0.12f, 0.42f, 0.88f, 0.42f, 0.88f, 0.84f, 0.12f, 0.84f, 0.12f, 0.42f);
+                Polyline(0.36f, 0.42f, 0.36f, 0.28f, 0.64f, 0.28f, 0.64f, 0.42f);
+                Line(0.12f, 0.58f, 0.88f, 0.58f);
+                Poly(0.44f, 0.54f, 0.56f, 0.54f, 0.56f, 0.64f, 0.44f, 0.64f);
+                break;
             case UiIcon.Land: // a staked plot with a flag
                 Polyline(0.12f, 0.70f, 0.50f, 0.86f, 0.88f, 0.70f, 0.50f, 0.54f, 0.12f, 0.70f);
                 Line(0.50f, 0.70f, 0.50f, 0.16f);
@@ -367,7 +382,7 @@ public partial class RoundButton : Control
         _caption = caption;
         TooltipText = tooltip;
         Pressed += onPressed;
-        CustomMinimumSize = new Vector2(Math.Max(diameter, caption.Length == 0 ? 0 : 55), diameter + (caption.Length == 0 ? 0 : 18));
+        CustomMinimumSize = new Vector2(Math.Max(diameter, caption.Length == 0 ? 0 : 50), diameter + (caption.Length == 0 ? 0 : 18));
         MouseFilter = MouseFilterEnum.Stop;
         MouseDefaultCursorShape = CursorShape.PointingHand;
         MouseEntered += () => { _hover = true; QueueRedraw(); };

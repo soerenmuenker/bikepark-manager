@@ -27,7 +27,7 @@ public sealed record RepairFeatureCommand(int WayId, int FeatureId, int Workers 
         var feature = trail!.Features.FirstOrDefault(f => f.Id == FeatureId);
         if (feature is null || !feature.Built) return "No such feature.";
         if (Jobs.ForRepair(ctx.State, FeatureId) is not null) return "A repair is already planned.";
-        if (Workers < 0 || Workers > ctx.State.CrewRules.MaxWorkersPerJob) return $"Send 0 to {ctx.State.CrewRules.MaxWorkersPerJob} workers.";
+        if (Workers < 0 || Workers > ctx.State.CrewRules.WorkersPerSection) return $"Send 0 to {ctx.State.CrewRules.WorkersPerSection} workers.";
         return feature.Condition < TrailCondition.Perfect ? null : "The feature is in perfect condition.";
     }
 

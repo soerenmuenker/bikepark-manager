@@ -101,7 +101,7 @@ internal sealed partial class RepairDialog : PanelContainer
     private void Open(int wayId, bool fromWarning)
     {
         _wayId = wayId;
-        _workers = Math.Clamp(_ctx.Sim.State.Crew.Count, 1, Math.Max(1, _ctx.Sim.State.CrewRules.MaxWorkersPerJob));
+        _workers = Math.Clamp(_ctx.Sim.State.Crew.Count, 1, Math.Max(1, _ctx.Sim.State.CrewRules.WorkersPerSection));
         _signature = "";
         _overview = !fromWarning;
         if (fromWarning) _ctx.PauseForWarning(this);
@@ -146,7 +146,7 @@ internal sealed partial class RepairDialog : PanelContainer
 
     private void SetWorkers(int workers)
     {
-        _workers = Math.Clamp(workers, 1, _ctx.Sim.State.CrewRules.MaxWorkersPerJob);
+        _workers = Math.Clamp(workers, 1, _ctx.Sim.State.CrewRules.WorkersPerSection);
         _signature = "";
         Refresh();
     }
@@ -206,7 +206,7 @@ internal sealed partial class RepairDialog : PanelContainer
         if (feature.Condition >= TrailCondition.Perfect && job is null)
             detail = "like new";
         else if (job is not null)
-            detail = $"repair {WorkCosts.ProgressPermille(state.CrewRules, job) / 10} % done · {(job.Workers > 0 ? job.Workers : state.CrewRules.MaxWorkersPerJob)} workers";
+            detail = $"repair {WorkCosts.ProgressPermille(state.CrewRules, job) / 10} % done · {(job.Workers > 0 ? job.Workers : state.CrewRules.WorkersPerSection)} workers";
         else
         {
             long minutes = WorkCosts.RepairMinutes(state.CrewRules, type, feature);

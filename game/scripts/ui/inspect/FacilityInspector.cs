@@ -135,7 +135,7 @@ internal sealed partial class FacilityInspector : InspectorWindow
         if (FacilityMath.ProductsOf(State, type, Facility!).Any(p => p.Alcohol > 0))
         {
             int from = State.Park.BeerFromMinute;
-            Text(body, $"Alcohol for riders: {BeerHours(State, from)}. Set it in the Park window (click the park name in the bar).", 11);
+            Text(body, $"Alcohol for riders: {BeerHours(State, from)}. Set it in the Park menu [H].", 11);
         }
     }
 

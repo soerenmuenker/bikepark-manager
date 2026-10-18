@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 10;
+    public const int CurrentVersion = 11;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -248,6 +248,35 @@ public static class SaveGame
                 foreach (var guest in guests.OfType<JsonObject>())
                     guest["broughtCents"] = (guest["cashCents"]?.GetValue<long>() ?? 0) + (guest["paidEntryCents"]?.GetValue<long>() ?? 0);
             version = 10;
+        }
+
+        if (version == 10)
+        {
+            // v11: workers have their own speed and wage (grades), the crew has no size limit and ways are built in
+            // sections (workersPerSection replaces maxWorkersPerJob). Old workers become standard workers at the old wage;
+            // park staff roles stay off (the flat base staff cost goes on).
+            if (root["world"] is JsonObject world)
+            {
+                long wage = 18_000;
+                int perSection = 2;
+                if (world["crewRules"] is JsonObject crew)
+                {
+                    wage = crew["wagePerDayCents"]?.GetValue<long>() ?? wage;
+                    crew.Remove("maxCrew");
+                    crew.Remove("maxWorkersPerJob");
+                }
+                if (world["crew"] is JsonArray members)
+                    foreach (var member in members.OfType<JsonObject>())
+                    {
+                        member["speedPermille"] = 1000;
+                        member["wagePerDayCents"] = wage;
+                    }
+                if (world["jobs"] is JsonArray jobs)
+                    foreach (var job in jobs.OfType<JsonObject>())
+                        if ((job["workers"]?.GetValue<int>() ?? 0) > perSection)
+                            job["workers"] = perSection;
+            }
+            version = 11;
         }
 
         root["version"] = version;

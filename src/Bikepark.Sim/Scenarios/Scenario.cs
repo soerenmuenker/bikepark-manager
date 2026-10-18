@@ -61,6 +61,14 @@ public sealed class ScenarioDefinition
 
     public int StartingWood { get; set; }
 
+    /// <summary>Park staff role catalog file, relative to the scenario file; loaded into <see cref="StaffRoles"/>.</summary>
+    public string? StaffFile { get; set; }
+
+    /// <summary>Park staff roles (inline, plus those from <see cref="StaffFile"/>).</summary>
+    public List<Staff.StaffRole> StaffRoles { get; set; } = [];
+
+    public Staff.StaffRules StaffRules { get; set; } = new();
+
     /// <summary>Bar and shop catalog file, relative to the scenario file; loaded into <see cref="FacilityTypes"/>.</summary>
     public string? FacilityTypesFile { get; set; }
 
@@ -125,6 +133,11 @@ public static class ScenarioLoader
             scenario.ToolTypes = [.. scenario.ToolTypes, .. LoadToolCatalog(Path.Combine(directory, tools))];
             scenario.ToolsFile = null;
         }
+        if (scenario.StaffFile is { Length: > 0 } staff)
+        {
+            scenario.StaffRoles = [.. scenario.StaffRoles, .. LoadCatalog<Staff.StaffRole>(Path.Combine(directory, staff), "Staff role")];
+            scenario.StaffFile = null;
+        }
         if (scenario.FacilityTypesFile is { Length: > 0 } facilities)
         {
             scenario.FacilityTypes = [.. scenario.FacilityTypes, .. LoadFacilityCatalog(Path.Combine(directory, facilities))];
@@ -187,6 +200,9 @@ public static class ScenarioLoader
             CrewRules = scenario.CrewRules,
             ToolTypes = scenario.ToolTypes,
             WoodStock = scenario.StartingWood,
+            StaffRoles = scenario.StaffRoles,
+            StaffRules = scenario.StaffRules,
+            Staff = scenario.StaffRules.Start.Where(p => p.Count > 0).Select(p => new Staff.StaffPosition { RoleId = p.RoleId, Count = p.Count }).ToList(),
             FacilityTypes = scenario.FacilityTypes,
             ProductTypes = scenario.ProductTypes,
             FacilityRules = scenario.FacilityRules,
@@ -200,6 +216,8 @@ public static class ScenarioLoader
             LoanRules = scenario.LoanRules,
             Welcome = scenario.Welcome,
         };
+
+        Systems.JobMarket.Roll(state, 0); // the first applicants, before anything runs
 
         var queue = new CommandQueue(state);
         foreach (var timed in scenario.Commands)
@@ -238,6 +256,14 @@ public static class ScenarioLoader
         foreach (var tool in s.ToolTypes) errors.AddRange(tool.Validate());
         if (s.ToolTypes.Select(t => t.Id).Distinct().Count() != s.ToolTypes.Count) errors.Add("toolTypes: ids must be unique");
         if (s.StartingWood < 0) errors.Add("startingWood must be >= 0");
+        if (s.StaffFile is { Length: > 0 }) errors.Add("staffFile can only be resolved when loading from a file");
+        foreach (var role in s.StaffRoles) errors.AddRange(role.Validate());
+        if (s.StaffRoles.Select(r => r.Id).Distinct().Count() != s.StaffRoles.Count) errors.Add("staffRoles: ids must be unique");
+        errors.AddRange(s.StaffRules.Validate());
+        foreach (var position in s.StaffRules.Start)
+            if (s.StaffRoles.FirstOrDefault(r => r.Id == position.RoleId) is not { } role) errors.Add($"staffRules.start: unknown role '{position.RoleId}'");
+            else if (position.Count > role.MaxCount) errors.Add($"staffRules.start[{position.RoleId}]: more than maxCount");
+        if (s.StaffRules.Enabled && s.StaffRoles.Count == 0) errors.Add("staffRules.enabled needs staff roles");
         if (s.FacilityTypesFile is { Length: > 0 }) errors.Add("facilityTypesFile can only be resolved when loading from a file");
         foreach (var type in s.FacilityTypes) errors.AddRange(type.Validate());
         if (s.FacilityTypes.Select(t => t.Id).Distinct().Count() != s.FacilityTypes.Count) errors.Add("facilityTypes: ids must be unique");

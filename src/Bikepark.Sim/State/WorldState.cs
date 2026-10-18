@@ -117,6 +117,17 @@ public sealed class WorldState
     /// <summary>Workers in hiring order.</summary>
     public List<CrewMember> Crew { get; set; } = [];
 
+    /// <summary>Today's applicants for the crew (only with <see cref="CrewRules.Grades"/>), rolled by <c>StaffSystem</c>.</summary>
+    public List<Applicant> Applicants { get; set; } = [];
+
+    /// <summary>The day the applicants were rolled (-1 = not yet).</summary>
+    public long ApplicantsDay { get; set; } = -1;
+
+    /// <summary>Park staff roles (content, <c>data/staff_roles.json</c>), their rules, and how many of each the park employs.</summary>
+    public List<Staff.StaffRole> StaffRoles { get; set; } = [];
+    public Staff.StaffRules StaffRules { get; set; } = new();
+    public List<Staff.StaffPosition> Staff { get; set; } = [];
+
     /// <summary>Crew jobs in priority order (the crew works on the first workable ones).</summary>
     public List<Job> Jobs { get; set; } = [];
 
@@ -424,6 +435,9 @@ public sealed class ParkStats
 
     /// <summary>Guests turned away because the parking lots were full (included in <see cref="TotalTurnedAway"/>).</summary>
     public long TotalTurnedAwayParkingFull { get; set; }
+
+    /// <summary>Arrivals who turned back at the ticket office queue (too few ticket office staff).</summary>
+    public long TotalTurnedAwayTicketQueue { get; set; }
     public long TotalGuestsLeft { get; set; }
     public long TotalLeftUnhappy { get; set; }
 

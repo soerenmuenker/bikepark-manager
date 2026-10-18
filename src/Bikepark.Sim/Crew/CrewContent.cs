@@ -65,9 +65,24 @@ public sealed class OwnedTool
 /// <summary>Crew, work and wood tuning, loaded from the scenario and saved with the game. Work is in crew-minutes at base speed.</summary>
 public sealed class CrewRules
 {
+    /// <summary>The wage of a standard worker (hired without an applicant; also the "skilled" reference).</summary>
     public long WagePerDayCents { get; set; } = 18_000;
-    public int MaxCrew { get; set; } = 12;
-    public int MaxWorkersPerJob { get; set; } = 3;
+
+    /// <summary>
+    /// A way is built in sections of this length, each by up to <see cref="WorkersPerSection"/> workers at once: a long
+    /// trail takes many workers in parallel. Features, repairs and signs are one spot: <see cref="WorkersPerSection"/>.
+    /// </summary>
+    public int SectionMeters { get; set; } = 20;
+    public int WorkersPerSection { get; set; } = 2;
+
+    /// <summary>Worker grades applicants come in (none: no applicants, every hire is a standard worker).</summary>
+    public List<CrewGrade> Grades { get; set; } = [];
+
+    /// <summary>Applicants waiting each day (rolled at the opening).</summary>
+    public int ApplicantCount { get; set; } = 4;
+
+    /// <summary>How much an applicant's speed and wage vary around their grade's (permille, either way).</summary>
+    public int ApplicantSpreadPermille { get; set; } = 100;
 
     public int TrailWorkMinutesPerMeter { get; set; } = 4;
     public int PathWorkMinutesPerMeter { get; set; } = 6;
@@ -89,8 +104,13 @@ public sealed class CrewRules
     {
         var errors = new List<string>();
         if (WagePerDayCents < 0) errors.Add("crewRules.wagePerDayCents must be >= 0");
-        if (MaxCrew is < 1 or > 100) errors.Add("crewRules.maxCrew must be within 1..100");
-        if (MaxWorkersPerJob is < 1 or > 20) errors.Add("crewRules.maxWorkersPerJob must be within 1..20");
+        if (SectionMeters is < 1 or > 1000) errors.Add("crewRules.sectionMeters must be within 1..1000");
+        if (WorkersPerSection is < 1 or > 20) errors.Add("crewRules.workersPerSection must be within 1..20");
+        foreach (var grade in Grades) errors.AddRange(grade.Validate());
+        if (Grades.Select(g => g.Id).Distinct().Count() != Grades.Count) errors.Add("crewRules.grades: ids must be unique");
+        if (Grades.Count > 0 && Grades.Sum(g => g.Weight) <= 0) errors.Add("crewRules.grades: weights must add up to more than 0");
+        if (ApplicantCount is < 0 or > 20) errors.Add("crewRules.applicantCount must be within 0..20");
+        if (ApplicantSpreadPermille is < 0 or > 500) errors.Add("crewRules.applicantSpreadPermille must be within 0..500");
         if (TrailWorkMinutesPerMeter is < 1 or > 1000 || PathWorkMinutesPerMeter is < 1 or > 1000)
             errors.Add("crewRules: work minutes per meter must be within 1..1000");
         if (SteepExtraPermille is < 0 or > 10_000) errors.Add("crewRules.steepExtraPermille must be within 0..10000");
@@ -102,4 +122,41 @@ public sealed class CrewRules
             errors.Add("crewRules: clearing radius must satisfy 1 <= min <= max <= 200");
         return errors;
     }
+}
+
+/// <summary>A worker grade (content): how fast its workers are and what they earn.</summary>
+public sealed class CrewGrade
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+
+    /// <summary>Work speed of the worker (1000 = base); a tool's bonus is scaled with it.</summary>
+    public int SpeedPermille { get; set; } = 1000;
+    public long WagePerDayCents { get; set; }
+
+    /// <summary>How often applicants of this grade turn up, relative to the other grades.</summary>
+    public int Weight { get; set; } = 1;
+
+    public List<string> Validate()
+    {
+        var errors = new List<string>();
+        string p = $"crewRules.grades[{Id}]";
+        if (string.IsNullOrWhiteSpace(Id)) errors.Add("crewRules.grades: id is required");
+        if (string.IsNullOrWhiteSpace(Name)) errors.Add($"{p}.name is required");
+        if (SpeedPermille is < 100 or > 5000) errors.Add($"{p}.speedPermille must be within 100..5000");
+        if (WagePerDayCents < 0) errors.Add($"{p}.wagePerDayCents must be >= 0");
+        if (Weight < 0) errors.Add($"{p}.weight must be >= 0");
+        return errors;
+    }
+}
+
+/// <summary>Someone looking for work today; hired with <see cref="Commands.HireCrewCommand"/>.</summary>
+public sealed class Applicant
+{
+    /// <summary>Unique per day and slot (not an entity id).</summary>
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string GradeId { get; set; } = "";
+    public int SpeedPermille { get; set; } = 1000;
+    public long WagePerDayCents { get; set; }
 }

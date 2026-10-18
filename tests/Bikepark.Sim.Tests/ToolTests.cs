@@ -27,6 +27,7 @@ public class ToolTests
     public void EachWorker_UsesOneTool_TheBestFirst_TheRestWorkByHand()
     {
         var sim = World();
+        sim.State.CrewRules.WorkersPerSection = 3; // three on the feature
         for (int i = 0; i < 3; i++) sim.Commands.Enqueue(new HireCrewCommand());
         sim.Commands.Enqueue(new BuyToolCommand("shovel_set"));
         sim.Commands.Enqueue(new BuyToolCommand("shovel_set"));

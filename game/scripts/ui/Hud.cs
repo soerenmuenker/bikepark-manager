@@ -25,7 +25,7 @@ namespace Bikepark.Game.Ui;
 /// stats (right: money, guests, mood, rating and level, lift queue, crew, wood; clicking one opens its menu). While a build tool is active a compact tool
 /// panel shows at the top; events appear as short toasts. Pure view: reads the simulation, issues commands.
 /// <para>
-/// Keys: Space pause · 1–4 speed · B V C R G M U O open menus · Esc closes the menu · [ ] bike access tier · +/− zoom
+/// Keys: Space pause · 1–4 speed · B V H C I R G M U N O open menus · Esc closes the menu · [ ] bike access tier · +/− zoom
 /// (also the zoom buttons next to the stats).
 /// Debug: <c>--screenshot=&lt;file.png&gt;</c> saves a screenshot after a few seconds and quits; <c>--panel=build</c>
 /// opens a menu at start; <c>--tool=trail</c> (path, fell, lift, parking or a feature id) starts a build tool;
@@ -34,7 +34,7 @@ namespace Bikepark.Game.Ui;
 /// </summary>
 public partial class Hud : CanvasLayer
 {
-    internal enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Reputation, Land, Map, System }
+    internal enum Menu { None, Build, Trails, Crew, Riders, Lifts, Finance, Reputation, Land, Map, System, Park, Tools }
 
     private const int MaxToasts = 4;
 
@@ -208,7 +208,9 @@ public partial class Hud : CanvasLayer
                  {
                      (Menu.Build, UiIcon.Build, "Build", "Plan paths, trails, features; fell trees; lifts, parking  [B]"),
                      (Menu.Trails, UiIcon.Trails, "Trails", "Your trails  [V]"),
-                     (Menu.Crew, UiIcon.Crew, "Crew", "Workers, jobs, wood and tools  [C]"),
+                     (Menu.Park, UiIcon.Gate, "Park", "Entrance fee, lift pass, parking, drinks, staff overview  [H]"),
+                     (Menu.Crew, UiIcon.Crew, "Crew", "Workers and applicants, park staff, jobs and wood  [C]"),
+                     (Menu.Tools, UiIcon.Toolbox, "Tools", "Buy tools; every tool, its condition and who uses it  [I]"),
                      (Menu.Riders, UiIcon.Riders, "Riders", "Guests, mood and fun  [R]"),
                      (Menu.Lifts, UiIcon.Lift, "Lifts", "Queues and bike access  [G]"),
                      (Menu.Finance, UiIcon.Finance, "Finances", "Money, fees, daily results  [M]"),
@@ -218,7 +220,7 @@ public partial class Hud : CanvasLayer
                  })
         {
             var m = menu;
-            var button = new RoundButton(icon, 50, caption, tooltip, () => Toggle(m));
+            var button = new RoundButton(icon, 44, caption, tooltip, () => Toggle(m));
             menus.AddChild(button);
             _menuButtons[menu] = button;
         }
@@ -238,7 +240,9 @@ public partial class Hud : CanvasLayer
         // Menus.
         AddPanel(Menu.Build, new BuildPanel());
         AddPanel(Menu.Trails, new TrailsPanel());
+        AddPanel(Menu.Park, new ParkPanel());
         AddPanel(Menu.Crew, new CrewPanel());
+        AddPanel(Menu.Tools, new ToolsPanel());
         AddPanel(Menu.Riders, new RidersPanel());
         AddPanel(Menu.Lifts, new LiftsPanel());
         AddPanel(Menu.Finance, new FinancePanel());
@@ -292,6 +296,7 @@ public partial class Hud : CanvasLayer
         _welcome = new WelcomeDialog(_ctx);
         _root.AddChild(_welcome);
         _ctx.OpenMenu = menu => ShowMenu(menu, null);
+        _ctx.ShowMenu = ShowMenu;
 
         _nameDialog = new NameDialog();
         _ctx.AskName = _nameDialog.Ask;
@@ -329,10 +334,10 @@ public partial class Hud : CanvasLayer
         _parkName.ClipText = true;
         _parkName.MouseFilter = Control.MouseFilterEnum.Stop;
         _parkName.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
-        _parkName.TooltipText = "Park window: entrance fee, parking, drinks for riders, opening hours";
+        _parkName.TooltipText = "Park menu: entrance fee, lift pass, parking, drinks for riders, staff, opening hours  [H]";
         _parkName.GuiInput += e =>
         {
-            if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true }) Inspect(new InspectTarget(InspectKind.Park, 0));
+            if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true }) ShowMenu(Menu.Park, null);
         };
         park.AddChild(_parkName);
         var time = new HBoxContainer();
@@ -834,6 +839,8 @@ public partial class Hud : CanvasLayer
             case Key.M: Toggle(Menu.Finance); break;
             case Key.U: Toggle(Menu.Reputation); break;
             case Key.N: Toggle(Menu.Land); break;
+            case Key.H: Toggle(Menu.Park); break;
+            case Key.I: Toggle(Menu.Tools); break;
             case Key.O: Toggle(Menu.Map); break;
             case Key.Escape when !toolActive && _inspectors.Count > 0: CloseInspector(_inspectors[^1]); break;
             case Key.Escape when !toolActive && _open != Menu.None: Toggle(Menu.None); break;
@@ -855,6 +862,12 @@ public partial class Hud : CanvasLayer
     /// </summary>
     private void Inspect(InspectTarget target)
     {
+        // The park has a menu of its own (fees, drinks, staff), not a window.
+        if (target.Kind == InspectKind.Park)
+        {
+            ShowMenu(Menu.Park, target.Tab);
+            return;
+        }
         if (_inspectors.FirstOrDefault(w => w.Target.Kind == target.Kind && w.Target.Id == target.Id) is { } open)
         {
             RaiseInspector(open);
@@ -866,7 +879,7 @@ public partial class Hud : CanvasLayer
             InspectKind.Facility => new FacilityInspector(_ctx, target),
             InspectKind.Lift => new LiftInspector(_ctx, target),
             InspectKind.Trail => new TrailInspector(_ctx, target),
-            _ => new ParkInspector(_ctx, target),
+            _ => throw new ArgumentOutOfRangeException(nameof(target)),
         };
         if (window.IsGone)
         {

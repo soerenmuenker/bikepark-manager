@@ -74,8 +74,9 @@ internal sealed class GuestArrivalSystem : ISimSystem
         feeFactor = Math.Clamp(feeFactor, 100, 1500);
         long weather = state.WeatherRules.ArrivalPermille(state.Weather.Today.Kind);
         long reputation = ReputationMath.DemandPermille(state);
+        long marketing = Staff.StaffMath.MarketingPermille(state);
         return (int)(rules.BaseArrivalPermille * feeFactor / 1000 * ProfilePermille(rules.ArrivalProfile, minuteOfDay) / 1000 * weather / 1000
-                     * reputation / 1000);
+                     * reputation / 1000 * marketing / 1000);
     }
 
     /// <summary>What a day guest pays to get in: the entry fee and their share of the parking fee.</summary>
@@ -161,6 +162,16 @@ internal sealed class GuestArrivalSystem : ISimSystem
             return;
         }
 
+        // Too few people in the ticket office: some arrivals turn back at the queue.
+        if (Staff.StaffMath.TicketTurnAwayPermille(state) is > 0 and var queue && ctx.Rng.ChancePermille(queue))
+        {
+            state.Stats.TotalTurnedAway++;
+            state.Stats.TurnedAwayToday++;
+            state.Stats.TotalTurnedAwayTicketQueue++;
+            ctx.Publish(new GuestTurnedAway(ctx.Tick, TurnAwayReason.TicketQueue));
+            return;
+        }
+
         if (cash < fee + parking + nightsCents + rentalCents)
         {
             state.Stats.TotalTurnedAway++;
@@ -170,7 +181,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
         }
 
         long reference = Math.Max(1, ReferenceArrivalCents(state));
-        int feePenalty = (int)Math.Max(0, (fee + parking - reference) * 200 / reference);
+        int feePenalty = (int)Math.Max(0, (fee + parking - reference) * 200 / reference) + Staff.StaffMath.TicketQueueMood(state);
 
         int lunchMinute = PlanLunch(ctx, GameTime.MinuteOfDay(ctx.Tick));
         var guest = new Guest
@@ -270,6 +281,7 @@ internal sealed class GuestSystem : ISimSystem
         bool closed = !ParkSchedule.GuestsAllowed(state, ctx.Tick);
         bool lastRides = ParkSchedule.IsLastRides(state, ctx.Tick);
         bool crowded = ParkSchedule.AwakeGuests(state) > state.Rules.Capacity;
+        int dirt = Staff.StaffMath.CleaningMoodLoss(state, ctx.Tick); // too few cleaners
         bool raining = Weather.WeatherMath.IsRaining(state, ctx.Tick);
 
         // Iterate in list order and compact in place: deterministic and allocation-free.
@@ -287,7 +299,7 @@ internal sealed class GuestSystem : ISimSystem
                         ? Catering.ApresMinute(ctx, guest) ? GuestLeaveReason.StayCompleted : null
                         : closed || lastRides && IsBetweenLaps(guest)
                             ? GuestLeaveReason.ParkClosed
-                            : UpdateGuest(ctx, guest, crowded, raining);
+                            : UpdateGuest(ctx, guest, crowded, raining, dirt);
             bool doneForTheDay = leave is GuestLeaveReason.ParkClosed or GuestLeaveReason.StayCompleted or GuestLeaveReason.Tired
                 or GuestLeaveReason.Drunk;
             // Done for the day: maybe a drink at the bar first (après-bike), then campers go to their tent.
@@ -356,7 +368,7 @@ internal sealed class GuestSystem : ISimSystem
     private static bool IsBetweenLaps(Guest guest) =>
         guest.Activity is RiderActivity.Idle or RiderActivity.Eating or RiderActivity.Wandering or RiderActivity.Queuing;
 
-    private static GuestLeaveReason? UpdateGuest(SimContext ctx, Guest guest, bool crowded, bool raining)
+    private static GuestLeaveReason? UpdateGuest(SimContext ctx, Guest guest, bool crowded, bool raining, int dirt)
     {
         var rules = ctx.State.Rules;
         var liftRules = ctx.State.LiftRules;
@@ -365,6 +377,7 @@ internal sealed class GuestSystem : ISimSystem
         guest.Happiness += ctx.Rng.Range(-1, 2);
         if (crowded)
             guest.Happiness -= CrowdingPenalty;
+        guest.Happiness -= dirt;
 
         if (raining && !(guest.Activity == RiderActivity.OnLift && OnShelteredLift(ctx.State, guest)))
             guest.Happiness -= ctx.State.WeatherRules.RainMoodPerMinute;
@@ -414,8 +427,8 @@ internal sealed class FinanceSystem : ISimSystem
             return;
 
         var state = ctx.State;
-        state.Finance.Spend(MoneyCategory.ParkStaff, state.Rules.DailyUpkeepCents);
-        long wages = state.Crew.Count * state.CrewRules.WagePerDayCents;
+        state.Finance.Spend(MoneyCategory.ParkStaff, Staff.StaffMath.DailyCostCents(state));
+        long wages = state.Crew.Sum(m => m.WagePerDayCents);
         if (wages > 0)
         {
             state.Finance.Spend(MoneyCategory.Wages, wages);

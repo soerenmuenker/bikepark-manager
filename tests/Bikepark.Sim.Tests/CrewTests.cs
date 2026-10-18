@@ -177,8 +177,8 @@ public class CrewTests
         sim.RunTicks(481);
 
         int first = sim.State.Jobs[0].Id, second = sim.State.Jobs[1].Id;
-        Assert.Equal(3, sim.State.Crew.Count(m => m.JobId == first));
-        Assert.Equal(1, sim.State.Crew.Count(m => m.JobId == second));
+        Assert.Equal(2, sim.State.Crew.Count(m => m.JobId == first)); // a feature: workersPerSection
+        Assert.Equal(2, sim.State.Crew.Count(m => m.JobId == second));
         Assert.Equal(["Worker 1", "Worker 2", "Worker 3", "Worker 4"], sim.State.Crew.Select(m => m.Name));
 
         // A free worker takes the job at the front of the queue.
@@ -281,28 +281,73 @@ public class CrewTests
         Assert.True(job.Trees.Count > 12);
 
         sim.RunTicks(sim.State.Rules.OpenMinute + 1 - sim.State.Tick);
-        Assert.Equal(6, sim.State.Crew.Count(m => m.JobId == job.Id)); // more than maxWorkersPerJob (3)
+        Assert.Equal(6, sim.State.Crew.Count(m => m.JobId == job.Id)); // one per tree
         Assert.Equal(WorkType.Felling, job.CurrentWorkType);
     }
 
     [Fact]
-    public void WorkersBeyondTheLimit_LeaveAWayJobOnceItsTreesAreFelled()
+    public void AWay_IsBuiltInParallelSections_WithFewerWorkersNearTheEnd()
     {
         var sim = ValleyWorld(instantTrails: false);
         var job = Jobs.ForWay(sim.State, ValleyRedRocket(sim))!;
         foreach (var other in sim.State.Jobs.Where(j => j != job).ToList())
             sim.Commands.Enqueue(new CancelJobCommand(other.Id));
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 20; i++)
             sim.Commands.Enqueue(new HireCrewCommand());
         sim.RunTicks(sim.State.Rules.OpenMinute + 2 - sim.State.Tick);
-        Assert.True(job.IsFelling);
-        Assert.Equal(sim.State.Crew.Count, sim.State.Crew.Count(m => m.JobId == job.Id));
-
         while (job.IsFelling)
             sim.Step();
         sim.Step();
         Assert.Equal(WorkType.Digging, job.CurrentWorkType);
-        Assert.Equal(sim.State.CrewRules.MaxWorkersPerJob, sim.State.Crew.Count(m => m.JobId == job.Id));
+
+        // Sections: workersPerSection per section still to dig, far more than one spot's worth.
+        var rules = sim.State.CrewRules;
+        int sections = WorkCosts.SectionsLeft(sim.State, job);
+        Assert.True(sections > 10);
+        Assert.Equal(rules.WorkersPerSection * sections, JobSystem.AutoLimit(sim.State, job));
+        Assert.Equal(sim.State.Crew.Count, sim.State.Crew.Count(m => m.JobId == job.Id));
+
+        // Near the end only the last section is left: workersPerSection workers.
+        long perSection = (long)rules.TrailWorkMinutesPerMeter * rules.SectionMeters;
+        job.Progress = (job.WorkMinutes - perSection / 2) * 1000;
+        Assert.Equal(1, WorkCosts.SectionsLeft(sim.State, job));
+        sim.Step();
+        if (sim.State.Jobs.Contains(job))
+            Assert.Equal(rules.WorkersPerSection, sim.State.Crew.Count(m => m.JobId == job.Id));
+    }
+
+    [Fact]
+    public void SetJobWorkers_LimitsAJob_AndAutoLiftsTheLimit()
+    {
+        var sim = ValleyWorld(instantTrails: false);
+        var job = Jobs.ForWay(sim.State, ValleyRedRocket(sim))!;
+        foreach (var other in sim.State.Jobs.Where(j => j != job).ToList())
+            sim.Commands.Enqueue(new CancelJobCommand(other.Id));
+        for (int i = 0; i < 8; i++)
+            sim.Commands.Enqueue(new HireCrewCommand());
+        sim.Commands.Enqueue(new SetJobWorkersCommand(job.Id, 3));
+        sim.Commands.Enqueue(new SetJobWorkersCommand(job.Id, -1));
+        sim.Commands.Enqueue(new SetJobWorkersCommand(-5, 2));
+        sim.RunTicks(sim.State.Rules.OpenMinute + 2 - sim.State.Tick);
+        Assert.Equal(2, sim.Events.Pending.OfType<CommandRejected>().Count());
+        Assert.Equal(3, job.Workers);
+        Assert.Equal(3, sim.State.Crew.Count(m => m.JobId == job.Id));
+
+        sim.Commands.Enqueue(new SetJobWorkersCommand(job.Id, 0));
+        sim.RunTicks(2);
+        Assert.Equal(sim.State.Crew.Count, sim.State.Crew.Count(m => m.JobId == job.Id));
+    }
+
+    [Fact]
+    public void AFeature_IsOneSpot_WorkersPerSection()
+    {
+        var sim = ValleyWorld(instantTrails: false);
+        var job = Jobs.ForWay(sim.State, ValleyRedRocket(sim))!;
+        Assert.True(JobSystem.AutoLimit(sim.State, job) > sim.State.CrewRules.WorkersPerSection);
+        var spot = new Job { Kind = JobKind.BuildFeature, WorkMinutes = 10_000 };
+        Assert.Equal(sim.State.CrewRules.WorkersPerSection, JobSystem.AutoLimit(sim.State, spot));
+        spot.Workers = 1;
+        Assert.Equal(1, JobSystem.WorkerLimit(sim.State, spot));
     }
 
     [Fact]
@@ -379,14 +424,14 @@ public class CrewTests
     }
 
     [Fact]
-    public void CrewIsLimited_AndDismissedWorkersLeaveTheirJob()
+    public void CrewHasNoLimit_AndDismissedWorkersLeaveTheirJob()
     {
         var sim = TestWorld();
-        for (int i = 0; i < sim.State.CrewRules.MaxCrew + 1; i++)
+        for (int i = 0; i < 40; i++)
             sim.Commands.Enqueue(new HireCrewCommand());
         sim.Step();
-        Assert.Equal(sim.State.CrewRules.MaxCrew, sim.State.Crew.Count);
-        Assert.Single(sim.Events.Pending.OfType<CommandRejected>());
+        Assert.Equal(40, sim.State.Crew.Count);
+        Assert.Empty(sim.Events.Pending.OfType<CommandRejected>());
 
         sim.Commands.Enqueue(new DismissCrewCommand(sim.State.Crew[0].Id));
         sim.Commands.Enqueue(new DismissCrewCommand(-1));

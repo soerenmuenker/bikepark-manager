@@ -117,7 +117,7 @@ internal sealed partial class WorldPicker : Node
             if (state.Lifts.FirstOrDefault(l => l.Id == owner) is { } lift)
                 return LiftPick(lift, hub.Kind == HubKind.ValleyStation ? "valley station" : "top station");
             if (state.ParkingLots.FirstOrDefault(p => p.Id == owner) is { } lot && state.Lifts.FirstOrDefault(l => l.Id == lot.LiftId) is { } served)
-                return new WorldPick($"{lot.Name} · {lot.Spaces} spaces · click for arrivals and parking",
+                return new WorldPick($"{lot.Name} · {lot.Spaces} spaces · click for the Park menu (fees, parking)",
                     () => _ctx.Inspect(new InspectTarget(InspectKind.Park, 0, "Arrivals")));
             if (state.Platforms.FirstOrDefault(p => p.Id == owner) is { } platform)
                 return new WorldPick("Gravel platform",

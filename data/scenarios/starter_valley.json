@@ -10,7 +10,7 @@
   // Daily rhythm (minutes of the day): open 09:00-18:00.
   // Arrivals follow the profile (permille of baseArrivalPermille): a morning rush, tapering off in the afternoon.
   // Guests take one lunch break between 11:00 and 13:00. bankruptcyDays: game over after this many days in a row with the
-  // books closing below zero. dailyUpkeepCents: the base staff (ticket office, first aid, cleaning), every day.
+  // books closing below zero. dailyUpkeepCents: unused here (staffRules below: the park employs its staff by role).
   // Parking: a fee per car (Finances menu, shared by its guests and counted with the entry fee); free is the fair price.
   "rules": {
     "openMinute": 540,
@@ -347,12 +347,32 @@
     "serveReachMeters": 80,
     "apresEndMinute": 1170
   },
+  // Park staff by role (data/staff_roles.json): managers, ticket office, first aid, cleaning, marketing; set in the Crew
+  // menu → Park staff. Too few of a role costs guests, mood or rescue time (StaffMath).
+  "staffFile": "../staff_roles.json",
+  "staffRules": {
+    "enabled": true,
+    "start": [
+      { "roleId": "manager", "count": 1 },
+      { "roleId": "ticket_office", "count": 3 },
+      { "roleId": "first_aid", "count": 2 },
+      { "roleId": "cleaning", "count": 4 }
+    ]
+  },
   // Crew and building (CrewRules). Planned ways and features are built by crew jobs during opening hours; work is in
   // crew-minutes at base speed. Trees in a planned way's corridor are felled first (each gives woodPerTree wood).
+  // No crew limit: a way is built in sections of sectionMeters, each by up to workersPerSection workers at once (features,
+  // repairs and signs: one spot). Applicants (a fresh list at every opening) come in grades: speed and wage.
   "crewRules": {
     "wagePerDayCents": 18000,
-    "maxCrew": 12,
-    "maxWorkersPerJob": 3,
+    "sectionMeters": 20,
+    "workersPerSection": 2,
+    "grades": [
+      { "id": "apprentice", "name": "Apprentice", "speedPermille": 750, "wagePerDayCents": 13000, "weight": 4 },
+      { "id": "skilled", "name": "Skilled", "speedPermille": 1000, "wagePerDayCents": 18000, "weight": 4 },
+      { "id": "expert", "name": "Expert", "speedPermille": 1350, "wagePerDayCents": 27000, "weight": 2 }
+    ],
+    "applicantCount": 4,
     "trailWorkMinutesPerMeter": 4,
     "pathWorkMinutesPerMeter": 3,
     "steepExtraPermille": 500,

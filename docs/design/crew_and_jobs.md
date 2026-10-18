@@ -240,3 +240,17 @@ For scale:
 - Demolition jobs and reshaping built trails.
 - Maintenance and repair jobs (Phase 5, wear and weather), and rescue (Phase 6).
 - Selling wood; wood quality; tree regrowth.
+
+## Update: grades, sections, park staff
+
+- **No crew limit.** Wages are the brake. Workers keep the speed and wage they were hired with.
+- **Applicants** (`CrewRules.Grades`: apprentice 75 % / 130 €, skilled 100 % / 180 €, expert 135 % / 270 €): a fresh list
+  at every opening (`JobMarket`, its own seeded RNG stream). `HireCrewCommand()` without an applicant hires a standard worker.
+- **Sections.** A way is dug in `SectionMeters` sections, each by up to `WorkersPerSection` workers at once, so a long
+  trail takes many workers in parallel; the limit shrinks as the work nears its end. Features, repairs and signs are one
+  spot. `SetJobWorkersCommand` caps any job (0 = auto); the Crew menu has −/+ per job.
+- **Park staff** (`data/staff_roles.json`, `StaffMath`): managers supervise everyone (crew speed too), the ticket office
+  serves visitors, first aid looks after trails and lifts, cleaning keeps the mood, marketing brings guests. Too few of
+  a role has a real cost; wages replace the flat base staff cost where `staffRules.enabled`.
+- **Menus:** Crew (Workers · Park staff · Jobs), Tools (buy, every tool with condition and who uses it), Park (fees,
+  drinks, staff summary).

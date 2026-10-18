@@ -30,6 +30,9 @@ public enum TurnAwayReason
 
     /// <summary>Came to rent a bike, but none was free.</summary>
     NoRentalBike,
+
+    /// <summary>Turned back at the ticket office queue (too few ticket office staff).</summary>
+    TicketQueue,
 }
 
 public sealed record GuestTurnedAway(long Tick, TurnAwayReason Reason = TurnAwayReason.CannotAfford) : ISimEvent;

@@ -2,11 +2,25 @@ using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Crew;
 
-/// <summary>A worker. All workers are alike (same wage and speed); a tool makes the worker using it faster.</summary>
+/// <summary>A worker: speed and wage are fixed when hired (from their grade); a tool makes the worker using it faster.</summary>
 public sealed class CrewMember
 {
     public int Id { get; set; }
     public string Name { get; set; } = "";
+
+    /// <summary>Their grade (<see cref="CrewGrade"/>; "" = a standard worker).</summary>
+    public string GradeId { get; set; } = "";
+
+    /// <summary>Work speed (1000 = base speed).</summary>
+    public int SpeedPermille { get; set; } = 1000;
+
+    /// <summary>Paid at the end of every day.</summary>
+    public long WagePerDayCents { get; set; }
+
+    public long HiredTick { get; set; }
+
+    /// <summary>Minutes worked on jobs so far.</summary>
+    public long MinutesWorked { get; set; }
 
     /// <summary>The job the worker is on (0 = none, e.g. outside work hours or nothing workable).</summary>
     public int JobId { get; set; }
@@ -46,7 +60,7 @@ public sealed class Job
     public int WayId { get; set; }
     public int FeatureId { get; set; }
 
-    /// <summary>Workers the player assigned (repair jobs); 0 = as many as the rules allow.</summary>
+    /// <summary>The most workers the player wants on it; 0 = as many as the work allows (<see cref="Systems.JobSystem.WorkerLimit"/>).</summary>
     public int Workers { get; set; }
 
     /// <summary>Felling area (FellTrees jobs only).</summary>

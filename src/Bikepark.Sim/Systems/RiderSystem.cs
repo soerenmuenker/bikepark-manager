@@ -615,7 +615,9 @@ internal sealed class RiderSystem : ISimSystem
         guest.CrashWayId = wayId;
         guest.CrashCause = cause;
         guest.CrashFeatureId = feature?.Feature.Id ?? 0;
-        guest.Happiness = Math.Max(0, guest.Happiness - (serious ? rules.SeriousMoodLoss : bikeOnly ? rules.MinorMoodLoss / 3 : rules.MinorMoodLoss));
+        // First aid: a minor crash hurts more without anyone to patch the rider up.
+        int minorLoss = (int)((long)rules.MinorMoodLoss * Staff.StaffMath.MinorCrashMoodPermille(state) / 1000);
+        guest.Happiness = Math.Max(0, guest.Happiness - (serious ? rules.SeriousMoodLoss : bikeOnly ? rules.MinorMoodLoss / 3 : minorLoss));
 
         if (network.FindWay(wayId) is { } way)
         {
@@ -649,7 +651,9 @@ internal sealed class RiderSystem : ISimSystem
         if (serious)
         {
             guest.Activity = RiderActivity.Injured;
-            guest.RescueAtTick = ctx.Tick + ctx.Rng.Range(rules.HelicopterMinMinutes, rules.HelicopterMaxMinutes + 1);
+            // First aid on site keeps the wait short; without it the helicopter takes up to twice as long.
+            int wait = ctx.Rng.Range(rules.HelicopterMinMinutes, rules.HelicopterMaxMinutes + 1);
+            guest.RescueAtTick = ctx.Tick + (long)wait * Staff.StaffMath.RescueWaitPermille(state) / 1000;
             traffic.Track(guest);
             ctx.Publish(new HelicopterCalled(ctx.Tick, guest.Id, wayId, guest.RescueAtTick));
         }

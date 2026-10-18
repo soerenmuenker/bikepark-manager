@@ -19,7 +19,7 @@ internal sealed partial class TrailInspector : InspectorWindow
 
     public TrailInspector(HudContext ctx, InspectTarget target) : base(ctx, target)
     {
-        _workers = Math.Clamp(ctx.Sim.State.Crew.Count, 1, Math.Max(1, ctx.Sim.State.CrewRules.MaxWorkersPerJob));
+        _workers = Math.Clamp(ctx.Sim.State.Crew.Count, 1, Math.Max(1, ctx.Sim.State.CrewRules.WorkersPerSection));
     }
 
     private WorldState State => Ctx.Sim.State;
@@ -109,7 +109,7 @@ internal sealed partial class TrailInspector : InspectorWindow
         workers.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         workers.AddChild(UiTheme.Button("−", () => _workers = Math.Max(1, _workers - 1), "Fewer workers"));
         workers.AddChild(UiTheme.Label($"{_workers}", 14, bold: true));
-        workers.AddChild(UiTheme.Button("+", () => _workers = Math.Min(State.CrewRules.MaxWorkersPerJob, _workers + 1), "More workers (faster repair)"));
+        workers.AddChild(UiTheme.Button("+", () => _workers = Math.Min(State.CrewRules.WorkersPerSection, _workers + 1), "More workers (faster repair)"));
         workers.AddChild(UiTheme.Button("Repair all", RepairAll, "Send the crew to every worn feature of this trail, the worst first"));
         body.AddChild(workers);
         foreach (var feature in built)

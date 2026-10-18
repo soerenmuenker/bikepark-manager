@@ -4,6 +4,7 @@ using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Facilities;
 using Bikepark.Sim.Sponsors;
+using Bikepark.Sim.Staff;
 using Bikepark.Sim.State;
 using Godot;
 
@@ -35,7 +36,7 @@ public partial class FinancePanel : HudPanel
         new("Bikes", [MoneyCategory.BikeCosts], [MoneyCategory.Rentals, MoneyCategory.Repairs],
             "Bike rentals and repairs · parts and upkeep of rental stations and service shops (new fleet bikes are one-offs)"),
         new("Crew", [MoneyCategory.Wages], [], "Daily wages of your crew (Crew menu: hire and dismiss)"),
-        new("Park staff", [MoneyCategory.ParkStaff], [], "Ticket office, first aid and cleaning: every day, open or not"),
+        new("Park staff", [MoneyCategory.ParkStaff], [], "Managers, ticket office, first aid, cleaning and marketing: every day, open or not (Crew menu → Park staff)"),
         new("Loans", [], [], "Weekly installments of your running loans, per day", Loans: true),
     ];
 
@@ -102,8 +103,8 @@ public partial class FinancePanel : HudPanel
         _places = new VBoxContainer();
         _places.AddThemeConstantOverride("separation", 2);
         left.AddChild(_places);
-        var hint = UiTheme.Label("Prices are set where they apply: entrance and parking fee in the park window (click the park name in the bar), " +
-                                 "the lift pass in a lift's window, food, drinks and shop prices in the building's window.", 11, UiTheme.TextDim);
+        var hint = UiTheme.Label("Prices are set where they apply: entrance fee, lift pass and parking fee in the Park menu [H], " +
+                                 "food, drinks and shop prices in the building's window.", 11, UiTheme.TextDim);
         hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         hint.CustomMinimumSize = new Vector2(560, 0);
         left.AddChild(hint);
@@ -141,6 +142,23 @@ public partial class FinancePanel : HudPanel
             var income = new BudgetBar { Color = UiTheme.Good, CustomMinimumSize = new Vector2(BarWidth, 22), Empty = line.Income.Length == 0 };
             row.AddChild(expense);
             row.AddChild(income);
+            // Where the money of a line is managed: a click takes you there.
+            (Hud.Menu Menu, string Focus)? manage = line.Name switch
+            {
+                "Crew" => (Hud.Menu.Crew, "workers"),
+                "Park staff" => (Hud.Menu.Crew, "staff"),
+                "Entrance" or "Parking & camping" => (Hud.Menu.Park, "arrivals"),
+                _ => null,
+            };
+            if (manage is { } target)
+            {
+                row.MouseFilter = MouseFilterEnum.Stop;
+                row.MouseDefaultCursorShape = CursorShape.PointingHand;
+                row.GuiInput += e =>
+                {
+                    if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }) Ctx.ShowMenu(target.Menu, target.Focus);
+                };
+            }
             left.AddChild(row);
             _rows.Add((line, row, expense, income));
         }
@@ -322,7 +340,12 @@ public partial class FinancePanel : HudPanel
             var (line, row, expense, income) = _rows[i];
             expense.Set(values[i].Expense, max, line.Loans ? "/day" : "");
             income.Set(values[i].Income, max, "");
-            row.TooltipText = Tooltip(state, line, money);
+            row.TooltipText = Tooltip(state, line, money) + line.Name switch
+            {
+                "Crew" or "Park staff" => "\nClick to manage them (Crew menu)",
+                "Entrance" or "Parking & camping" => "\nClick to set the fees (Park menu)",
+                _ => "",
+            };
         }
         long expenses = values.Sum(v => v.Expense), incomes = values.Sum(v => v.Income);
         _expenseTotal.Text = $"−{UiTheme.Money(expenses)}";
@@ -534,7 +557,7 @@ public partial class FinancePanel : HudPanel
         "Parking & camping" => state.ParkingLots.Count > 0 || state.FacilityTypes.Any(t => t.Kind == FacilityKind.Campground),
         "Bikes" => state.FacilityTypes.Any(t => t.Kind is FacilityKind.Rental or FacilityKind.Service),
         "Sponsors & media" => state.SponsorTypes.Count > 0,
-        "Park staff" => state.Rules.DailyUpkeepCents > 0,
+        "Park staff" => state.StaffRules.Enabled || state.Rules.DailyUpkeepCents > 0,
         "Loans" => state.LoanRules.Offers.Count > 0 || state.Loans.Count > 0,
         _ => true,
     };
@@ -548,6 +571,9 @@ public partial class FinancePanel : HudPanel
         var parts = line.Income.Concat(line.Expenses).Select(c => $"{CategoryName(c)} {UiTheme.Money(Ledger.Get(money, c))}");
         if (line.Loans)
             parts = state.Loans.Select(l => $"{l.Name}: {UiTheme.Money(l.InstallmentCents)} a week, {UiTheme.Money(l.RemainingCents)} still owed");
+        if (line.Name == "Park staff" && state.StaffRules.Enabled)
+            parts = parts.Concat(state.StaffRoles.Where(r => StaffMath.Count(state, r.Id) > 0)
+                .Select(r => $"{r.Name} ×{StaffMath.Count(state, r.Id)}: {UiTheme.Money(StaffMath.Count(state, r.Id) * r.WagePerDayCents)}"));
         string body = string.Join(" · ", parts);
         return line.Hint + (body.Length > 0 ? "\n" + body : "");
     }
@@ -575,7 +601,7 @@ public partial class FinancePanel : HudPanel
         MoneyCategory.ShopUpkeep => "shop upkeep",
         MoneyCategory.MerchGoods => "goods",
         MoneyCategory.Wages => "wages",
-        MoneyCategory.ParkStaff => "base staff",
+        MoneyCategory.ParkStaff => "park staff",
         _ => c.ToString(),
     };
 

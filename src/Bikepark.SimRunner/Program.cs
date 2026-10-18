@@ -148,6 +148,7 @@ public static class Program
             Ways: WayReports(sim),
             Lifts: LiftReports(sim),
             Crew: CrewReport(sim, completed),
+            Staff: StaffReport(sim),
             GuestsLeft: leaveReasons,
             TurnedAway: turnedAway.GroupBy(r => r).OrderBy(g => g.Key).ToDictionary(g => g.Key.ToString(), g => g.Count()),
             RejectedCommands: rejections.Select(r => new RejectedCommand(r.Tick, r.Command, r.Reason)).ToList(),
@@ -323,7 +324,7 @@ public static class Program
             foreach (var feature in trail.Features)
                 if (feature.Built && feature.Condition / 1000 < state.WearRules.WarnBelowPermille
                     && Bikepark.Sim.Crew.Jobs.ForRepair(state, feature.Id) is null)
-                    sim.Commands.Enqueue(new RepairFeatureCommand(trail.Id, feature.Id, state.CrewRules.MaxWorkersPerJob));
+                    sim.Commands.Enqueue(new RepairFeatureCommand(trail.Id, feature.Id, state.CrewRules.WorkersPerSection));
     }
 
     private static List<WayReport> WayReports(Simulation sim) => sim.State.Ways.Select(w =>
@@ -378,7 +379,24 @@ public static class Program
             state.Finance.TotalToolsCents + state.Finance.TotalWoodCents,
             completed,
             state.Jobs.Select(j => $"{Jobs.Title(state, j)}: {WorkCosts.ProgressPermille(rules, j) / 10} %" +
-                                   (!Bikepark.Sim.Systems.JobSystem.IsWorkable(state, j) ? " (waiting)" : Jobs.IsWaitingForRiders(state, j) ? " (waiting for riders)" : "")).ToList());
+                                   $" ({state.Crew.Count(m => m.JobId == j.Id)}/{Bikepark.Sim.Systems.JobSystem.WorkerLimit(state, j)} workers)" +
+                                   (!Bikepark.Sim.Systems.JobSystem.IsWorkable(state, j) ? " (waiting)" : Jobs.IsWaitingForRiders(state, j) ? " (waiting for riders)" : "")).ToList(),
+            state.Crew.Select(m => new CrewMemberReport(m.Name, m.GradeId, m.SpeedPermille, m.WagePerDayCents, Math.Round(m.MinutesWorked / 60.0, 1))).ToList(),
+            state.Applicants.Select(a => new CrewMemberReport(a.Name, a.GradeId, a.SpeedPermille, a.WagePerDayCents, 0)).ToList());
+    }
+
+    private static StaffReport? StaffReport(Simulation sim)
+    {
+        var state = sim.State;
+        if (!state.StaffRules.Enabled) return null;
+        return new StaffReport(
+            state.StaffRoles.Select(r => new StaffRoleReport(r.Id, Bikepark.Sim.Staff.StaffMath.Count(state, r.Id),
+                Bikepark.Sim.Staff.StaffMath.Need(state, r.Effect), Bikepark.Sim.Staff.StaffMath.CoveragePermille(state, r.Effect),
+                Bikepark.Sim.Staff.StaffMath.Count(state, r.Id) * r.WagePerDayCents)).ToList(),
+            Bikepark.Sim.Staff.StaffMath.WagesPerDay(state),
+            Bikepark.Sim.Staff.StaffMath.SupervisionPermille(state),
+            Bikepark.Sim.Staff.StaffMath.MarketingPermille(state),
+            state.Stats.TotalTurnedAwayTicketQueue);
     }
 
     private static List<LiftReport> LiftReports(Simulation sim)
@@ -503,7 +521,16 @@ internal sealed record CrewReport(
     long WagesCents,
     long ToolsAndWoodCents,
     List<string> JobsCompleted,
-    List<string> JobsOpen);
+    List<string> JobsOpen,
+    List<CrewMemberReport> Members,
+    List<CrewMemberReport> Applicants);
+
+internal sealed record CrewMemberReport(string Name, string Grade, int SpeedPermille, long WagePerDayCents, double HoursWorked);
+
+internal sealed record StaffRoleReport(string Role, int Count, long Need, int CoveragePermille, long WagesPerDayCents);
+
+internal sealed record StaffReport(List<StaffRoleReport> Roles, long WagesPerDayCents, int SupervisionPermille, int MarketingDemandPermille,
+    long TurnedAwayAtTicketQueue);
 
 internal sealed record WayReport(
     int Id,
@@ -574,6 +601,7 @@ internal sealed record RunnerOutput(
     List<WayReport> Ways,
     List<LiftReport> Lifts,
     CrewReport? Crew,
+    StaffReport? Staff,
     Dictionary<string, int> GuestsLeft,
     Dictionary<string, int> TurnedAway,
     List<RejectedCommand> RejectedCommands,

@@ -1,0 +1,21 @@
+// Park staff roles (StaffRole). The park employs a number of each (Crew menu → Park staff); each is paid
+// wagePerDayCents at the end of every day. coversPer: what one of them looks after –
+//   supervision (park manager): people (staff and crew beyond staffRules.freeHeadcount); too few managers and everyone
+//     else works worse (down to staffRules.supervisionFloorPermille);
+//   tickets (ticket office): visitors a day; too few and arrivals queue (mood) or turn back;
+//   firstAid: built trails and lifts in service; too few and the helicopter takes longer, minor crashes hurt more;
+//   cleaning: visitors a day (each building counts as staffRules.facilityCleaningVisitors); too few and mood sinks;
+//   marketing: demand in permille for the first marketer (n of them: 2n/(n+1) times that).
+// maxCount: the most the park can employ; requiredLevel: the park level needed to employ any.
+[
+  { "id": "manager", "name": "Park manager", "effect": "supervision", "wagePerDayCents": 50000, "coversPer": 8, "maxCount": 5, "requiredLevel": 0,
+    "description": "Runs the park: supervises staff and crew. Too few managers and everyone works worse." },
+  { "id": "ticket_office", "name": "Ticket office", "effect": "tickets", "wagePerDayCents": 18000, "coversPer": 100, "maxCount": 10, "requiredLevel": 0,
+    "description": "Sells day tickets at the entrance. Too few and guests queue on arrival, some turn back." },
+  { "id": "first_aid", "name": "First aid", "effect": "firstAid", "wagePerDayCents": 24000, "coversPer": 2, "maxCount": 10, "requiredLevel": 0,
+    "description": "Paramedics on the trails and at the lifts. Too few and the injured wait longer for the helicopter." },
+  { "id": "cleaning", "name": "Cleaning", "effect": "cleaning", "wagePerDayCents": 15000, "coversPer": 80, "maxCount": 15, "requiredLevel": 0,
+    "description": "Keeps the park, toilets and buildings clean. Too few and guests' mood sinks all day." },
+  { "id": "marketing", "name": "Marketing", "effect": "marketing", "wagePerDayCents": 30000, "coversPer": 100, "maxCount": 4, "requiredLevel": 2,
+    "description": "Ads, social media and events: more guests come (less with every extra marketer)." }
+]

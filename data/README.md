@@ -41,10 +41,19 @@ size per space, station reach, pad cut/fill limit and embankment gradient, queue
 and the routing costs of a lift minute and a queue minute.
 
 `toolsFile` (e.g. `../tools.json`) loads the tool catalog; `toolTypes` can also be given inline. `crewRules`
-(`CrewRules`, all optional): `wagePerDayCents`, `maxCrew`, `maxWorkersPerJob`, `workStartMinute`/`workEndMinute`,
+(`CrewRules`, all optional): `wagePerDayCents` (a standard worker), `sectionMeters`/`workersPerSection` (no crew limit:
+a way is built in sections, each by up to `workersPerSection` workers at once; features, repairs and signs are one spot),
+`grades` (`id`, `name`, `speedPermille`, `wagePerDayCents`, `weight`: applicants come in these grades, a fresh list of
+`applicantCount` at every opening, speed and wage ± `applicantSpreadPermille`; none: every hire is a standard worker),
 `trailWorkMinutesPerMeter`/`pathWorkMinutesPerMeter` (crew-minutes at base speed), `steepExtraPermille`,
 `fellMinutesPerTree`, `repairWorkPermille`, `woodPerTree`, `woodPriceCents`, `min/maxClearingRadiusMeters`. `startingWood`: wood in stock at
 the start.
+
+`staffFile` (e.g. `../staff_roles.json`) loads the park staff roles (`StaffRole`: `id`, `name`, `description`, `effect`
+= supervision | tickets | firstAid | cleaning | marketing, `wagePerDayCents`, `coversPer`, `maxCount`, `requiredLevel`);
+`staffRoles` can also be given inline. `staffRules` (`StaffRules`): `enabled` (off: the flat `rules.dailyUpkeepCents` is
+paid instead), `start` (`[{roleId, count}]`), `freeHeadcount`, `supervisionFloorPermille`, `ticketTurnAwayPermille`,
+`ticketQueueMood`, `minorCrashExtraMoodPermille`, `cleaningMoodPerMinute`, `facilityCleaningVisitors`.
 
 Starter Valley's tick-0 `commands` build what is already there: the gondola (`buildLift` with
 `operatorId`/`initialTier`), the valley parking (`buildParkingLot`) and the old hiking route (`buildWay` with

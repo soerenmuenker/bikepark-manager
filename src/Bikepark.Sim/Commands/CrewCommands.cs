@@ -5,32 +5,64 @@ using Bikepark.Sim.State;
 
 namespace Bikepark.Sim.Commands;
 
-/// <summary>Hires a worker (paid <see cref="CrewRules.WagePerDayCents"/> at the end of every day). No name: "Worker n".</summary>
-public sealed record HireCrewCommand(string? Name = null) : ICommand
+/// <summary>
+/// Hires a worker, paid their wage at the end of every day. With <see cref="ApplicantId"/>: that applicant (their grade,
+/// speed and wage; they leave the list). Without: a standard worker at <see cref="CrewRules.WagePerDayCents"/> and base
+/// speed. No name: the applicant's, or "Worker n". There is no limit to the crew's size.
+/// </summary>
+public sealed record HireCrewCommand(string? Name = null, int ApplicantId = 0) : ICommand
 {
     public const int MaxNameLength = 30;
 
     public string? Validate(SimContext ctx)
     {
-        if (ctx.State.Crew.Count >= ctx.State.CrewRules.MaxCrew) return $"The crew is full ({ctx.State.CrewRules.MaxCrew} workers).";
         if (Name is { Length: > MaxNameLength }) return $"Name cannot exceed {MaxNameLength} characters.";
+        if (ApplicantId != 0 && ctx.State.Applicants.All(a => a.Id != ApplicantId)) return "That applicant has found another job.";
         return null;
     }
 
     public void Apply(SimContext ctx)
     {
         var state = ctx.State;
+        var applicant = state.Applicants.FirstOrDefault(a => a.Id == ApplicantId);
         string name = Name?.Trim() ?? "";
+        if (name.Length == 0) name = applicant?.Name ?? "";
         if (name.Length == 0)
         {
             int n = 1;
             while (state.Crew.Any(m => m.Name == $"Worker {n}")) n++;
             name = $"Worker {n}";
         }
-        var member = new CrewMember { Id = state.AllocateEntityId(), Name = name };
+        var member = new CrewMember
+        {
+            Id = state.AllocateEntityId(),
+            Name = name,
+            GradeId = applicant?.GradeId ?? "",
+            SpeedPermille = applicant?.SpeedPermille ?? WorkCosts.BaseSpeedPermille,
+            WagePerDayCents = applicant?.WagePerDayCents ?? state.CrewRules.WagePerDayCents,
+            HiredTick = ctx.Tick,
+        };
+        if (applicant is not null) state.Applicants.Remove(applicant);
         state.Crew.Add(member);
         ctx.Publish(new CrewHired(ctx.Tick, member.Id));
     }
+}
+
+/// <summary>
+/// How many workers a job may have at most (0 = as many as the work allows, <see cref="Systems.JobSystem.AutoLimit"/>).
+/// Fewer workers leave the rest free for the next jobs in the queue.
+/// </summary>
+public sealed record SetJobWorkersCommand(int JobId, int Workers) : ICommand
+{
+    public const int MaxWorkers = 1000;
+
+    public string? Validate(SimContext ctx)
+    {
+        if (Jobs.Find(ctx.State, JobId) is null) return "No such job.";
+        return Workers is < 0 or > MaxWorkers ? $"Set 0 (as many as possible) to {MaxWorkers} workers." : null;
+    }
+
+    public void Apply(SimContext ctx) => Jobs.Find(ctx.State, JobId)!.Workers = Workers;
 }
 
 /// <summary>Lets a worker go (no more wages from the end of this day); their job carries on with the others.</summary>

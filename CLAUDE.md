@@ -31,8 +31,11 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     no overtaking on trails (`TrailTraffic`: gap to the rider ahead, held-up riders lose mood; a short wait at each
     trail entrance where faster riders go first)
   - `Systems/LiftSystem.cs` – booked bike access tiers at opening, carrier dispatch, boarding bike cabins from the FIFO queue
-  - `Crew/` – `CrewRules`/`ToolType` (content), `CrewMember`/`Job` (state), `WorkCosts` (all work/wood/speed numbers),
+  - `Crew/` – `CrewRules`/`CrewGrade`/`ToolType` (content), `CrewMember`/`Applicant`/`Job` (state), `WorkCosts` (all work/wood/speed
+    numbers, `ToolAssignments`: who uses which tool, `SectionsLeft`),
     `Forest` (which scatter trees are gone or claimed), `ClearingPlanner` (felling areas), `Jobs` (queue/cancel/complete)
+  - `Staff/` – `StaffRole`/`StaffRules` (content: `data/staff_roles.json`), `StaffPosition` (state), `StaffMath` (need, coverage,
+    effects, wages); `Commands/StaffCommands.cs` (`SetStaffCommand`); `Systems/StaffSystem.cs` (`JobMarket`: applicants per day)
   - `Systems/JobSystem.cs` – the crew at work: assigns workers to jobs in priority order, fells trees (wood), builds planned ways and features;
     only during opening hours (no shift or overtime of its own)
   - `Weather/` – `WeatherRules`/`WeatherState`/`DayWeather` (daily seeded forecast, ground wetness), `Systems/WeatherSystem.cs`
@@ -170,6 +173,21 @@ tools/release/export.sh 0.1.0
     then id; derived, never saved); a worker without one works at base speed. Tools wear per worked minute and are gone at
     `ToolType.LifeMinutes` (`ToolWornOut`). Estimates: `WorkCosts.CrewSpeedPermille`. `BuyToolCommand` buys one more
     (`ToolType.RequiredLevel`).
+14h. **Park staff and crew grades** (`Staff/`, off by default; Starter Valley turns it on): roles (content) employed in numbers
+    (`WorldState.Staff`, `SetStaffCommand`, ≤ `MaxCount`, `RequiredLevel`); wages are `MoneyCategory.ParkStaff` (staff off: the
+    flat `ParkRules.DailyUpkeepCents`). `StaffMath` derives need (yesterday's or today's visitors, built trails + lifts in service,
+    buildings, head count beyond `FreeHeadcount`) and coverage (count × `CoversPer` / need; non-manager roles × supervision,
+    floored at `SupervisionFloorPermille`). Effects: supervision scales the crew's speed (`WorkCosts.WorkerSpeedPermille`); ticket
+    shortage turns arrivals back (`TurnAwayReason.TicketQueue`) and costs arrival mood; first-aid shortage stretches the helicopter
+    wait (up to 2×, one RNG draw as before) and minor-crash mood; cleaning shortage costs mood every n-th minute (no RNG);
+    marketing multiplies arrivals (`MarketingPermille`, 2n/(n+1)). **Crew:** no size limit. Workers keep their own
+    `SpeedPermille` and `WagePerDayCents` (set at hire). With `CrewRules.Grades`, `JobMarket.Roll` (at world creation and each
+    opening) fills `WorldState.Applicants` from its own `SimRandom` stream (seed ^ day; ids are day × 100 + slot, not entity
+    ids, so the guests' RNG and the scenario's ids never shift); `HireCrewCommand(ApplicantId)` hires one, without an id a
+    standard worker. **Workers per job:** `JobSystem.AutoLimit` = `WorkersPerSection` per section still to dig
+    (`WorkCosts.SectionsLeft`, `SectionMeters` of work each, derived from progress) for ways, one per standing tree while felling,
+    `WorkersPerSection` for one-spot jobs; `Job.Workers` (`SetJobWorkersCommand`, 0 = auto) caps it. Tools are handed out by
+    `WorkCosts.ToolAssignments` (`JobSystem` and the UI use the same function).
 14b. **Running costs grow with the park:** `FinanceSystem` charges each building's upkeep. There is no trail upkeep (the
     crew's wages pay for keeping the trails up) and no accident insurance (crashes cost mood, closures and reviews, rule 18).
 14c. **Bars and shops** (`Facilities/`, Phase 9.1, `docs/design/economy.md`): placed anywhere on the park's land with a built
@@ -357,17 +375,19 @@ career, or play the Demo (sandbox, demo trails built, never saved; started from 
 (`game/scripts/CareerStore.cs`: `user://careers/<id>.json` + `<id>.meta.json`, on macOS in
 `~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`), when the window closes / the game quits
 (`SimHost._ExitTree`, WM close) and on System menu → Save & back to menu; there is no manual save. Saves are written
-atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · C crew · R riders · G lifts · M finances · U rating
+atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · H park (entrance fee, lift pass, parking fee and lots, beer hours, staff
+summary, opening hours) · C crew (tabs Workers: each worker's grade, speed, wage and job, applicants to hire · Park staff:
+roles with −/+, need, coverage and what a shortage does · Jobs: the queue with −/+ workers per job, wood) · I tools (buy;
+every tool with condition, days left and who uses it) · R riders · G lifts · M finances · U rating
 (reputation: stars per skill group and what they value, demand, park level, FakeSocial posts) · N land (parcels: buy,
 level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (display only: hover for a breakdown) · click on things in the world (no build tool active;
 `scripts/ui/WorldPicker.cs`, hover: hand cursor + a tip naming it): a rider → follow, a worker → Crew menu at their job,
-a building, lift station / line or trail (a feature: its Features tab) → its **window**, a parking lot → the park window
-(Arrivals), a planned way → Crew menu at its job, land for sale → Land menu at the parcel; menus scroll to and highlight
+a building, lift station / line or trail (a feature: its Features tab) → its **window**, a parking lot → the Park menu, a planned way → Crew menu at its job, land for sale → Land menu at the parcel; menus scroll to and highlight
 the item (`HudPanel.Focus`) · **windows** (RollerCoaster Tycoon style, drag by the header, up to 3 open, Esc closes the top
 one, ◎ shows it on the map): building (Overview · Prices (park-wide, per product it sells) · Fleet (rental) · Upgrades ·
 Finances · Reviews · Info), lift (Overview · Bike access · Finances (lift pass) · Reviews · Info), trail (Overview ·
-Features (repairs, cameras, clip price) · Safety · Sponsor · Reviews), park (click the park name in the bar: Arrivals
-(entrance and parking fee) · Drinks (beer hours) · Info); the Trails and Lifts menus link to them · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
+Features (repairs, cameras, clip price) · Safety · Sponsor · Reviews); clicking the park name in the bar opens the Park menu;
+the Trails and Lifts menus link to them · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
 P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter finishes it: a trail asks for its name
 in a pop-up (not when it continues a trail), then it is planned for the crew; Esc cancel; preview colored by gradient, tool
@@ -375,13 +395,13 @@ panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's end
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
 Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu (trails only, gravel paths aren't listed) per trail: worst feature, click the trail (or Open…) for its window, Rename, Close/Open ·
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →
-Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire/dismiss, tools, buy wood, job queue (↑ first,
+Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire applicants / dismiss, park staff, buy wood, job queue (−/+ workers, ↑ first,
 ✕ cancel) · System menu: Instant build (debug) · F follow next rider, or click a rider to follow it (a card at the top left shows
 their stats; ✕ or panning stops following; influencers wear pink; injured riders: red and lying (serious: they
 block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--new-career=<park name>` / `--career=<id>` (start or continue a career, saved on quit), `--list-careers`, `--scenario=<demo|starter|file>` (default the Demo; skips the start screen like `--demo`, `--script=`, `--advance=`), `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
-`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-welcome` (the Demo's welcome pop-up, normally only when started from the start screen), `--demo-crew`, `--instant`, `--panel=<menu>[:<focus>]` (e.g. `reputation:reviews`), `--inspect=<facility|lift|trail|park>:<id>[:<tab>]` (open a window; id 0 = the first one), `--hover=<x>,<y>` (rest the mouse there, screen pixels, to screenshot a hover tip), `--tool=<trail|path|fell|lift|parking|platform|renaturalize|featureId>`, `--rename=<wayId>` (opens the rename pop-up), `--pick=<x>,<z>` (after 2 s points the mouse at that spot, meters, and clicks it), `--look=<x>,<z>,<distance>` (camera focus, meters),
+`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-welcome` (the Demo's welcome pop-up, normally only when started from the start screen), `--demo-crew`, `--instant`, `--panel=<menu>[:<focus>]` (e.g. `reputation:reviews`), `--inspect=<facility|lift|trail>:<id>[:<tab>]` (open a window; id 0 = the first one), `--hover=<x>,<y>` (rest the mouse there, screen pixels, to screenshot a hover tip), `--tool=<trail|path|fell|lift|parking|platform|renaturalize|featureId>`, `--rename=<wayId>` (opens the rename pop-up), `--pick=<x>,<z>` (after 2 s points the mouse at that spot, meters, and clicks it), `--look=<x>,<z>,<distance>` (camera focus, meters),
 `--features=<wayId>` (open the feature overview), `--follow` (follow the first rider, shows the rider card), `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
 (queue a command script, before `--advance`), `--no-night-skip`
 (turn off the automatic night skip, e.g. for screenshots at night with `--speed=0`).

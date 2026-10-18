@@ -113,10 +113,19 @@ internal static class StatTips
     {
         var state = ctx.Sim.State;
         int working = state.Crew.Count(c => c.JobId != 0);
-        return $"Crew: {state.Crew.Count} workers\n\n" +
+        string staff = "";
+        if (state.StaffRules.Enabled)
+        {
+            staff = $"• Park staff {Bikepark.Sim.Staff.StaffMath.Headcount(state)}: {UiTheme.Money(Bikepark.Sim.Staff.StaffMath.WagesPerDay(state))} a day\n";
+            var short_ = state.StaffRoles.Where(r => r.Effect != Bikepark.Sim.Staff.StaffEffect.Marketing)
+                .Select(r => (Role: r, Coverage: Bikepark.Sim.Staff.StaffMath.CoveragePermille(state, r.Effect)))
+                .Where(x => x.Coverage < 1000).OrderBy(x => x.Coverage).FirstOrDefault();
+            if (short_.Role is { } role) staff += $"• Short of staff: {role.Name.ToLowerInvariant()} ({short_.Coverage / 10} % covered)\n";
+        }
+        return $"Crew: {state.Crew.Count} workers · {UiTheme.Money(state.Crew.Sum(m => m.WagePerDayCents))} a day\n\n" +
                $"• Working {working}, idle {state.Crew.Count - working}\n" +
-               $"• Jobs waiting {state.Jobs.Count}\n\n" +
-               "They work during opening hours only. Hire and plan: Crew [C]";
+               $"• Jobs waiting {state.Jobs.Count}\n" + staff + "\n" +
+               "They work during opening hours only. Hire, staff and plan: Crew [C]";
     }
 
     public static string Wood(HudContext ctx)
