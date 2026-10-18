@@ -58,6 +58,8 @@ public partial class Hud : CanvasLayer
     private double _refreshTimer;
     private readonly List<IDisposable> _subscriptions = [];
 
+    private Label _saveText = null!;
+    private Control _saveBox = null!;
     private Label _parkName = null!, _clock = null!, _openState = null!, _weather = null!;
     private Label _moneyValue = null!, _guestsValue = null!, _moodValue = null!, _queueValue = null!, _crewValue = null!, _woodValue = null!;
     private IconView _moodIcon = null!, _ratingIcon = null!;
@@ -109,7 +111,6 @@ public partial class Hud : CanvasLayer
         BuildUi();
         _ctx.Host.SimulationReplaced += Subscribe;
         Subscribe(_ctx.Sim);
-        _ctx.Host.CareerSaved += OnCareerSaved;
         _ctx.TrailEdit = new TrailEditTool(_ctx.Host, _ctx.Terrain, _ctx.Camera);
         GetParent().CallDeferred(Node.MethodName.AddChild, _ctx.TrailEdit);
         _land = new LandView(_ctx.Host, _ctx.Terrain, () => _ctx.Kpi.Level);
@@ -177,7 +178,6 @@ public partial class Hud : CanvasLayer
     public override void _ExitTree()
     {
         _ctx.Host.SimulationReplaced -= Subscribe;
-        _ctx.Host.CareerSaved -= OnCareerSaved;
         foreach (var s in _subscriptions) s.Dispose();
     }
 
@@ -363,7 +363,15 @@ public partial class Hud : CanvasLayer
             _speedButtons.Add(button);
         }
         speeds.AddChild(new RoundButton(UiIcon.Skip, 26, "", "Skip to opening hours", _ctx.Host.SkipToOpeningHours));
+        _saveBox = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        _saveBox.AddThemeConstantOverride("separation", 4);
+        _saveBox.AddChild(new RoundButton(UiIcon.Save, 20, "", "Save now\nThe game also saves by itself every minute.", SaveNow));
+        _saveText = UiTheme.Label("", 11, UiTheme.TextDim);
+        _saveText.MouseFilter = Control.MouseFilterEnum.Stop;
+        _saveText.CustomMinimumSize = new Vector2(120, 0);
+        _saveBox.AddChild(_saveText);
         box.AddChild(speeds);
+        box.AddChild(_saveBox);
         return block;
     }
 
@@ -578,8 +586,38 @@ public partial class Hud : CanvasLayer
         }
     }
 
+    private void SaveNow()
+    {
+        if (_ctx.Host.SaveCareer()) Toast("Career saved", UiTheme.Good);
+        else if (_ctx.Host.SaveError is { } error) Toast($"Saving failed: {error}", UiTheme.Warn);
+    }
+
+    private void UpdateSaveText()
+    {
+        var host = _ctx.Host;
+        _saveBox.Visible = host.CurrentCareerId is not null;
+        if (!_saveBox.Visible) return;
+        string text;
+        Color color = UiTheme.TextDim;
+        if (host.SaveError is not null)
+        {
+            text = "SAVE FAILED";
+            color = UiTheme.Warn;
+            _saveText.TooltipText = host.SaveError;
+        }
+        else
+        {
+            long seconds = host.LastSavedMsec < 0 ? -1 : ((long)Time.GetTicksMsec() - host.LastSavedMsec) / 1000;
+            text = seconds < 0 ? "Not saved yet" : seconds < 10 ? "Saved just now" : seconds < 60 ? $"Saved {seconds} s ago" : $"Saved {seconds / 60} min ago";
+            _saveText.TooltipText = $"Autosave every {(int)SimHost.AutosaveIntervalSeconds} s while the game runs.";
+        }
+        _saveText.Text = text;
+        _saveText.AddThemeColorOverride("font_color", color);
+    }
+
     private void UpdateClock()
     {
+        UpdateSaveText();
         var state = _ctx.Sim.State;
         _parkName.Text = Bikepark.Sim.Sponsors.SponsorMath.ParkTitle(state).ToUpperInvariant();
         _clock.Text = $"Day {GameTime.Day(state.Tick) + 1}  {GameTime.Format(state.Tick)[^5..]}";
@@ -1030,11 +1068,6 @@ public partial class Hud : CanvasLayer
         _subscriptions.Add(events.Subscribe<ParkingLotBuilt>(_ => Toast("Built a parking lot", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessBooked>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: true), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<BikeAccessChanged>(e => Toast(TierText(e.LiftId, e.TierIndex, booked: false), UiTheme.Accent)));
-    }
-
-    private void OnCareerSaved(CareerInfo info)
-    {
-        if (IsInsideTree()) Toast($"Career saved: {info.ParkName}, day {info.Day + 1}", UiTheme.Good);
     }
 
     /// <summary>Toast about built trails that aren't connected (closed until they are).</summary>

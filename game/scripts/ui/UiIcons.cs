@@ -17,6 +17,7 @@ public enum UiIcon
     Play3,
     Play4,
     Skip,
+    Save,
     Menu,
     Person,
     Mood,
@@ -136,6 +137,15 @@ internal static class UiIcons
             case UiIcon.Skip:
                 Poly(0.22f, 0.28f, 0.58f, 0.5f, 0.22f, 0.72f);
                 ci.DrawRect(new Rect2(P(0.64f, 0.28f), new Vector2(0.12f, 0.44f) * s), color);
+                break;
+            case UiIcon.Save: // floppy disk
+                Poly(0.22f, 0.20f, 0.68f, 0.20f, 0.80f, 0.32f, 0.80f, 0.80f, 0.22f, 0.80f);
+                Line(0.34f, 0.20f, 0.34f, 0.38f);
+                Line(0.34f, 0.38f, 0.62f, 0.38f);
+                Line(0.62f, 0.38f, 0.62f, 0.20f);
+                Line(0.34f, 0.80f, 0.34f, 0.58f);
+                Line(0.34f, 0.58f, 0.68f, 0.58f);
+                Line(0.68f, 0.58f, 0.68f, 0.80f);
                 break;
             case UiIcon.Menu:
                 Line(0.24f, 0.32f, 0.76f, 0.32f);

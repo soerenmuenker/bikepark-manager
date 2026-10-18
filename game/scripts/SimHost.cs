@@ -157,6 +157,7 @@ public partial class SimHost : Node
 
     public override void _Process(double delta)
     {
+        Autosave(delta);
         if (AutoSkipNights && Speed > 0 && !IsSkipping && ParkSchedule.IsQuiet(Sim.State, Sim.State.Tick))
             StartSkip(ParkSchedule.NextWakeTick(Sim.State, Sim.State.Tick), NightSkipTicksPerSecond, SpeedIndex, night: true);
 
@@ -305,8 +306,29 @@ public partial class SimHost : Node
     /// <summary>The career being played (its save file id), or null (the Demo, which is never saved).</summary>
     public string? CurrentCareerId { get; private set; }
 
-    /// <summary>Raised after the career was saved (back to the menu, quitting).</summary>
+    /// <summary>Raised after the career was saved (autosave, the save button, back to the menu, quitting).</summary>
     public event Action<CareerInfo>? CareerSaved;
+
+    /// <summary>The career is saved by itself this often (real seconds), as long as the game moved on since the last save.</summary>
+    public const double AutosaveIntervalSeconds = 60;
+
+    /// <summary>When the career was last saved (<see cref="Time.GetTicksMsec"/>), or -1 if not in this session.</summary>
+    public long LastSavedMsec { get; private set; } = -1;
+
+    /// <summary>Set when the last save attempt failed (disk full, no rights): the HUD shows it.</summary>
+    public string? SaveError { get; private set; }
+
+    private double _sinceSave;
+    private long _savedTick = -1;
+
+    private void Autosave(double delta)
+    {
+        if (CurrentCareerId is null || ShowStartScreen || Sim is null) return;
+        _sinceSave += delta;
+        if (_sinceSave < AutosaveIntervalSeconds) return;
+        _sinceSave = 0;
+        if (Sim.State.Tick != _savedTick) SaveCareer();
+    }
 
     /// <summary>Starts a new Starter Valley career with this park name and saves it at once (so it is in the list).</summary>
     public void NewCareer(string parkName)
@@ -327,6 +349,8 @@ public partial class SimHost : Node
     {
         ReplaceSimulation(new Simulation(CareerStore.Load(id)));
         CurrentCareerId = id;
+        LastSavedMsec = -1;
+        _savedTick = Sim.State.Tick;
         ShowStartScreen = false;
         SetSpeedIndex(1);
     }
@@ -335,10 +359,24 @@ public partial class SimHost : Node
     public bool SaveCareer()
     {
         if (CurrentCareerId is not { } id || Sim is null) return false;
-        var info = CareerStore.Save(id, Sim);
-        GD.Print($"Saved career {id} (day {info.Day + 1}) to {CareerStore.Directory}");
-        CareerSaved?.Invoke(info);
-        return true;
+        _sinceSave = 0;
+        try
+        {
+            ulong started = Time.GetTicksMsec();
+            var info = CareerStore.Save(id, Sim);
+            GD.Print($"Saved career {id} (day {info.Day + 1}) to {CareerStore.Directory} in {Time.GetTicksMsec() - started} ms");
+            _savedTick = Sim.State.Tick;
+            LastSavedMsec = (long)Time.GetTicksMsec();
+            SaveError = null;
+            CareerSaved?.Invoke(info);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            SaveError = ex.Message;
+            GD.PushError($"Saving career {id} failed: {ex.Message}");
+            return false;
+        }
     }
 
     /// <summary>Back into the game that waited behind the start screen (the open career), at 1x.</summary>
