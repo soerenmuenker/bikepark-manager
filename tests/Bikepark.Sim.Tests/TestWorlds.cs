@@ -27,7 +27,7 @@ internal static class TestWorlds
         ToolTypes = ToolCatalog(),
         LoanRules = new LoanRules
         {
-            Offers = [new LoanOffer { Id = "starter", Name = "Starter loan", PrincipalCents = 1_000_000, Weeks = 10, InterestPermille = 80 }],
+            Offers = [new LoanOffer { Id = "starter", Name = "Starter loan", PrincipalCents = 1_000_000, Weeks = 10 }],
         },
     };
 

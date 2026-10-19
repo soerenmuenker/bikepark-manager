@@ -418,10 +418,12 @@
   // what is owed. requiredLevel: park level needed to get the loan. One loan of each kind at a time.
   "loanRules": {
     "lateFeePermille": 100,
+    // Interest over the whole term: 8 % for a new, unknown park down to 2 % for a top-rated, high-level one (average of the two); 1 % with a bank sponsor.
+    "bestInterestPermille": 20, "worstInterestPermille": 80, "sponsorInterestPermille": 10,
     "offers": [
-      { "id": "starter", "name": "Starter loan", "principalCents": 1000000, "weeks": 10, "interestPermille": 80, "requiredLevel": 0 },
-      { "id": "bank", "name": "Bank loan", "principalCents": 3000000, "weeks": 20, "interestPermille": 120, "requiredLevel": 3 },
-      { "id": "investor", "name": "Investor loan", "principalCents": 10000000, "weeks": 52, "interestPermille": 180, "requiredLevel": 8 }
+      { "id": "starter", "name": "Starter loan", "principalCents": 1000000, "weeks": 10, "requiredLevel": 0 },
+      { "id": "bank", "name": "Bank loan", "principalCents": 3000000, "weeks": 20, "requiredLevel": 3 },
+      { "id": "investor", "name": "Investor loan", "principalCents": 10000000, "weeks": 52, "requiredLevel": 8 }
     ]
   },
   // Land the park can buy (named parcels; outlines in cm). The old ski hill is yours at the start; the others need the

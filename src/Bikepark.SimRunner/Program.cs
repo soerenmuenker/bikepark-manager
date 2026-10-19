@@ -262,8 +262,8 @@ public static class Program
         if (state.LoanRules.Offers.Count == 0) return null;
         int level = ParkProgress.CurrentLevel(state, sim.Network);
         return new LoansReport(
-            state.LoanRules.Offers.Select(o => new LoanOfferReport(o.Id, o.Name, o.PrincipalCents, o.Weeks, o.InterestPermille,
-                o.InstallmentCents, o.TotalRepayCents, o.RequiredLevel, Bikepark.Sim.Banking.LoanMath.CannotTake(state, level, o))).ToList(),
+            state.LoanRules.Offers.Select(o => new LoanOfferReport(o.Id, o.Name, o.PrincipalCents, o.Weeks, Bikepark.Sim.Banking.LoanMath.InterestPermille(state, sim.Network),
+                Bikepark.Sim.Banking.LoanMath.Terms(state, sim.Network, o).Installment, Bikepark.Sim.Banking.LoanMath.Terms(state, sim.Network, o).Total, o.RequiredLevel, Bikepark.Sim.Banking.LoanMath.CannotTake(state, level, o))).ToList(),
             state.Loans.Select(l => new ActiveLoanReport(l.Id, l.Name, l.PrincipalCents, l.RemainingCents, l.InstallmentCents,
                 l.NextDueDay, l.PaymentsMade, l.MissedPayments)).ToList(),
             state.Finance.TotalBorrowedCents, state.Finance.TotalLoanPaymentsCents, state.Finance.DaysInDebt, state.Park.Bankrupt, log);

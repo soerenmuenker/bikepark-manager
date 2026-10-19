@@ -16,7 +16,7 @@ public class LoanTests
     {
         var scenario = TestWorlds.Scenario();
         scenario.Rules.BaseArrivalPermille = 0;
-        scenario.LoanRules.Offers.Add(new LoanOffer { Id = "bank", Name = "Bank loan", PrincipalCents = 3_000_000, Weeks = 20, InterestPermille = 120, RequiredLevel = 3 });
+        scenario.LoanRules.Offers.Add(new LoanOffer { Id = "bank", Name = "Bank loan", PrincipalCents = 3_000_000, Weeks = 20, RequiredLevel = 3 });
         tweak?.Invoke(scenario);
         return new Simulation(ScenarioLoader.CreateWorld(scenario));
     }
@@ -32,11 +32,31 @@ public class LoanTests
     [Fact]
     public void Offer_SplitsTheAmountPlusInterest_IntoWeeklyInstallments()
     {
-        var offer = new LoanOffer { PrincipalCents = 1_000_000, Weeks = 10, InterestPermille = 80 };
-        Assert.Equal(1_080_000, offer.TotalRepayCents);
-        Assert.Equal(108_000, offer.InstallmentCents);
-        var odd = new LoanOffer { PrincipalCents = 1_000_000, Weeks = 7, InterestPermille = 0 };
-        Assert.Equal(142_900, odd.InstallmentCents); // 1428.57 € rounded up to whole euros
+        var sim = World(s => s.LoanRules.WorstInterestPermille = 80);
+        var offer = new LoanOffer { PrincipalCents = 1_000_000, Weeks = 10 };
+        var (total, installment) = LoanMath.Terms(sim.State, sim.Network, offer);
+        Assert.Equal(1_080_000, total); // a new park: the worst rate
+        Assert.Equal(108_000, installment);
+        var odd = new LoanOffer { PrincipalCents = 1_000_000, Weeks = 7 };
+        sim.State.LoanRules.WorstInterestPermille = sim.State.LoanRules.BestInterestPermille = 0;
+        Assert.Equal(142_900, LoanMath.Terms(sim.State, sim.Network, odd).Installment); // 1428.57 € rounded up to whole euros
+    }
+
+    [Fact]
+    public void Interest_FallsWithRatingAndLevel_AndIsOnePercentWithABankSponsor()
+    {
+        var sim = World(_ => { });
+        var state = sim.State;
+        state.LoanRules.BestInterestPermille = 20;
+        state.LoanRules.WorstInterestPermille = 80;
+        Assert.Equal(80, LoanMath.InterestPermille(state, sim.Network)); // no rating, level 0
+
+        state.Reputation.TotalReviews = 100; // a perfect rating, still level 0: half way
+        for (int i = 0; i < 10; i++) state.Reputation.Reviews.Add(new Bikepark.Sim.Reputation.Review(0, 0, default, 50, 0, 0, 0, 0, 0, 0, false, 0));
+        Assert.Equal(50, LoanMath.InterestPermille(state, sim.Network));
+        state.Reputation.Reviews.Clear();
+        for (int i = 0; i < 10; i++) state.Reputation.Reviews.Add(new Bikepark.Sim.Reputation.Review(0, 0, default, 30, 0, 0, 0, 0, 0, 0, false, 0)); // 3 stars: half
+        Assert.Equal(65, LoanMath.InterestPermille(state, sim.Network));
     }
 
     [Fact]
@@ -90,7 +110,7 @@ public class LoanTests
     }
 
     [Fact]
-    public void RepayingEarly_PaysEverythingStillOwed()
+    public void RepayingEarly_SavesTheInterestStillToCome()
     {
         var sim = World(s => s.StartingMoneyCents = 500_000);
         Assert.Null(Reject(sim, new TakeLoanCommand("starter")));
@@ -100,8 +120,25 @@ public class LoanTests
         sim.State.Finance.MoneyCents = 2_000_000;
         Assert.Null(Reject(sim, new RepayLoanCommand(id)));
         Assert.Empty(sim.State.Loans);
-        Assert.Equal(2_000_000 - 1_080_000, sim.State.Finance.MoneyCents);
+        Assert.Equal(2_000_000 - 1_000_000, sim.State.Finance.MoneyCents); // only the principal at day one
         Assert.Contains("No such loan", Reject(sim, new RepayLoanCommand(id)));
+    }
+
+    [Fact]
+    public void RepayingEarly_AfterSomeInstallments_PaysOnlyTheRemainingPrincipal()
+    {
+        var sim = World(s => s.StartingMoneyCents = 5_000_000);
+        Assert.Null(Reject(sim, new TakeLoanCommand("starter")));
+        sim.RunDays(14); // two installments of 1,080 €
+        var loan = sim.State.Loans[0];
+        Assert.Equal(2, loan.PaymentsMade);
+        Assert.Equal(1_000_000 * 8 / 10, loan.PayoffCents); // 8 of 10 weeks of principal left
+        Assert.Equal(1_080_000 * 8 / 10 - loan.PayoffCents, loan.UnpaidInterestCents);
+        long before = sim.State.Finance.MoneyCents;
+        long payoff = loan.PayoffCents;
+        Assert.Null(Reject(sim, new RepayLoanCommand(loan.Id)));
+        Assert.Empty(sim.State.Loans);
+        Assert.True(before - sim.State.Finance.MoneyCents <= payoff + 1_000_000); // payoff, not 8 more installments
     }
 
     [Fact]

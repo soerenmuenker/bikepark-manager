@@ -206,7 +206,7 @@ public partial class FinancePanel : HudPanel
         if (_sponsors is null) return;
         int level = Ctx.Kpi.Level;
         long day = GameTime.Day(state.Tick);
-        string signature = $"{level}|{day}|{state.Ways.Count}|{state.WaysRevision}|{string.Join(",", state.Sponsorships.Select(d => $"{d.Id}:{d.Status}:{d.SignBuilt}:{d.PaidCents / 10_000}"))}";
+        string signature = $"{level}|{LoanMath.InterestPermille(state, Ctx.Sim.Network)}|{day}|{state.Ways.Count}|{state.WaysRevision}|{string.Join(",", state.Sponsorships.Select(d => $"{d.Id}:{d.Status}:{d.SignBuilt}:{d.PaidCents / 10_000}"))}";
         if (signature == _sponsorsSignature) return;
         _sponsorsSignature = signature;
         foreach (var child in _sponsors.GetChildren()) child.QueueFree();
@@ -503,7 +503,7 @@ public partial class FinancePanel : HudPanel
         var state = Ctx.Sim.State;
         int level = Ctx.Kpi.Level;
         long day = GameTime.Day(state.Tick);
-        string signature = $"{level}|{state.Finance.MoneyCents / 10_000}|{string.Join(",", state.Loans.Select(l => $"{l.Id}:{l.RemainingCents}:{l.NextDueDay}"))}";
+        string signature = $"{level}|{LoanMath.InterestPermille(state, Ctx.Sim.Network)}|{state.Finance.MoneyCents / 10_000}|{string.Join(",", state.Loans.Select(l => $"{l.Id}:{l.RemainingCents}:{l.NextDueDay}"))}";
         if (signature == _loansSignature) return;
         _loansSignature = signature;
         foreach (var child in _loans.GetChildren()) child.QueueFree();
@@ -526,16 +526,17 @@ public partial class FinancePanel : HudPanel
                          (days == 0 ? "tonight" : $"in {days + 1} days") + (loan.MissedPayments > 0 ? $" · {loan.MissedPayments} missed" : "");
                 if (loan.MissedPayments > 0) color = UiTheme.Warn;
                 int id = loan.Id;
-                var repay = UiTheme.Button($"Repay {UiTheme.Money(loan.RemainingCents)}", () => Ctx.Host.Enqueue(new RepayLoanCommand(id)),
-                    "Pay back everything still owed now (no discount on the interest)");
-                repay.Disabled = state.Finance.MoneyCents < loan.RemainingCents;
+                var repay = UiTheme.Button($"Repay {UiTheme.Money(loan.PayoffCents)}", () => Ctx.Host.Enqueue(new RepayLoanCommand(id)),
+                    "Pay the loan off now: the interest still to come is not charged");
+                repay.Disabled = state.Finance.MoneyCents < loan.PayoffCents;
                 head.AddChild(repay);
             }
             else
             {
                 string? locked = LoanMath.CannotTake(state, level, offer);
-                detail = $"{UiTheme.Money(offer.PrincipalCents)} · {offer.Weeks} × {UiTheme.Money(offer.InstallmentCents)} weekly · " +
-                         $"{offer.InterestPermille / 10.0:0.#} % = {UiTheme.Money(offer.TotalRepayCents)}";
+                var (total, installment) = LoanMath.Terms(state, Ctx.Sim.Network, offer);
+                detail = $"{UiTheme.Money(offer.PrincipalCents)} · {offer.Weeks} × {UiTheme.Money(installment)} weekly · " +
+                         $"{LoanMath.InterestPermille(state, Ctx.Sim.Network) / 10.0:0.#} % = {UiTheme.Money(total)}";
                 string id = offer.Id;
                 var take = UiTheme.Button(state.Rules.UnlockLevel(level) < offer.RequiredLevel ? $"Level {offer.RequiredLevel}" : "Take",
                     () => Ctx.Host.Enqueue(new TakeLoanCommand(id)), locked ?? $"Borrow {UiTheme.Money(offer.PrincipalCents)} now");

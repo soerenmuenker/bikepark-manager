@@ -286,9 +286,9 @@
   "loanRules": {
     "lateFeePermille": 100,
     "offers": [
-      { "id": "starter", "name": "Starter loan", "principalCents": 1000000, "weeks": 10, "interestPermille": 80, "requiredLevel": 0 },
-      { "id": "bank", "name": "Bank loan", "principalCents": 3000000, "weeks": 20, "interestPermille": 120, "requiredLevel": 3 },
-      { "id": "investor", "name": "Investor loan", "principalCents": 10000000, "weeks": 52, "interestPermille": 180, "requiredLevel": 8 }
+      { "id": "starter", "name": "Starter loan", "principalCents": 1000000, "weeks": 10, "requiredLevel": 0 },
+      { "id": "bank", "name": "Bank loan", "principalCents": 3000000, "weeks": 20, "requiredLevel": 3 },
+      { "id": "investor", "name": "Investor loan", "principalCents": 10000000, "weeks": 52, "requiredLevel": 8 }
     ]
   },
   // What is already there when the scenario starts: the gondola with its valley station and top plateau, the

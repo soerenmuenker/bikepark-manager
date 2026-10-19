@@ -240,8 +240,8 @@ public class SponsorTests
 
         Running(sim, "talbank", 0); // loan interest −50 %
         var offer = state.LoanRules.Offers[0];
-        Assert.Equal(offer.InterestPermille / 2, LoanMath.InterestPermille(state, offer));
-        Assert.True(LoanMath.Terms(state, offer).Total < offer.TotalRepayCents);
+        Assert.Equal(state.LoanRules.SponsorInterestPermille, LoanMath.InterestPermille(state, sim.Network));
+        Assert.True(LoanMath.Terms(state, sim.Network, offer).Total < offer.PrincipalCents * (1000 + state.LoanRules.WorstInterestPermille) / 1000);
 
         Running(sim, "steelrope", 0); // lifts −30 %
         var gondola = state.LiftTypes.First();

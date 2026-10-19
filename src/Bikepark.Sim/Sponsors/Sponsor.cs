@@ -322,7 +322,7 @@ public static class SponsorMath
                 SponsorBenefitKind.GoodsDiscount => $"{targets} goods −{v} %",
                 SponsorBenefitKind.BuildingDiscount => $"{targets.Replace('_', ' ')} −{v} %",
                 SponsorBenefitKind.ParkingRevenue => $"+{v} % on parking fees",
-                SponsorBenefitKind.LoanInterest => $"loan interest −{v} %",
+                SponsorBenefitKind.LoanInterest => "loan interest at the lowest rate",
                 SponsorBenefitKind.LiftDiscount => $"lifts −{v} %",
                 SponsorBenefitKind.MoodBoost => $"{targets}: +{v} % mood",
                 _ => b.Kind.ToString(),
