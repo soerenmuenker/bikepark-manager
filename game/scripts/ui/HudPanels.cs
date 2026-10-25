@@ -302,7 +302,6 @@ public partial class BuildPanel : HudPanel
     private readonly List<(LiftType Type, ToolCard Card)> _lifts = [];
     private readonly List<(TrailFeatureType Type, ToolCard Card)> _features = [];
     private readonly List<(Bikepark.Sim.Facilities.FacilityType Type, ToolCard Card)> _facilities = [];
-    private Label _demoStatus = null!;
 
     public override string Title => "Build";
 
@@ -318,13 +317,6 @@ public partial class BuildPanel : HudPanel
             () => ToggleStructure(StructureTool.ToolMode.Parking));
         _fell = new ToolCard(UiIcon.Felling, "Fell trees", "area", "Fell trees\nMark an area of forest: the crew cuts the trees.\n\n• Each tree gives wood for features and signs",
             () => Ctx.Clearing.SetActive(!Ctx.Clearing.Active));
-        var demo = new ToolCard(UiIcon.Demo, "Demo trails", "", "Builds two example trails from the plateau (at once)", Ctx.Host.LoadDemoNetwork);
-        var demoFeatures = new ToolCard(UiIcon.Demo, "Demo features", "", "Plans berms, jumps and wood features on the demo trails",
-            () =>
-            {
-                _demoStatus.Text = Ctx.Host.LoadDemoFeatures() ? "" : "Build the demo trails first.";
-                _demoStatus.Visible = _demoStatus.Text.Length > 0;
-            });
         _platform = new ToolCard(UiIcon.Parking, "Gravel platform", "12 × 12 m", "Gravel platform\nA small gravel pad where paths and trails can start and end, to link them up.\n\n• 12 × 12 m, free, on your land",
             () => ToggleStructure(StructureTool.ToolMode.Platform));
         _renaturalize = new ToolCard(UiIcon.Bulldozer, "Renaturalize", "remove anything",
@@ -335,19 +327,10 @@ public partial class BuildPanel : HudPanel
             "• Platforms: free",
             () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize), UiTheme.Warn);
         foreach (var card in new[] { _path, _trail, _fell, _parking, _platform }) cards.AddChild(card);
-        if (Ctx.Sim.State.Parcels.Count == 0)
-        {
-            // Sandbox only: the demo content.
-            cards.AddChild(demo);
-            cards.AddChild(demoFeatures);
-        }
         // Removing things sits apart, at the right end of the row.
         cards.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(16, 0) });
         cards.AddChild(new VSeparator());
         cards.AddChild(_renaturalize);
-        _demoStatus = UiTheme.Label("", 12, UiTheme.Warn);
-        _demoStatus.Visible = false;
-        Body.AddChild(_demoStatus);
         Body.AddChild(UiTheme.Label("Click or drag to place points · Backspace undo · Enter plans it for the crew · Esc cancel", 12, UiTheme.TextDim));
 
         Body.AddChild(UiTheme.Separator());
