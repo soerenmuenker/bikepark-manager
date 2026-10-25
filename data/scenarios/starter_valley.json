@@ -281,8 +281,8 @@
     "influencerPeakPermille": 400,
     "influencerNeutralTenths": 30,
     "influencerEffectDays": 5,
-    "xpPerKmByRating": { "green": 50, "blue": 100, "red": 175, "black": 250 },
-    "xpPerFeatureByRating": { "green": 5, "blue": 10, "red": 20, "black": 40 },
+    "xpPerKmByRating": { "blue": 100, "red": 175, "black": 250 },
+    "xpPerFeatureByRating": { "blue": 10, "red": 20, "black": 40 },
     "xpPerVisitor": 1,
     "visitorDays": 7,
     "levelXp": [100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500]
@@ -327,7 +327,7 @@
     "injuredReviewChancePermille": 900,
     "minorCloseMinutes": 5,
     "rateDays": 7,
-    "expectedCrashesPer10kRunsByRating": { "green": 10, "blue": 20, "red": 40, "black": 60 },
+    "expectedCrashesPer10kRunsByRating": { "blue": 20, "red": 40, "black": 60 },
     "rateMinRuns": 1000,
     "safetyLossPerExtraCrashPer10k": 4,
     "maxRateSafetyLoss": 500

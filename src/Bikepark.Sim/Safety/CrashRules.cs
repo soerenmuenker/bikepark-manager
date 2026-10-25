@@ -125,7 +125,7 @@ public sealed class CrashRules
     /// Crashes per 10 000 runs a trail of each rating may have before guests feel it is unsafe. Crossings, a wrong rating
     /// or worn features push a trail above it.
     /// </summary>
-    public Reputation.PerRating ExpectedCrashesPer10kRunsByRating { get; set; } = new() { Green = 10, Blue = 20, Red = 40, Black = 60 };
+    public Reputation.PerRating ExpectedCrashesPer10kRunsByRating { get; set; } = new() { Blue = 20, Red = 40, Black = 60 };
 
     /// <summary>
     /// The rate is never taken over fewer runs than this, so a single crash on a quiet trail is no pattern (1000: one crash

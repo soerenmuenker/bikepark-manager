@@ -11,10 +11,10 @@
 // liftDiscount (building and restoring lifts), moodBoost (targets: product ids, permille of their mood).
 [
   { "id": "valley_cycles", "name": "Valley Cycles", "shortName": "Valley Cycles", "color": "#2f7fd0", "requiredLevel": 0,
-    "minRating": "green", "minStarsTenths": 30, "minRunsPerDay": 20, "dailyCents": 4000, "perRunCents": 20, "days": 14,
+    "minRating": "blue", "minStarsTenths": 30, "minRunsPerDay": 20, "dailyCents": 4000, "perRunCents": 20, "days": 14,
     "benefits": [ { "kind": "goodsDiscount", "permille": 300, "targets": ["repair", "protectors"] } ] },
   { "id": "talbank", "name": "Talbank", "shortName": "Talbank", "color": "#1f5f3f", "requiredLevel": 2,
-    "minRating": "green", "minStarsTenths": 33, "minRunsPerDay": 30, "dailyCents": 5000, "days": 14,
+    "minRating": "blue", "minStarsTenths": 33, "minRunsPerDay": 30, "dailyCents": 5000, "days": 14,
     "parkDailyCents": 45000, "parkPerVisitorCents": 30, "parkMinLevel": 4, "parkMinStarsTenths": 35, "parkDays": 28, "mood": -10,
     "benefits": [ { "kind": "loanInterest", "permille": 500 } ] },
   { "id": "bergbraeu", "name": "Bergbräu", "shortName": "Bergbräu", "color": "#c8961e", "requiredLevel": 1,
@@ -41,7 +41,7 @@
     "parkDailyCents": 70000, "parkPerVisitorCents": 40, "parkMinLevel": 7, "parkMinStarsTenths": 38, "parkDays": 42,
     "benefits": [ { "kind": "liftDiscount", "permille": 300 } ] },
   { "id": "alpen_motors", "name": "Alpen Motors", "shortName": "Alpen Motors", "color": "#202020", "requiredLevel": 4,
-    "minRating": "green", "minStarsTenths": 35, "minRunsPerDay": 80, "dailyCents": 10000, "perRunCents": 30, "days": 21,
+    "minRating": "blue", "minStarsTenths": 35, "minRunsPerDay": 80, "dailyCents": 10000, "perRunCents": 30, "days": 21,
     "parkDailyCents": 100000, "parkPerVisitorCents": 80, "parkMinLevel": 7, "parkMinStarsTenths": 38, "parkDays": 42, "mood": -30,
     "benefits": [ { "kind": "parkingRevenue", "permille": 500 } ] }
 ]

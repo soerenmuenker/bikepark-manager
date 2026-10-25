@@ -6,10 +6,9 @@ namespace Bikepark.Sim.Trails;
 /// <summary>Bike park difficulty rating (see <see cref="WayGeometry.DifficultyScore"/>).</summary>
 public enum TrailRating : byte
 {
-    Green = 0,
-    Blue = 1,
-    Red = 2,
-    Black = 3,
+    Blue = 0,
+    Red = 1,
+    Black = 2,
 }
 
 /// <summary>What decided a trail's rating.</summary>
@@ -101,7 +100,6 @@ public sealed class WayGeometry
 
     public static TrailRating RatingFor(int difficulty) => difficulty switch
     {
-        < GreenMaxDifficulty => TrailRating.Green,
         < BlueMaxDifficulty => TrailRating.Blue,
         < RedMaxDifficulty => TrailRating.Red,
         _ => TrailRating.Black,
@@ -121,7 +119,7 @@ public sealed class WayGeometry
 
     /// <summary>
     /// 0..1000, the hardest of: the median gradient (<see cref="OverallSteepness"/>), the 90th-percentile segment's terrain
-    /// difficulty and the hardest feature. Rated green &lt; 250 &lt;= blue &lt; 480 &lt;= red &lt; 700 &lt;= black.
+    /// difficulty and the hardest feature. Rated blue &lt; 480 &lt;= red &lt; 700 &lt;= black.
     /// </summary>
     public int DifficultyScore { get; }
 

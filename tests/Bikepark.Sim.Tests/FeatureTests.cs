@@ -235,7 +235,7 @@ public class FeatureTests
     public void Steepness_IsRatedOverallAndBySections()
     {
         // Gradients in tenths of the game's score (-1.5 ≈ 24 %, -3.5 ≈ 61 %, -4.8 ≈ 94 %).
-        Assert.Equal(TrailRating.Green, WayGeometry.RatingFor(WayGeometry.SectionSteepness(14)));
+        Assert.Equal(TrailRating.Blue, WayGeometry.RatingFor(WayGeometry.SectionSteepness(14)));
         Assert.Equal(TrailRating.Blue, WayGeometry.RatingFor(WayGeometry.SectionSteepness(30)));
         Assert.Equal(TrailRating.Red, WayGeometry.RatingFor(WayGeometry.SectionSteepness(40)));
         Assert.Equal(TrailRating.Black, WayGeometry.RatingFor(WayGeometry.SectionSteepness(50)));

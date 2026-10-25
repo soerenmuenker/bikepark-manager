@@ -429,7 +429,6 @@ public partial class RiderView : Node3D
     private static Color SkillColor(int skill) =>
         WayMeshes.RatingColor(skill switch
         {
-            < WayGeometry.GreenMaxDifficulty => TrailRating.Green,
             < WayGeometry.BlueMaxDifficulty => TrailRating.Blue,
             < WayGeometry.RedMaxDifficulty => TrailRating.Red,
             _ => TrailRating.Black,

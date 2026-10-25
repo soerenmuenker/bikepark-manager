@@ -41,7 +41,6 @@ internal static class TerrainMapRenderer
     // Trail colors by rating; same as the Godot way view (game/scripts/ways/WayView.cs).
     private static readonly Rgb[] RatingColors =
     [
-        new(0.15, 0.65, 0.25), // Green
         new(0.15, 0.40, 0.90), // Blue
         new(0.90, 0.15, 0.15), // Red
         new(0.08, 0.08, 0.08), // Black

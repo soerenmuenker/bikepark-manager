@@ -227,7 +227,7 @@ public static class SponsorMath
     public static int Score(WayNetwork network, Way trail)
     {
         if (!network.TryGetGeometry(trail.Id, out var geometry)) return 0;
-        int rating = (int)geometry.Rating * 120; // 0..360
+        int rating = (int)geometry.Rating * 180; // 0..360
         int stars = (StarsTenths(trail) - 10) * 10; // 0..400
         int traffic = Math.Min(240, RunsPerDay(trail) * 2);
         return Math.Clamp(rating + stars + traffic, 0, 1000);

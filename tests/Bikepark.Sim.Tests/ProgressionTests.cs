@@ -91,7 +91,7 @@ public class ProgressionTests
 
         var rules = sim.State.ReputationRules;
         var after = ParkProgress.Xp(sim.State, sim.Network);
-        Assert.Equal([0, 1, 1, 1], after.Features);
+        Assert.Equal([1, 1, 1], after.Features);
         Assert.Equal(rules.XpPerFeatureByRating.Red + rules.XpPerFeatureByRating.Blue + rules.XpPerFeatureByRating.Black, after.FeatureXp);
         Assert.Equal(after.TrailXp + after.FeatureXp + after.VisitorXp, after.Total);
     }
@@ -100,7 +100,6 @@ public class ProgressionTests
     public void Xp_PerKm_IsWorthMoreOnHarderTrails()
     {
         var rules = new ReputationRules();
-        Assert.True(rules.XpPerKmByRating.Green < rules.XpPerKmByRating.Blue);
         Assert.True(rules.XpPerKmByRating.Blue < rules.XpPerKmByRating.Red);
         Assert.True(rules.XpPerKmByRating.Red < rules.XpPerKmByRating.Black);
         Assert.Equal(rules.XpPerKmByRating.Red, rules.XpPerKmByRating.For(TrailRating.Red));

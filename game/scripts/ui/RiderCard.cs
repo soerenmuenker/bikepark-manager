@@ -182,7 +182,7 @@ internal sealed partial class RiderCard : PanelContainer
     /// <summary>Skill named after the trail rating the rider's jersey color shows.</summary>
     private static string SkillName(int skill) => skill switch
     {
-        < WayGeometry.GreenMaxDifficulty => "Beginner (green)",
+        < WayGeometry.GreenMaxDifficulty => "Beginner (blue)",
         < WayGeometry.BlueMaxDifficulty => "Intermediate (blue)",
         < WayGeometry.RedMaxDifficulty => "Advanced (red)",
         _ => "Expert (black)",

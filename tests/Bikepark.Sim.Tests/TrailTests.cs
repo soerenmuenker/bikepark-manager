@@ -50,7 +50,7 @@ public class TrailGeometryAndPlannerTests
         Assert.Equal(8, geometry.Segments.Count);
         Assert.All(geometry.Segments, s => Assert.InRange(s.GradePermille, -101, -99));
         Assert.All(geometry.Segments.Skip(1), s => Assert.Equal(0, s.TurnPermille));
-        Assert.Equal(TrailRating.Green, geometry.Rating);
+        Assert.Equal(TrailRating.Blue, geometry.Rating);
         Assert.Equal(geometry.LengthCm, geometry.Segments[^1].EndCm);
     }
 

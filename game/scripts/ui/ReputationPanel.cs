@@ -348,9 +348,9 @@ public partial class ReputationPanel : HudPanel
         _ => "\"Don't bother. Queues and sketchy trails.\"",
     };
 
-    /// <summary>"green a · blue b · red c · black d" for the four ratings.</summary>
+    /// <summary>"blue a · red b · black c" for the three ratings.</summary>
     private static string PerColour(Func<int, string> value) =>
-        $"green {value(0)} · blue {value(1)} · red {value(2)} · black {value(3)}";
+        $"blue {value(0)} · red {value(1)} · black {value(2)}";
 
     /// <summary>"3.4" for tenths, "–" without a rating.</summary>
     internal static string StarsText(int? tenths) => tenths is { } t ? $"{t / 10}.{t % 10}" : "–";

@@ -129,7 +129,7 @@ public class SafetyTests
     {
         var rules = new CrashRules
         {
-            ExpectedCrashesPer10kRunsByRating = new() { Green = 10, Blue = 20, Red = 40, Black = 60 },
+            ExpectedCrashesPer10kRunsByRating = new() { Blue = 20, Red = 40, Black = 60 },
             SafetyLossPerExtraCrashPer10k = 4,
             MaxRateSafetyLoss = 500,
         };

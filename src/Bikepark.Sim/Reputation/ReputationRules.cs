@@ -11,23 +11,21 @@ public enum SkillGroup : byte
     Expert = 2,
 }
 
-/// <summary>One value per trail rating (green, blue, red, black).</summary>
+/// <summary>One value per trail rating (blue, red, black).</summary>
 public sealed class PerRating
 {
-    public int Green { get; set; }
     public int Blue { get; set; }
     public int Red { get; set; }
     public int Black { get; set; }
 
     public int For(TrailRating rating) => rating switch
     {
-        TrailRating.Green => Green,
         TrailRating.Blue => Blue,
         TrailRating.Red => Red,
         _ => Black,
     };
 
-    public bool Any(Func<int, bool> predicate) => predicate(Green) || predicate(Blue) || predicate(Red) || predicate(Black);
+    public bool Any(Func<int, bool> predicate) => predicate(Blue) || predicate(Red) || predicate(Black);
 }
 
 /// <summary>One point of a piecewise-linear curve (held flat before the first and after the last point).</summary>
@@ -141,10 +139,10 @@ public sealed class ReputationRules
     // ---- XP and level ----
 
     /// <summary>XP per km of built trail, by the trail's rating.</summary>
-    public PerRating XpPerKmByRating { get; set; } = new() { Green = 50, Blue = 100, Red = 175, Black = 250 };
+    public PerRating XpPerKmByRating { get; set; } = new() { Blue = 100, Red = 175, Black = 250 };
 
     /// <summary>XP per built trail feature, by the feature's own rating (its difficulty band).</summary>
-    public PerRating XpPerFeatureByRating { get; set; } = new() { Green = 5, Blue = 10, Red = 20, Black = 40 };
+    public PerRating XpPerFeatureByRating { get; set; } = new() { Blue = 10, Red = 20, Black = 40 };
 
     /// <summary>XP per average daily visitor over the last <see cref="VisitorDays"/> days.</summary>
     public int XpPerVisitor { get; set; } = 1;

@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 11;
+    public const int CurrentVersion = 12;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -277,6 +277,21 @@ public static class SaveGame
                             job["workers"] = perSection;
             }
             version = 11;
+        }
+
+        if (version == 11)
+        {
+            // v12: no green trail rating (those trails are blue): per-rating rule values lose "green" and brands asking
+            // for a green trail ask for a blue one.
+            if (root["world"] is JsonObject world)
+            {
+                foreach (var (rules, key) in new[] { ("reputationRules", "xpPerKmByRating"), ("reputationRules", "xpPerFeatureByRating"), ("crashRules", "expectedCrashesPer10kRunsByRating") })
+                    (world[rules]?[key] as JsonObject)?.Remove("green");
+                if (world["sponsorTypes"] is JsonArray brands)
+                    foreach (var brand in brands.OfType<JsonObject>())
+                        if (brand["minRating"]?.GetValue<string>() == "green") brand["minRating"] = "blue";
+            }
+            version = 12;
         }
 
         root["version"] = version;

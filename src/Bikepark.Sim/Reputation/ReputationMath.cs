@@ -224,7 +224,7 @@ public static class ReputationMath
 /// </summary>
 public static class ParkProgress
 {
-    public const int Ratings = 4;
+    public const int Ratings = 3;
 
     /// <summary>Per rating (index = <see cref="TrailRating"/>): metres of trail and built features, and the XP of each.</summary>
     public sealed record XpBreakdown(

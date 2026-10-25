@@ -2,8 +2,8 @@
 // A feature covers lengthMeters of a trail from where it is placed. Every covered ~10 m segment must lie within the
 // gradient window (tenths of the -10..+10 score along the direction of travel: -50 = -5.0 = 45° down), and at least one
 // must turn by minTurn (segment turn permille: 100 ≈ 37°). Difficulty (0..1000) raises the covered segments and sets a
-// floor for the trail's rating (green < 250 <= blue < 480 <= red < 700 <= black): berms fit a green trail, rollers and
-// tables a blue one; wooden kickers, wall-rides and small drops make it red; doubles, rock gardens, long jumps and big
+// floor for the trail's rating (blue < 480 <= red < 700 <= black): berms, rollers and
+// tables are blue; wooden kickers, wall-rides and small drops make it red; doubles, rock gardens, long jumps and big
 // drops black. minDropMeters: the trail must lose that much height over the feature (steep ground). gapMeters: the gap
 // riders fly over (part of the length). landingMeters: right after the feature that much trail must lie within
 // landingMinGradient..landingMaxGradient (a downhill landing) and stay free of other features.
@@ -18,7 +18,7 @@
     "material": "dirt",
     "kind": "berm",
     "lengthMeters": 12,
-    "difficulty": 200,
+    "difficulty": 300,
     "minGradient": -50,
     "maxGradient": 5,
     "minTurn": 100,

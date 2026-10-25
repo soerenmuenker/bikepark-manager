@@ -10,14 +10,13 @@ internal static class WayMeshes
     /// <summary>Rating colors; same as the SimRunner map renderer.</summary>
     public static Color RatingColor(TrailRating rating) => rating switch
     {
-        TrailRating.Green => new Color(0.15f, 0.65f, 0.25f),
         TrailRating.Blue => new Color(0.15f, 0.40f, 0.90f),
         TrailRating.Red => new Color(0.90f, 0.15f, 0.15f),
         _ => new Color(0.08f, 0.08f, 0.08f),
     };
 
     /// <summary>"Red (steep overall)", "Blue (steep sections)", "Black (features)": the rating and what decided it.</summary>
-    public static string RatingText(WayGeometry g) => g.Rating == TrailRating.Green ? "Green" : $"{g.Rating} ({g.RatingCause switch
+    public static string RatingText(WayGeometry g) => $"{g.Rating} ({g.RatingCause switch
     {
         RatingCause.OverallSteepness => "steep overall",
         RatingCause.SteepSections => "steep sections",

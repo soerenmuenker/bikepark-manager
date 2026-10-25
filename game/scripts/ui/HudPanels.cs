@@ -380,7 +380,7 @@ public partial class BuildPanel : HudPanel
         }
         var groups = Row(22);
         Body.AddChild(groups);
-        foreach (var (rating, caption) in new[] { (TrailRating.Green, "Green"), (TrailRating.Blue, "Blue"), (TrailRating.Red, "Red"), (TrailRating.Black, "Black") })
+        foreach (var (rating, caption) in new[] { (TrailRating.Blue, "Blue"), (TrailRating.Red, "Red"), (TrailRating.Black, "Black") })
         {
             var group = new VBoxContainer();
             group.AddThemeConstantOverride("separation", 4);
@@ -416,7 +416,6 @@ public partial class BuildPanel : HudPanel
 
     private static string DifficultyWord(int difficulty) => difficulty switch
     {
-        < WayGeometry.GreenMaxDifficulty => "green",
         < WayGeometry.BlueMaxDifficulty => "blue",
         < WayGeometry.RedMaxDifficulty => "red",
         _ => "black",
