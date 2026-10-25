@@ -558,6 +558,8 @@ public partial class Hud : CanvasLayer
             }
         }
         _land.ShowLabels = _open == Menu.Land;
+        _land.LandViewMode = _open == Menu.Land;
+        _ctx.Terrain.SetLandDim(_open != Menu.Land);
         if (_startScreen.Visible != _ctx.Host.ShowStartScreen)
         {
             _startScreen.Visible = _ctx.Host.ShowStartScreen;

@@ -143,6 +143,12 @@ public partial class LandView : Node3D
     /// <summary>Show the parcel names (while the Land menu is open).</summary>
     public bool ShowLabels { get; set; }
 
+    /// <summary>
+    /// Land view (the Land menu is open): every parcel's border. Otherwise (play view) only the outer edge of the land
+    /// the park owns, with no lines between owned parcels.
+    /// </summary>
+    public bool LandViewMode { get; set; }
+
     public LandView() : this(null!, null!, () => 0) { }
 
     public LandView(SimHost host, TerrainView terrain, Func<int> level)
@@ -177,7 +183,7 @@ public partial class LandView : Node3D
         if (_host is null || _terrain.Grid is null) return;
         var state = _host.Sim.State;
         int level = _level();
-        string signature = $"{state.Parcels.Count}|{string.Join(',', state.OwnedParcelIds)}|{level}|{_terrain.Grid.GetHashCode()}";
+        string signature = $"{state.Parcels.Count}|{string.Join(',', state.OwnedParcelIds)}|{level}|{LandViewMode}|{_terrain.Grid.GetHashCode()}";
         if (signature != _signature)
         {
             _signature = signature;
@@ -203,10 +209,11 @@ public partial class LandView : Node3D
             var color = owned ? OwnedColor : level >= parcel.RequiredLevel ? ForSaleColor : LockedColor;
             float lift = owned ? 1.6f : 1.3f;
             var outline = parcel.Outline;
-            for (int i = 0; i < outline.Count; i++)
+            for (int i = 0; i < outline.Count && (LandViewMode || owned); i++)
             {
                 var a = new Vector2(outline[i].X / 100f, outline[i].Z / 100f);
                 var b = new Vector2(outline[(i + 1) % outline.Count].X / 100f, outline[(i + 1) % outline.Count].Z / 100f);
+                if (!LandViewMode && SharedWithOwned(state, parcel, a, b)) continue;
                 Ribbon(st, a, b, new Color(color, owned ? 0.95f : 0.75f), lift);
             }
             var center = Centroid(parcel);
@@ -225,6 +232,33 @@ public partial class LandView : Node3D
             _labels.AddChild(label);
         }
         _borders.Mesh = st.Commit();
+    }
+
+    /// <summary>True if the edge a-b (metres) lies on the border of another owned parcel (an inner line of the owned area).</summary>
+    private static bool SharedWithOwned(WorldState state, Parcel parcel, Vector2 a, Vector2 b)
+    {
+        const float tolerance = 0.5f;
+        foreach (var other in state.Parcels)
+        {
+            if (other.Id == parcel.Id || !LandMath.IsOwned(state, other)) continue;
+            var o = other.Outline;
+            for (int i = 0; i < o.Count; i++)
+            {
+                var c = new Vector2(o[i].X / 100f, o[i].Z / 100f);
+                var d = new Vector2(o[(i + 1) % o.Count].X / 100f, o[(i + 1) % o.Count].Z / 100f);
+                // Both ends of a-b lie on the segment c-d (a shared border, also when only part of it is shared).
+                if (DistanceToSegment(a, c, d) < tolerance && DistanceToSegment(b, c, d) < tolerance) return true;
+            }
+        }
+        return false;
+    }
+
+    private static float DistanceToSegment(Vector2 p, Vector2 a, Vector2 b)
+    {
+        var ab = b - a;
+        float lengthSquared = ab.LengthSquared();
+        float t = lengthSquared < 0.0001f ? 0f : Math.Clamp((p - a).Dot(ab) / lengthSquared, 0f, 1f);
+        return p.DistanceTo(a + ab * t);
     }
 
     /// <summary>A flat band along the ground from a to b (metres), drawn a little above the terrain.</summary>

@@ -9,6 +9,9 @@ render_mode cull_disabled;
 
 uniform int overlay_mode = 0; // 0 natural, 1 slope, 2 surface
 uniform float tree_line_m = 1080.0;
+uniform sampler2D own_mask : filter_linear, repeat_disable; // R: 1 on land the park owns (TerrainView.UpdateOwnership)
+uniform float map_size_m = 1000.0;
+uniform float land_dim = 0.0; // 1: grey out land the park doesn't own (play view)
 
 varying vec4 layers;
 varying float slope_grade;
@@ -78,6 +81,12 @@ void fragment() {
 		c = mix(c, rock, smoothstep(0.25, 0.6, layers.g + (n - 0.5) * 0.25));
 		c = mix(c, water, step(0.04, layers.a));
 		c *= 0.85 + 0.3 * n;
+	}
+
+	if (land_dim > 0.0) {
+		float owned = texture(own_mask, world_pos.xz / map_size_m).r;
+		float grey = dot(c, vec3(0.299, 0.587, 0.114));
+		c = mix(c, vec3(grey) * 0.55, (1.0 - owned) * land_dim * 0.85);
 	}
 
 	ALBEDO = srgb(c);

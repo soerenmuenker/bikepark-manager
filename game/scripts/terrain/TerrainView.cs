@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Bikepark.Sim;
+using Bikepark.Sim.Land;
 using Bikepark.Sim.Terrain;
 using Godot;
 
@@ -37,6 +38,9 @@ public partial class TerrainView : Node3D
     private readonly List<(Node3D Node, int X0, int Z0, int SizeX, int SizeZ)> _chunkInfo = [];
     private Func<int, int, bool>? _cleared;
     private SimHost _host = null!;
+    private ImageTexture? _ownMask;
+    private string _ownSignature = "";
+    private bool _landDim;
 
     public TerrainGrid? Grid { get; private set; }
 
@@ -83,6 +87,7 @@ public partial class TerrainView : Node3D
     {
         // Structures flatten the ground (terrain edits): rebuild the chunks whose samples changed.
         var grid = _host.Sim.Terrain;
+        UpdateOwnership();
         if (Grid is not null && !ReferenceEquals(grid, Grid) && grid.SizeMeters == Grid.SizeMeters)
             RebuildChangedChunks(grid);
     }
@@ -133,6 +138,39 @@ public partial class TerrainView : Node3D
             SetOverlay((OverlayMode)(((int)Overlay + 1) % Enum.GetValues<OverlayMode>().Length));
             GetViewport().SetInputAsHandled();
         }
+    }
+
+    /// <summary>Play view: grey out the land the park doesn't own (only in scenarios with parcels).</summary>
+    public void SetLandDim(bool dim)
+    {
+        _landDim = dim;
+        ApplyLandDim();
+    }
+
+    private void ApplyLandDim()
+    {
+        bool on = _landDim && _host.Sim.State.Parcels.Count > 0;
+        _terrainMaterial.SetShaderParameter("land_dim", on ? 1f : 0f);
+    }
+
+    /// <summary>Rasterizes the owned land into a small mask (4 m per pixel) whenever the owned parcels change.</summary>
+    private void UpdateOwnership()
+    {
+        var state = _host.Sim.State;
+        if (Grid is null) return;
+        string signature = $"{state.Parcels.Count}|{string.Join(',', state.OwnedParcelIds)}|{Grid.SizeMeters}";
+        if (signature == _ownSignature) return;
+        _ownSignature = signature;
+        const int cell = 4;
+        int n = Math.Max(1, Grid.SizeMeters / cell);
+        var image = Image.CreateEmpty(n, n, false, Image.Format.R8);
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+                image.SetPixel(x, z, LandMath.IsOwned(state, (x * cell + cell / 2) * 100L, (z * cell + cell / 2) * 100L) ? Colors.White : Colors.Black);
+        _ownMask = ImageTexture.CreateFromImage(image);
+        _terrainMaterial.SetShaderParameter("own_mask", _ownMask);
+        _terrainMaterial.SetShaderParameter("map_size_m", (float)Grid.SizeMeters);
+        ApplyLandDim();
     }
 
     public void SetOverlay(OverlayMode mode)
