@@ -650,6 +650,9 @@ public sealed class Guest
     /// <summary>Bars and shops the guest bought something at, in the order first used.</summary>
     public List<int> FacilitiesUsed { get; set; } = [];
 
+    /// <summary>What happened at each building the guest used or tried to use, in the order first used (for the review).</summary>
+    public List<Facilities.FacilityVisit> FacilityVisits { get; set; } = [];
+
     /// <summary>Lifts the guest rode, in the order first ridden.</summary>
     public List<int> LiftsUsed { get; set; } = [];
 

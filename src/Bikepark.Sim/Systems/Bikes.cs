@@ -39,6 +39,10 @@ internal static class Bikes
         if (FacilityMath.FindRentalBike(ctx.State, guest.RentalBikeId) is { } found)
         {
             found.Bike.RentedBy = 0;
+            // The guest remembers the worst bike they had from there.
+            var visit = FacilityMath.VisitOf(guest, found.Station.Id);
+            visit.RentalConditionPermille = visit.RentalConditionPermille < 0
+                ? found.Bike.ConditionPermille : Math.Min(visit.RentalConditionPermille, found.Bike.ConditionPermille);
             if (found.Bike.ConditionPermille <= 0)
             {
                 found.Station.Fleet.Remove(found.Bike);
@@ -67,6 +71,7 @@ internal static class Bikes
             swap.Bike.RentedBy = guest.Id;
             guest.RentalBikeId = swap.Bike.Id;
             guest.BikeBroken = false;
+            FacilityMath.VisitOf(guest, stationId).Repaired = true;
             ctx.Publish(new BikeFixed(ctx.Tick, guest.Id, stationId, Swapped: true));
             return true;
         }
@@ -80,12 +85,13 @@ internal static class Bikes
             FacilityMath.Sell(state, ctx.Tick, shop, guest, repair);
             ctx.Publish(new ProductSold(ctx.Tick, guest.Id, shop.Id, repair.Id, price));
             guest.BikeBroken = false;
+            FacilityMath.VisitOf(guest, shop.Id).Repaired = true;
             AtTheBench(ctx, guest, shop, repair);
             state.Stats.TotalRepairs++;
             ctx.Publish(new BikeFixed(ctx.Tick, guest.Id, shop.Id, Swapped: false));
             return true;
         }
-        Catering.NoteNoSeat(state, point, FacilityKind.BikeShop);
+        Catering.NoteNoSeat(state, point, FacilityKind.BikeShop, guest);
         return false;
     }
 

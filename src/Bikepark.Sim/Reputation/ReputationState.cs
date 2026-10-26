@@ -27,6 +27,12 @@ public sealed record Review(
     /// <summary>Bars and shops the guest bought something at, in the order first used (at most <see cref="ReviewMath.MaxFacilities"/>).</summary>
     public List<int> FacilityIds { get; init; } = [];
 
+    /// <summary>
+    /// What the guest says about each building they used or tried to use (no free seat, bench or bike), in the order first
+    /// used (at most <see cref="ReviewMath.MaxFacilities"/>): its own stars and what happened there.
+    /// </summary>
+    public List<PlaceReview> Places { get; init; } = [];
+
     /// <summary>Lifts the guest rode, in the order first ridden (at most <see cref="ReviewMath.MaxLifts"/>).</summary>
     public List<int> LiftIds { get; init; } = [];
 
@@ -40,6 +46,28 @@ public sealed record Review(
 
     /// <summary>The visit's aspect scores.</summary>
     public ReviewScores Scores => new(Fun, Safety, Smoothness, Challenge, Jumps, Variety, Value);
+}
+
+/// <summary>
+/// One building in a review (see <see cref="ReviewMath.PlaceStars"/>): stars in tenths (10..50) from its value (overpaid
+/// share of what was spent there) and its service (no free seat, bench or rental bike; the rental bike's condition; a broken
+/// bike fixed), with a little of the guest's mood; and what happened there, for the words.
+/// </summary>
+public sealed record PlaceReview(int FacilityId, int StarsTenths, int Value, int Service)
+{
+    /// <summary>Products bought there, in the order first bought.</summary>
+    public List<string> Products { get; init; } = [];
+    public long SpentCents { get; init; }
+    public long OverpaidCents { get; init; }
+
+    /// <summary>Times the guest found no free seat or workbench there.</summary>
+    public int NoPlace { get; init; }
+
+    /// <summary>Condition of the rental bike from there when given back (permille; -1: none rented there).</summary>
+    public int RentalConditionPermille { get; init; } = -1;
+
+    /// <summary>A bike broken in a crash was fixed or swapped there.</summary>
+    public bool Repaired { get; init; }
 }
 
 /// <summary>

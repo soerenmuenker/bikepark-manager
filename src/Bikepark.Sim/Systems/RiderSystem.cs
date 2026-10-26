@@ -119,7 +119,7 @@ internal sealed class RiderSystem : ISimSystem
             }
             else
             {
-                Catering.NoteNoSeat(state, point, FacilityKind.Bar);
+                Catering.NoteNoSeat(state, point, FacilityKind.Bar, guest);
                 if (minute < rules.LunchEndMinute && Catering.AnyLunchAffordable(state, guest))
                     return false; // ride on: maybe the next lap ends at a bar with a free seat
             }

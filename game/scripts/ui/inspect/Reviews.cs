@@ -158,10 +158,81 @@ internal static class ReviewText
     }
 }
 
+/// <summary>What a guest says about one building (from <see cref="PlaceReview"/>: what happened there; the sim stores no words).</summary>
+internal static class PlaceText
+{
+    private static string Pick(int id, int salt, params string[] options) => options[(uint)(id * 2654435761u + (uint)salt * 40503u) % options.Length];
+
+    /// <summary>A few sentences about this building only: what they got there, a repair or rental bike, a missing seat, the prices.</summary>
+    public static string Body(Review review, PlaceReview place, WorldState state)
+    {
+        int id = review.GuestId;
+        var kind = state.Facilities.FirstOrDefault(f => f.Id == place.FacilityId) is { } f
+            ? Bikepark.Sim.Facilities.FacilityMath.FindType(state, f.TypeId)?.Kind : null;
+        var products = place.Products.Select(p => state.ProductTypes.FirstOrDefault(t => t.Id == p)).OfType<Bikepark.Sim.Facilities.ProductType>().ToList();
+        var sentences = new List<string>();
+
+        if (place.Repaired)
+            sentences.Add(place.RentalConditionPermille >= 0
+                ? Pick(id, 1, "Broke my rental bike, they swapped it right away.", "Rental bike broke, got a new one in minutes.")
+                : Pick(id, 1, "Bike broke on the trail and the workshop fixed it in no time. Saved my day!", "Mechanics got my bike running again after a crash. Legends."));
+        else if (place.NoPlace > 0 && products.Count == 0)
+            sentences.Add(kind == Bikepark.Sim.Facilities.FacilityKind.BikeShop
+                ? Pick(id, 2, "Broke my bike and the workshop was too busy to help.", "No free workbench for my broken bike. Day over.")
+                : Pick(id, 2, "Couldn't get a seat, ended up with a packed lunch.", "Completely full at lunchtime."));
+        else if (place.NoPlace > 0)
+            sentences.Add(Pick(id, 2, "Had to wait for a free seat.", "Packed, took a while to get a place."));
+
+        foreach (var p in products)
+        {
+            string? line = p switch
+            {
+                { Lunch: true } => Pick(id, 3, "Lunch was tasty.", "Good food for a hungry rider.", "Solid lunch break."),
+                { Alcohol: > 0 } => Pick(id, 4, "Cold beer after the runs, perfect.", "Great spot for a drink."),
+                { CaffeineMinutes: > 0 } => Pick(id, 5, "Coffee kept me going.", "Proper espresso halfway through the day."),
+                { Rental: true } when place.RentalConditionPermille is >= 0 and < 400 => Pick(id, 6, "My rental bike was falling apart.", "The rental bike was in rough shape."),
+                { Rental: true } when place.RentalConditionPermille >= 750 => Pick(id, 6, "Rental bike was in top shape.", "Great rental bike, rode like new."),
+                { Rental: true } => "Rented a bike, did the job.",
+                { TuneUpPermille: > 0 } => Pick(id, 7, "Quick tune-up, bike ran like new.", "The tune-up was worth it."),
+                { RedBlackFun: > 0 } => Pick(id, 8, "Suspension setup made the red lines so much better.", "They dialled in my fork, felt amazing."),
+                { Protection: true } => Pick(id, 9, "Picked up some pads, felt much safer.", "Bought protectors, good advice."),
+                { Overnight: true } => Pick(id, 10, "Nice place to camp.", "Slept well at the campground."),
+                { Id: "bikes" } => "Bought a new bike here!",
+                { Id: "clothing" } => Pick(id, 11, "Got a new jersey.", "Bought a rain jacket just in time."),
+                { Merch: true } => Pick(id, 12, "Grabbed a souvenir.", "Cool merch."),
+                _ => null,
+            };
+            if (line is not null && !sentences.Contains(line)) sentences.Add(line);
+            if (sentences.Count >= 3) break;
+        }
+
+        if (place.SpentCents > 0)
+        {
+            long share = place.OverpaidCents * 1000 / place.SpentCents;
+            if (share >= 250) sentences.Add(Pick(id, 13, "Way too pricey here.", "Prices are a rip-off."));
+            else if (share > 0) sentences.Add("A bit expensive.");
+            else if (sentences.Count < 3) sentences.Add(Pick(id, 13, "Fair prices.", "Good value."));
+        }
+        return sentences.Count == 0 ? "Stopped by." : string.Join(" ", sentences);
+    }
+
+    /// <summary>"Bought lunch, coffee · 18 € here".</summary>
+    public static string Chips(PlaceReview place, WorldState state)
+    {
+        var names = place.Products.Select(p => state.ProductTypes.FirstOrDefault(t => t.Id == p)?.Name.ToLowerInvariant() ?? p).ToList();
+        var chips = new List<string>();
+        if (names.Count > 0) chips.Add("Bought " + string.Join(", ", names));
+        if (place.SpentCents > 0) chips.Add($"{UiTheme.Money(place.SpentCents)} here");
+        if (place.NoPlace > 0) chips.Add(place.NoPlace == 1 ? "no free place once" : $"no free place {place.NoPlace}×");
+        return string.Join(" · ", chips);
+    }
+}
+
 /// <summary>
 /// Reviews to browse like a review site: sort (newest, highest, lowest), filter by stars, group, influencers and what
 /// they mention (a trail, lift or building), ten per page. With a fixed mention (an inspector's Reviews tab) the
-/// mention filter is left out.
+/// mention filter is left out. With a focus building (its window) only reviews of guests who used or tried to use it are
+/// shown, with the stars and words about that building.
 /// </summary>
 internal sealed partial class ReviewBrowser : VBoxContainer
 {
@@ -169,6 +240,7 @@ internal sealed partial class ReviewBrowser : VBoxContainer
 
     private readonly HudContext _ctx;
     private readonly Func<Review, bool>? _fixedFilter;
+    private readonly int _focusFacilityId;
     private readonly int _pageSize;
     private readonly VBoxContainer _list;
     private readonly Label _count;
@@ -180,10 +252,11 @@ internal sealed partial class ReviewBrowser : VBoxContainer
     private int _page;
     private string _signature = "";
 
-    public ReviewBrowser(HudContext ctx, Func<Review, bool>? fixedFilter = null, int pageSize = PageSize, float width = 560)
+    public ReviewBrowser(HudContext ctx, Func<Review, bool>? fixedFilter = null, int pageSize = PageSize, float width = 560, int focusFacilityId = 0)
     {
         _ctx = ctx;
-        _fixedFilter = fixedFilter;
+        _focusFacilityId = focusFacilityId;
+        _fixedFilter = focusFacilityId != 0 ? r => r.Places.Any(p => p.FacilityId == focusFacilityId) : fixedFilter;
         _pageSize = pageSize;
         CustomMinimumSize = new Vector2(width, 0);
         AddThemeConstantOverride("separation", 8);
@@ -194,7 +267,7 @@ internal sealed partial class ReviewBrowser : VBoxContainer
         _sort = Options(filters, "Newest", "Highest", "Lowest");
         _stars = Options(filters, "All stars", "5 ★", "4 ★", "3 ★", "2 ★", "1 ★");
         _group = Options(filters, "Everyone", "Beginners", "Intermediates", "Experts");
-        if (fixedFilter is null)
+        if (_fixedFilter is null)
         {
             _mention = new OptionButton { FocusMode = FocusModeEnum.None, FitToLongestItem = false, CustomMinimumSize = new Vector2(150, 0) };
             _mention.AddThemeFontSizeOverride("font_size", 12);
@@ -288,7 +361,7 @@ internal sealed partial class ReviewBrowser : VBoxContainer
         if (_stars.Selected > 0)
         {
             int stars = 6 - _stars.Selected;
-            reviews = reviews.Where(r => (r.StarsTenths + 5) / 10 == stars);
+            reviews = reviews.Where(r => (StarsOf(r) + 5) / 10 == stars);
         }
         if (_group.Selected > 0)
         {
@@ -300,11 +373,18 @@ internal sealed partial class ReviewBrowser : VBoxContainer
         var list = reviews.Reverse().ToList();
         return _sort.Selected switch
         {
-            1 => list.OrderByDescending(r => r.StarsTenths).ToList(),
-            2 => list.OrderBy(r => r.StarsTenths).ToList(),
+            1 => list.OrderByDescending(StarsOf).ToList(),
+            2 => list.OrderBy(StarsOf).ToList(),
             _ => list,
         };
     }
+
+    /// <summary>The focus building as this review sees it, or null.</summary>
+    private PlaceReview? Place(Review review) =>
+        _focusFacilityId == 0 ? null : review.Places.FirstOrDefault(p => p.FacilityId == _focusFacilityId);
+
+    /// <summary>The stars that count here: for the focus building, or the whole visit.</summary>
+    private int StarsOf(Review review) => Place(review)?.StarsTenths ?? review.StarsTenths;
 
     public void Refresh()
     {
@@ -361,14 +441,29 @@ internal sealed partial class ReviewBrowser : VBoxContainer
         head.AddChild(spacer);
         head.AddChild(UiTheme.Label(ReviewText.When(review), 11, UiTheme.TextDim));
         texts.AddChild(head);
-        texts.AddChild(UiTheme.Label(Aspects.Glyphs(review.StarsTenths) + $"  {review.StarsTenths / 10.0:0.0}", 13,
-            UiTheme.MoodColor((review.StarsTenths - 10) * 25), bold: true));
-        var body = UiTheme.Label(ReviewText.Body(review, state.ReputationRules), 12);
+        var place = Place(review);
+        int stars = StarsOf(review);
+        var starRow = new HBoxContainer();
+        starRow.AddThemeConstantOverride("separation", 8);
+        starRow.AddChild(UiTheme.Label(Aspects.Glyphs(stars) + $"  {stars / 10.0:0.0}", 13, UiTheme.MoodColor((stars - 10) * 25), bold: true));
+        if (place is not null)
+            starRow.AddChild(UiTheme.Label($"whole visit {review.StarsTenths / 10.0:0.0} ★", 11, UiTheme.TextDim));
+        texts.AddChild(starRow);
+        var body = UiTheme.Label(place is not null ? PlaceText.Body(review, place, state) : ReviewText.Body(review, state.ReputationRules), 12);
         body.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         body.CustomMinimumSize = new Vector2(Math.Max(200, CustomMinimumSize.X - 80), 0);
         texts.AddChild(body);
 
         var chips = new List<string>();
+        if (place is not null)
+        {
+            var only = UiTheme.Label(PlaceText.Chips(place, state), 11, UiTheme.Accent);
+            only.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            only.CustomMinimumSize = new Vector2(Math.Max(200, CustomMinimumSize.X - 80), 0);
+            if (only.Text.Length > 0) texts.AddChild(only);
+            row.AddChild(texts);
+            return card;
+        }
         var trails = review.TrailIds.Select(id => state.Ways.FirstOrDefault(w => w.Id == id)?.Name).OfType<string>().ToList();
         if (trails.Count > 0) chips.Add("Rode " + string.Join(" · ", trails));
         var places = review.FacilityIds.Select(id => state.Facilities.FirstOrDefault(f => f.Id == id)?.Name).OfType<string>().ToList();

@@ -44,7 +44,8 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
     features slower/less fun); `Systems/TrailCareSystem.cs` raises the repair warning and closes worn-out trails
   - `Reputation/` – `ReputationRules` (content: skill groups and what they value, demand curves, influencers, XP and
     level thresholds), `ReputationState` (reviews window, posts, visitor history; a `Review` also remembers the visit:
-    left tick, trails (most ridden first), buildings, lifts, money spent, leave reason, crashed), `ReviewMath` (a visit →
+    left tick, trails (most ridden first), buildings, lifts, money spent, leave reason, crashed, and per building a `PlaceReview`:
+    its own stars from value and service, from `Guest.FacilityVisits`), `ReviewMath` (a visit →
     aspects → stars; `AspectAverages`/`AverageStars`/`Mentioning` for sub-ratings overall, per group or per trail, lift,
     building), `ReputationMath` (rating, demand), `ParkProgress` (derived XP and level); `Systems/ReputationSystem.cs`
     books influencers and announces level changes

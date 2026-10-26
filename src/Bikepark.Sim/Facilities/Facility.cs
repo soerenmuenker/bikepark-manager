@@ -186,6 +186,29 @@ public sealed class Facility
     public int FleetCareLastNight { get; set; }
 }
 
+/// <summary>
+/// What happened to a guest at one building during the visit (per-visit accumulator on <see cref="Guest.FacilityVisits"/>,
+/// turned into a <see cref="Reputation.PlaceReview"/> when they leave).
+/// </summary>
+public sealed class FacilityVisit
+{
+    public int FacilityId { get; set; }
+
+    /// <summary>Products bought there, in the order first bought.</summary>
+    public List<string> Products { get; set; } = [];
+    public long SpentCents { get; set; }
+    public long OverpaidCents { get; set; }
+
+    /// <summary>Times the guest found no free seat or workbench there.</summary>
+    public int NoPlace { get; set; }
+
+    /// <summary>Condition of the rental bike from there when given back (permille; -1: none rented there).</summary>
+    public int RentalConditionPermille { get; set; } = -1;
+
+    /// <summary>A bike broken in a crash was fixed or swapped there.</summary>
+    public bool Repaired { get; set; }
+}
+
 /// <summary>One bike of a rental fleet: worn by rides and crashes, retired at 0 %.</summary>
 public sealed class RentalBike
 {
@@ -284,6 +307,14 @@ public static class FacilityMath
         if (facility is not null && product.Department && FindType(state, facility.TypeId)?.Kind == FacilityKind.BikeShop)
             factor = factor * RangeOf(state, facility).Groups.For(group) / 1000;
         return (int)factor;
+    }
+
+    /// <summary>The guest's record of what happened at a building this visit (added on first use).</summary>
+    public static FacilityVisit VisitOf(Guest guest, int facilityId)
+    {
+        var visit = guest.FacilityVisits.FirstOrDefault(v => v.FacilityId == facilityId);
+        if (visit is null) guest.FacilityVisits.Add(visit = new FacilityVisit { FacilityId = facilityId });
+        return visit;
     }
 
     /// <summary>True if the guest already bought this department's goods during the visit (each once).</summary>
@@ -574,6 +605,10 @@ public static class FacilityMath
             own.RevenueCents += price;
             own.RevenueTodayCents += price;
             if (!guest.FacilitiesUsed.Contains(facility.Id)) guest.FacilitiesUsed.Add(facility.Id);
+            var visit = VisitOf(guest, facility.Id);
+            visit.SpentCents += price;
+            visit.OverpaidCents += Math.Max(0, price - reference);
+            if (!visit.Products.Contains(product.Id)) visit.Products.Add(product.Id);
         }
         // A sponsor (brewery, bike brand, ...) may supply the goods cheaper.
         // Goods: of the standard price, scaled by the range's goods (budget ranges are cheaper to stock, premium dearer).

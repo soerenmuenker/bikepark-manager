@@ -409,14 +409,28 @@ internal sealed partial class FacilityInspector : InspectorWindow
     private void Reviews(VBoxContainer body)
     {
         int id = Target.Id;
-        var mentioning = ReviewMath.Mentioning(State.Reputation, facilityId: id).ToList();
-        var stars = ReviewMath.AverageStars(mentioning);
-        Heading(body, $"Guests who bought here · {mentioning.Count} reviews");
-        body.AddChild(UiTheme.Label(stars is { } s ? $"{Aspects.Glyphs(s)}  {s / 10.0:0.0} from their whole visit" : "No reviews from its guests yet.", 15,
+        var places = State.Reputation.Reviews.Select(r => r.Places.FirstOrDefault(p => p.FacilityId == id)).OfType<PlaceReview>().ToList();
+        var stars = ReviewMath.AveragePlaceStars(State.Reputation.Reviews, id);
+        Heading(body, $"What guests say about {Facility?.Name} · {places.Count} reviews");
+        body.AddChild(UiTheme.Label(stars is { } s ? $"{Aspects.Glyphs(s)}  {s / 10.0:0.0} for this {Type!.Name.ToLowerInvariant()}" : "No reviews of it yet: guests write one when they leave.", 15,
             stars is { } c ? UiTheme.MoodColor((c - 10) * 25) : UiTheme.TextDim, bold: true));
-        body.AddChild(Aspects.Bars(mentioning));
-        Text(body, "Value drops when guests pay more than the fair price here; food and drinks lift their mood (Fun).", 11);
-        var browser = new ReviewBrowser(Ctx, r => r.FacilityIds.Contains(id), pageSize: 5, width: Width - 20);
+        if (places.Count > 0)
+        {
+            int Avg(Func<PlaceReview, int> of) => (int)places.Average(of);
+            var bars = new VBoxContainer();
+            bars.AddThemeConstantOverride("separation", 4);
+            bars.AddChild(Aspects.Bar("Value", "Prices here against the fair price: overpaying costs value.", Avg(p => p.Value), true));
+            bars.AddChild(Aspects.Bar("Service", "A free seat or workbench when they wanted one, rental bikes in good shape, broken bikes fixed.", Avg(p => p.Service), true));
+            body.AddChild(bars);
+            int noPlace = places.Count(p => p.NoPlace > 0);
+            int worn = places.Count(p => p.RentalConditionPermille is >= 0 and < 400);
+            var notes = new List<string>();
+            if (noPlace > 0) notes.Add($"{noPlace} found no free {(Type!.Kind == FacilityKind.Bar ? "seat" : "workbench")}");
+            if (worn > 0) notes.Add($"{worn} got a worn-out rental bike");
+            if (places.Count(p => p.Repaired) is > 0 and var fixedBikes) notes.Add($"{fixedBikes} had their bike fixed here");
+            if (notes.Count > 0) Text(body, string.Join(" · ", notes) + ".", 11);
+        }
+        var browser = new ReviewBrowser(Ctx, pageSize: 5, width: Width - 20, focusFacilityId: id);
         body.AddChild(browser);
         Live(browser.Refresh);
     }

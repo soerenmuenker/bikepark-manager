@@ -68,15 +68,16 @@ internal static class Catering
 
     /// <summary>
     /// A guest looked for a seat (or workbench) at <paramref name="point"/> and found none: the nearest full building of the
-    /// kind counts them as turned away.
+    /// kind counts them as turned away, and the guest remembers it for their review.
     /// </summary>
-    public static void NoteNoSeat(WorldState state, PointCm? point, FacilityKind kind)
+    public static void NoteNoSeat(WorldState state, PointCm? point, FacilityKind kind, Guest guest)
     {
         foreach (var (facility, type) in FacilityMath.InReach(state, point, kind))
         {
             if (FacilityMath.HasFreeSeat(state, facility, type)) continue;
             facility.TurnedAwayToday++;
             facility.TurnedAway++;
+            FacilityMath.VisitOf(guest, facility.Id).NoPlace++;
             return;
         }
     }

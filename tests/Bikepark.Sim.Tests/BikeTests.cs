@@ -2,6 +2,7 @@ using Bikepark.Sim.Commands;
 using Bikepark.Sim.Core;
 using Bikepark.Sim.Events;
 using Bikepark.Sim.Facilities;
+using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Safety;
 using Bikepark.Sim.Scenarios;
 using Bikepark.Sim.State;
@@ -456,6 +457,46 @@ public class BikeTests
         Assert.All(sim.State.Guests.Where(g => renters.Contains(g.Id)), g => Assert.Equal(0, g.RentalBikeId));
         sim.RunTicks(3 * 60);
         Assert.DoesNotContain(sim.State.Guests, g => renters.Contains(g.Id) && g.Activity == RiderActivity.Idle);
+    }
+
+    // ---------------------------------------------------------------- reviews of the building
+
+    [Fact]
+    public void APlaceReview_RatesValueAndService_OfThatBuildingOnly()
+    {
+        var fine = ReviewMath.Place(new FacilityVisit { FacilityId = 7, Products = ["merch"], SpentCents = 2500 }, 800);
+        Assert.Equal((1000, 1000), (fine.Value, fine.Service));
+        Assert.Equal(ReviewMath.PlaceStars(1000, 1000, 800), fine.StarsTenths);
+        Assert.True(fine.StarsTenths >= 45);
+
+        var ripOff = ReviewMath.Place(new FacilityVisit { FacilityId = 7, SpentCents = 4000, OverpaidCents = 1000 }, 800);
+        Assert.Equal(500, ripOff.Value);
+        var full = ReviewMath.Place(new FacilityVisit { FacilityId = 7, NoPlace = 2 }, 800);
+        Assert.Equal(1000 - 2 * ReviewMath.NoPlaceServiceLoss, full.Service);
+        var worn = ReviewMath.Place(new FacilityVisit { FacilityId = 7, RentalConditionPermille = 100, SpentCents = 3500 }, 800);
+        Assert.Equal(370, worn.Service);
+        var saved = ReviewMath.Place(new FacilityVisit { FacilityId = 7, NoPlace = 2, Repaired = true }, 800);
+        Assert.Equal(900, saved.Service);
+        Assert.True(ripOff.StarsTenths < fine.StarsTenths && full.StarsTenths < fine.StarsTenths && worn.StarsTenths < fine.StarsTenths);
+    }
+
+    [Fact]
+    public void Reviews_SayWhatHappenedAtEachBuilding()
+    {
+        var sim = Demo(s => s.CrashRules.BikeOnlyPermille = 1000, collisions: true);
+        sim.State.ReputationRules.Enabled = true;
+        var shop = Shop(sim, WithRental, bikes: 20);
+        sim.RunDays(1);
+        var reviews = sim.State.Reputation.Reviews;
+        Assert.NotEmpty(reviews);
+        var atShop = reviews.Select(r => r.Places.FirstOrDefault(p => p.FacilityId == shop.Id)).OfType<PlaceReview>().ToList();
+        Assert.NotEmpty(atShop);
+        Assert.Contains(atShop, p => p.Products.Contains("rental") && p.RentalConditionPermille is > 0 and < 1000);
+        Assert.Contains(atShop, p => p.Repaired);
+        Assert.All(atShop, p => Assert.InRange(p.StarsTenths, 10, 50));
+        Assert.All(reviews, r => Assert.All(r.FacilityIds, id => Assert.Contains(r.Places, p => p.FacilityId == id))); // bought there ⇒ a place review
+        Assert.Equal(ReviewMath.AveragePlaceStars(reviews, shop.Id), (int)Math.Round(atShop.Average(p => p.StarsTenths), MidpointRounding.AwayFromZero));
+        Assert.Equal(reviews.Count(r => r.Places.Any(p => p.FacilityId == shop.Id)), ReviewMath.Mentioning(sim.State.Reputation, facilityId: shop.Id).Count());
     }
 
     [Fact]

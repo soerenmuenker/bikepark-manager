@@ -73,11 +73,55 @@ public static class ReviewMath
             LeftTick = tick,
             TrailIds = trails,
             FacilityIds = guest.FacilitiesUsed.Take(MaxFacilities).ToList(),
+            Places = guest.FacilityVisits.Take(MaxFacilities).Select(v => Place(v, guest.Happiness)).ToList(),
             LiftIds = guest.LiftsUsed.Take(MaxLifts).ToList(),
             SpentCents = Math.Max(0, guest.BroughtCents - guest.CashCents),
             Reason = reason,
             Crashed = guest.Injury != Safety.InjurySeverity.None,
         };
+    }
+
+    /// <summary>A building costs this much service for each time the guest found no free seat or bench there (permille).</summary>
+    public const int NoPlaceServiceLoss = 350;
+
+    /// <summary>
+    /// A building's stars in tenths (10..50): value (1000 minus twice the overpaid share of what was spent there), service
+    /// (minus <see cref="NoPlaceServiceLoss"/> per time without a seat or bench; a worn rental bike caps it; a broken bike
+    /// fixed there lifts it to at least 900) and the guest's mood, weighted 35 / 45 / 20.
+    /// </summary>
+    public static int PlaceStars(int value, int service, int happiness) =>
+        10 + (int)Math.Clamp(((long)value * 35 + (long)service * 45 + Math.Clamp(happiness, 0, 1000) * 20L) / 100, 0, 1000) * 40 / 1000;
+
+    /// <summary>What a guest says about one building (pure).</summary>
+    public static PlaceReview Place(Facilities.FacilityVisit visit, int happiness)
+    {
+        int value = visit.SpentCents <= 0 ? 1000 : (int)Math.Clamp(1000 - visit.OverpaidCents * 2000 / visit.SpentCents, 0, 1000);
+        int service = Math.Max(0, 1000 - visit.NoPlace * NoPlaceServiceLoss);
+        if (visit.RentalConditionPermille >= 0) service = Math.Min(service, 300 + visit.RentalConditionPermille * 7 / 10);
+        if (visit.Repaired) service = Math.Max(service, 900);
+        return new PlaceReview(visit.FacilityId, PlaceStars(value, service, happiness), value, service)
+        {
+            Products = [.. visit.Products],
+            SpentCents = visit.SpentCents,
+            OverpaidCents = visit.OverpaidCents,
+            NoPlace = visit.NoPlace,
+            RentalConditionPermille = visit.RentalConditionPermille,
+            Repaired = visit.Repaired,
+        };
+    }
+
+    /// <summary>Average stars (tenths, rounded) the reviews give one building, or null for none.</summary>
+    public static int? AveragePlaceStars(IEnumerable<Review> reviews, int facilityId)
+    {
+        long sum = 0;
+        int n = 0;
+        foreach (var r in reviews)
+            if (r.Places.FirstOrDefault(p => p.FacilityId == facilityId) is { } place)
+            {
+                sum += place.StarsTenths;
+                n++;
+            }
+        return n == 0 ? null : (int)((sum * 2 + n) / (2L * n));
     }
 
     /// <summary>
@@ -115,7 +159,7 @@ public static class ReviewMath
     /// <summary>The reviews in the window that mention a trail, lift or building.</summary>
     public static IEnumerable<Review> Mentioning(ReputationState state, int trailId = 0, int liftId = 0, int facilityId = 0) =>
         state.Reviews.Where(r => (trailId != 0 && r.TrailIds.Contains(trailId)) || (liftId != 0 && r.LiftIds.Contains(liftId))
-                                 || (facilityId != 0 && r.FacilityIds.Contains(facilityId)));
+                                 || (facilityId != 0 && (r.FacilityIds.Contains(facilityId) || r.Places.Any(p => p.FacilityId == facilityId))));
 
     /// <summary>
     /// Crashes override how safe the day felt: nothing is safe about a helicopter ride, a minor crash caps it low, and
