@@ -61,7 +61,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
     private static (ProductType Product, long PriceCents)? RentalPrice(WorldState state)
     {
         foreach (var station in state.Facilities)
-            if (FacilityMath.FindType(state, station.TypeId) is { Kind: FacilityKind.BikeShop } type && FacilityMath.HasRental(type, station)
+            if (!station.Closed && FacilityMath.FindType(state, station.TypeId) is { Kind: FacilityKind.BikeShop } type && FacilityMath.HasRental(type, station)
                 && Bikes.RentalProduct(state, type, station) is { } product)
                 return (product, FacilityMath.PriceOf(state, product));
         return null;
@@ -128,7 +128,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
             if (rental is null)
             {
                 state.Stats.RentersWithoutBike++;
-                if (state.Facilities.FirstOrDefault(f => FacilityMath.FindType(state, f.TypeId) is { } t && FacilityMath.HasRental(t, f)) is { } station)
+                if (state.Facilities.FirstOrDefault(f => !f.Closed && FacilityMath.FindType(state, f.TypeId) is { } t && FacilityMath.HasRental(t, f)) is { } station)
                 {
                     station.TurnedAwayToday++;
                     station.TurnedAway++;
@@ -462,9 +462,11 @@ internal sealed class FinanceSystem : ISimSystem
         {
             if (lift.OperatorId is null && lift.InService && LiftNetwork.FindType(state, lift.TypeId) is { UpkeepPerDayCents: > 0 } own)
             {
-                state.Finance.Spend(MoneyCategory.LiftUpkeep, own.UpkeepPerDayCents);
-                state.Finance.TotalLiftUpkeepCents += own.UpkeepPerDayCents;
-                state.Finance.LiftUpkeepTodayCents += own.UpkeepPerDayCents;
+                // Closed by the player: only the standing costs.
+                long upkeep = lift.Closed ? own.UpkeepPerDayCents * state.Rules.ClosedUpkeepPermille / 1000 : own.UpkeepPerDayCents;
+                state.Finance.Spend(MoneyCategory.LiftUpkeep, upkeep);
+                state.Finance.TotalLiftUpkeepCents += upkeep;
+                state.Finance.LiftUpkeepTodayCents += upkeep;
             }
             if (lift.BikeAccess is not { } access || LiftNetwork.FindOperator(state, lift.OperatorId) is not { } op) continue;
             if (access.TierIndex < 0 || access.TierIndex >= op.BikeAccessTiers.Count) continue;

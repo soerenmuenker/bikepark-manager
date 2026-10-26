@@ -57,6 +57,8 @@ namespace Bikepark.Sim.Commands;
 [JsonDerivedType(typeof(SetShopRangeCommand), "setShopRange")]
 [JsonDerivedType(typeof(SetWorkshopServiceCommand), "setWorkshopService")]
 [JsonDerivedType(typeof(SetReserveBenchCommand), "setReserveBench")]
+[JsonDerivedType(typeof(SetFacilityClosedCommand), "setFacilityClosed")]
+[JsonDerivedType(typeof(SetLiftClosedCommand), "setLiftClosed")]
 public interface ICommand
 {
     /// <summary>Returns null if the command can be applied, otherwise a human-readable rejection reason.</summary>

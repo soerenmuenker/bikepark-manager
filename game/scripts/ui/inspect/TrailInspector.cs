@@ -38,6 +38,14 @@ internal sealed partial class TrailInspector : InspectorWindow
         return $"{WayMeshes.RatingText(g)} · {g.LengthCm / 100} m · {Status(way)}";
     }
 
+    protected override bool? IsOpenNow() => Trail is { Built: true } way ? !way.Closed : null;
+
+    protected override void SetOpen(bool open) => Ctx.Host.Enqueue(new SetTrailClosedCommand(Target.Id, !open));
+
+    protected override string PowerTip(bool open) => open
+        ? "Open\nClick to close it to riders (those on it finish their run)."
+        : "Closed\nClick to let riders on it again (a worn-out trail stays closed until repaired).";
+
     private string Status(Way way) =>
         !way.Built ? "planned"
         : !Network.IsConnected(way) ? "not connected (closed)"

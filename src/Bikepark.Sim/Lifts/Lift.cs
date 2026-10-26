@@ -52,6 +52,13 @@ public sealed class Lift
 
     public bool IsStopped(long tick) => tick < StoppedUntilTick;
 
+    /// <summary>
+    /// Closed by the player: nobody boards (the queue goes elsewhere, riders aboard are carried up), routing leaves it out,
+    /// and an own lift costs only <see cref="State.ParkRules.ClosedUpkeepPermille"/> of its upkeep. A company lift's bike
+    /// access fee is still billed.
+    /// </summary>
+    public bool Closed { get; set; }
+
     /// <summary>Running and taking riders (not derelict, not under construction).</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool InService => !Derelict && ReadyTick == 0;

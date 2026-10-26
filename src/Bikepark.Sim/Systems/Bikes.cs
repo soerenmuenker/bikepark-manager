@@ -157,7 +157,7 @@ internal static class Bikes
         {
             if (FacilityMath.FindType(state, shop.TypeId) is not { Kind: FacilityKind.BikeShop } type) continue;
             shop.FleetCareLastNight = 0;
-            if (shop.Fleet.Count == 0 || !FacilityMath.ServiceOn(state, type, shop, FacilityMath.FleetCare)) continue;
+            if (shop.Closed || shop.Fleet.Count == 0 || !FacilityMath.ServiceOn(state, type, shop, FacilityMath.FleetCare)) continue;
             int budget = FacilityMath.Workbenches(type, shop) * rules.FleetCarePerBenchPermille;
             foreach (var bike in shop.Fleet.Where(b => b.RentedBy == 0).OrderBy(b => b.ConditionPermille).ThenBy(b => b.Id).ToList())
             {

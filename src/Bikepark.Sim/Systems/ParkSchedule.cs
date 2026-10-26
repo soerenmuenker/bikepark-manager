@@ -40,12 +40,15 @@ public static class ParkSchedule
     /// <summary>Guests may be in the park: open or last rides.</summary>
     public static bool GuestsAllowed(WorldState state, long tick) => IsOpen(state, tick) || IsLastRides(state, tick);
 
-    /// <summary>True if the lift runs this minute: open, or last rides while riders are still aboard (nobody boards after closing).</summary>
+    /// <summary>
+    /// True if the lift runs this minute: open, or last rides (or closed by the player) while riders are still aboard (nobody
+    /// boards after closing).
+    /// </summary>
     public static bool LiftRunning(WorldState state, Lift lift, long tick)
     {
         if (!lift.InService || lift.IsStopped(tick)) return false;
-        if (IsOpen(state, tick)) return true;
-        if (!IsLastRides(state, tick)) return false;
+        if (IsOpen(state, tick) && !lift.Closed) return true;
+        if (!lift.Closed && !IsLastRides(state, tick)) return false;
         return state.Guests.Any(g => g.Activity == RiderActivity.OnLift && g.Route.Count > g.LegIndex
                                                              && g.Route[g.LegIndex].WayId == lift.Id);
     }

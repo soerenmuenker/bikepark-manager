@@ -26,7 +26,22 @@ internal sealed partial class LiftInspector : InspectorWindow
     {
         if (Lift is not { } l || Type is not { } type) return "";
         var op = LiftNetwork.FindOperator(State, l.OperatorId);
-        return $"{type.Name} · run by {op?.Name ?? "the park"}";
+        return (l.Closed ? "CLOSED · " : "") + $"{type.Name} · run by {op?.Name ?? "the park"}";
+    }
+
+    protected override bool? IsOpenNow() => Lift is { } l ? !l.Closed : null;
+
+    protected override void SetOpen(bool open) => Ctx.Host.Enqueue(new SetLiftClosedCommand(Target.Id, !open));
+
+    protected override string PowerTip(bool open)
+    {
+        if (Lift is not { } l || Type is not { } type) return "";
+        string cost = l.OperatorId is null
+            ? $"its upkeep drops to {UiTheme.Money(type.UpkeepPerDayCents * State.Rules.ClosedUpkeepPermille / 1000)} a day (from {UiTheme.Money(type.UpkeepPerDayCents)})"
+            : "the lift company still bills the booked bike access (book \"No bikes\" to save it)";
+        return open
+            ? $"Open\nClick to close it: nobody boards (riders aboard are carried up), riders pedal or take other lifts, and {cost}."
+            : "Closed\nNobody boards. Click to open it again.";
     }
 
     protected override Vector2? Location() =>
@@ -35,7 +50,7 @@ internal sealed partial class LiftInspector : InspectorWindow
             : null;
 
     protected override string Signature() =>
-        Lift is { } l ? $"{l.Derelict}|{l.ReadyTick}|{l.BikeAccess?.TierIndex}|{l.BikeAccess?.PendingTierIndex}|{LiftWorks.StationsOwned(State, l)}|{State.Reputation.TotalReviews / 10}" : "";
+        Lift is { } l ? $"{l.Closed}|{l.Derelict}|{l.ReadyTick}|{l.BikeAccess?.TierIndex}|{l.BikeAccess?.PendingTierIndex}|{LiftWorks.StationsOwned(State, l)}|{State.Reputation.TotalReviews / 10}" : "";
 
     protected override void Setup()
     {

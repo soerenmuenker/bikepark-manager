@@ -54,6 +54,7 @@ public enum UiIcon
     Bulldozer,
     Gate,
     Toolbox,
+    Power,
 }
 
 /// <summary>Line icons drawn with canvas primitives (no image assets), scaled to any square.</summary>
@@ -180,6 +181,10 @@ internal static class UiIcons
                 break;
             case UiIcon.Demo: // sparkle
                 Poly(0.5f, 0.12f, 0.58f, 0.42f, 0.88f, 0.5f, 0.58f, 0.58f, 0.5f, 0.88f, 0.42f, 0.58f, 0.12f, 0.5f, 0.42f, 0.42f);
+                break;
+            case UiIcon.Power: // a ring open at the top, a bar through the gap
+                ci.DrawArc(P(0.5f, 0.54f), 0.30f * s, -Mathf.Pi / 2 + 0.75f, Mathf.Pi * 1.5f - 0.75f, 32, color, w * 1.3f, true);
+                Line(0.5f, 0.14f, 0.5f, 0.50f);
                 break;
             case UiIcon.Close:
                 Line(0.28f, 0.28f, 0.72f, 0.72f);
@@ -427,5 +432,67 @@ public partial class RoundButton : Control
             var color = _active ? UiTheme.Accent : _hover ? UiTheme.Text : UiTheme.TextDim;
             DrawString(UiTheme.Bold, new Vector2(0, _diameter + 15), _caption, HorizontalAlignment.Center, Size.X, 12, color);
         }
+    }
+}
+
+/// <summary>
+/// An on/off (power) button: green with a white power sign while the thing is open, dark red with a red sign while it is
+/// closed. Clicking toggles it (the owner sends the command and sets <see cref="On"/> from the sim).
+/// </summary>
+public partial class PowerButton : Control
+{
+    private readonly float _diameter;
+    private bool _hover;
+    private bool _on = true;
+
+    public PowerButton() { }
+
+    public PowerButton(float diameter, Action onPressed)
+    {
+        _diameter = diameter;
+        Pressed += onPressed;
+        CustomMinimumSize = new Vector2(diameter, diameter);
+        MouseFilter = MouseFilterEnum.Stop;
+        MouseDefaultCursorShape = CursorShape.PointingHand;
+        MouseEntered += () => { _hover = true; QueueRedraw(); };
+        MouseExited += () => { _hover = false; QueueRedraw(); };
+    }
+
+    public event Action? Pressed;
+
+    public bool On
+    {
+        get => _on;
+        set
+        {
+            if (_on == value) return;
+            _on = value;
+            QueueRedraw();
+        }
+    }
+
+    public override GodotObject? _MakeCustomTooltip(string forText) => forText.Length == 0 ? null : UiTheme.Tooltip(forText);
+
+    public override void _GuiInput(InputEvent @event)
+    {
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true })
+        {
+            Pressed?.Invoke();
+            AcceptEvent();
+        }
+    }
+
+    public override void _Draw()
+    {
+        var center = new Vector2(Size.X / 2, _diameter / 2);
+        float r = _diameter / 2;
+        var on = new Color(0.22f, 0.62f, 0.30f);
+        var off = new Color(0.40f, 0.12f, 0.12f);
+        var fill = _on ? on : off;
+        if (_hover) fill = fill.Lightened(0.15f);
+        DrawCircle(center, r, fill);
+        DrawArc(center, r - 1, 0, Mathf.Tau, 48, _on ? UiTheme.Good : UiTheme.Bad, 2f, true);
+        float icon = _diameter * 0.62f;
+        UiIcons.Draw(this, UiIcon.Power, new Rect2(center - new Vector2(icon, icon) / 2, new Vector2(icon, icon)), _on ? Colors.White : UiTheme.Bad);
     }
 }

@@ -221,6 +221,9 @@ public sealed class ParkRules
     public long DailyUpkeepCents { get; set; } = 25_000;
     public long SnackPriceCents { get; set; } = 400;
 
+    /// <summary>A building or own lift the player closed still costs this share of its upkeep (permille; upkeep of the empty building).</summary>
+    public int ClosedUpkeepPermille { get; set; } = 250;
+
     /// <summary>
     /// The park goes bankrupt (game over) when the books close below zero this many days in a row (0 = never).
     /// </summary>
@@ -265,6 +268,7 @@ public sealed class ParkRules
         if (OpenMinute < 0 || OpenMinute >= GameTime.MinutesPerDay) errors.Add("rules.openMinute out of range");
         if (CloseMinute <= OpenMinute || CloseMinute > GameTime.MinutesPerDay) errors.Add("rules.closeMinute must be after openMinute and within the day");
         if (BaseArrivalPermille < 0) errors.Add("rules.baseArrivalPermille must be >= 0");
+        if (ClosedUpkeepPermille is < 0 or > 1000) errors.Add("rules.closedUpkeepPermille must be within 0..1000");
         if (ReferenceEntryFeeCents <= 0) errors.Add("rules.referenceEntryFeeCents must be > 0");
         if (Capacity <= 0) errors.Add("rules.capacity must be > 0");
         if (ReferenceParkingFeeCents < 0 || MaxParkingFeeCents < 0) errors.Add("rules: parking fees must be >= 0");

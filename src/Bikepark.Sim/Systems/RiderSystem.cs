@@ -265,7 +265,7 @@ internal sealed class RiderSystem : ISimSystem
         // Without the day pass a guest needs the cash for it; if the pass is too expensive for them lifts are out.
         long ticket = guest.HasLiftPass ? 0 : state.Park.LiftTicketCents;
         bool canPay = ticket <= guest.CashCents;
-        bool Usable(int liftId) => canPay && state.Lifts.FirstOrDefault(l => l.Id == liftId) is { BikeCarrierPermille: > 0 };
+        bool Usable(int liftId) => canPay && state.Lifts.FirstOrDefault(l => l.Id == liftId) is { BikeCarrierPermille: > 0, Closed: false };
         bool Open(int wayId) => network.FindWay(wayId) is not { } way || network.IsRideable(way);
         var withLifts = network.Route(from, to, Usable, out long liftCost, Open);
         if (withLifts is null || withLifts.All(l => l.Kind != LegKind.Lift)) return withLifts;

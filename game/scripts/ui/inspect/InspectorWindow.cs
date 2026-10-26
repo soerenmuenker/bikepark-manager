@@ -63,6 +63,7 @@ internal abstract partial class InspectorWindow : PanelContainer
     private ScrollContainer _scroll = null!;
     private Label _title = null!, _subtitle = null!;
     private IconView _icon = null!;
+    private PowerButton? _power;
     private string _signature = "";
     private bool _dragging;
 
@@ -104,6 +105,11 @@ internal abstract partial class InspectorWindow : PanelContainer
         _subtitle.ClipText = true;
         names.AddChild(_subtitle);
         header.AddChild(names);
+        if (IsOpenNow() is { } open)
+        {
+            _power = new PowerButton(26, () => { if (IsOpenNow() is { } now) SetOpen(!now); }) { SizeFlagsVertical = SizeFlags.ShrinkCenter, On = open };
+            header.AddChild(_power);
+        }
         if (Location() is not null)
             header.AddChild(new RoundButton(UiIcon.Map, 26, "", "Show it on the map", Locate) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
         header.AddChild(new RoundButton(UiIcon.Close, 26, "", "Close (Esc)", () => CloseRequested?.Invoke(this)) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
@@ -147,6 +153,15 @@ internal abstract partial class InspectorWindow : PanelContainer
     /// <summary>Where it is (meters, x/z) for the locate button; null: no such button.</summary>
     protected virtual Vector2? Location() => null;
 
+    /// <summary>Open (true) or closed (false) for the power button in the header; null: it can't be closed (no button).</summary>
+    protected virtual bool? IsOpenNow() => null;
+
+    /// <summary>The power button was clicked: open or close it (by command).</summary>
+    protected virtual void SetOpen(bool open) { }
+
+    /// <summary>What closing or opening does, for the power button's tip.</summary>
+    protected virtual string PowerTip(bool open) => open ? "Open · click to close it" : "Closed · click to open it";
+
     /// <summary>Changes that need the current tab rebuilt (an upgrade bought, a deal signed...).</summary>
     protected virtual string Signature() => "";
 
@@ -183,6 +198,11 @@ internal abstract partial class InspectorWindow : PanelContainer
         }
         _title.Text = TitleText();
         _subtitle.Text = SubtitleText();
+        if (_power is not null && IsOpenNow() is { } open)
+        {
+            _power.On = open;
+            _power.TooltipText = PowerTip(open);
+        }
         foreach (var update in _updates) update();
         float height = Math.Min(MaxBodyHeight, _body.GetCombinedMinimumSize().Y);
         if (!Mathf.IsEqualApprox(_scroll.CustomMinimumSize.Y, height)) _scroll.CustomMinimumSize = new Vector2(0, height);

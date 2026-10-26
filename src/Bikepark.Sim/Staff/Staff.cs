@@ -150,7 +150,7 @@ public static class StaffMath
     {
         StaffEffect.Supervision => Math.Max(0, Headcount(state) - CountOf(state, StaffEffect.Supervision) + state.Crew.Count - state.StaffRules.FreeHeadcount),
         StaffEffect.Tickets => VisitorsBasis(state),
-        StaffEffect.FirstAid => state.Ways.Count(w => w.Built && w.Kind == WayKind.Trail) + state.Lifts.Count(l => l.InService),
+        StaffEffect.FirstAid => state.Ways.Count(w => w.Built && w.Kind == WayKind.Trail) + state.Lifts.Count(l => l.InService && !l.Closed),
         StaffEffect.Cleaning => VisitorsBasis(state) + (long)state.Facilities.Count * state.StaffRules.FacilityCleaningVisitors,
         _ => 0,
     };

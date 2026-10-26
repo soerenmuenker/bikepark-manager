@@ -99,6 +99,8 @@ public partial class LiftView : Node3D
         _subscriptions.Add(sim.Events.Subscribe<StructureRenaturalized>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<FacilityBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<FacilityUpgraded>(_ => _dirty = true)); // a bike shop grows an extension
+        _subscriptions.Add(sim.Events.Subscribe<FacilityOpenChanged>(_ => _dirty = true)); // "closed" on its label
+        _subscriptions.Add(sim.Events.Subscribe<LiftOpenChanged>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<RentalBikesBought>(_ => _dirty = true)); // bikes in its rack
         _subscriptions.Add(sim.Events.Subscribe<RentalBikeRetired>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<SponsorSignBuilt>(_ => _dirty = true));
@@ -153,7 +155,7 @@ public partial class LiftView : Node3D
             AddMesh(type?.Kind == Bikepark.Sim.Facilities.FacilityKind.BikeShop
                 ? BikeShop(pad, type, facility)
                 : Building(pad, type?.Kind ?? Bikepark.Sim.Facilities.FacilityKind.Bar), facility.Name);
-            AddLabel(facility.Name, LiftShapes.Center(pad, 7f));
+            AddLabel(facility.Closed ? $"{facility.Name}\nclosed" : facility.Name, LiftShapes.Center(pad, 7f));
         }
 
         AddSponsorSigns(sim);
@@ -182,6 +184,7 @@ public partial class LiftView : Node3D
                 AddMesh(Track(grid, valley, mountain, lift.Derelict ? Gravel.Lerp(new Color(0.35f, 0.5f, 0.25f), 0.4f) : Gravel), $"{lift.Name} track");
             string owner = LiftNetwork.FindOperator(state, lift.OperatorId)?.Name ?? "park";
             string status = lift.Derelict ? lift.ReadyTick > 0 ? "\nbeing restored" : "\nrusty, out of service" : building ? "\nunder construction" : "";
+            if (lift.Closed) status += "\nclosed";
             AddLabel($"{lift.Name}\n{owner}{status}", LiftShapes.Center(valley, 14f));
             AddLabel("Plateau", LiftShapes.Center(mountain, 12f));
         }

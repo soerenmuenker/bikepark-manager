@@ -202,6 +202,12 @@ tools/release/export.sh 0.1.0
     the reference costs mood (`RipOffMood`) and adds to `Guest.OverpaidCents` (lowers the review's Value). **Upgrades**
     (`FacilityType.Upgrades`, bought in order: `Facility.Level`, `UpgradeFacilityCommand`; `BuildFacilityCommand.Level` for content)
     add seats, products, shop buy chance and après minutes; seats, upkeep, products are derived (`FacilityMath.Seats/Upkeep/ProductsOf`).
+    **Closing:** `Facility.Closed` (`SetFacilityClosedCommand`) and `Lift.Closed` (`SetLiftClosedCommand`): a closed building is
+    skipped by `FacilityMath.InReach`, `FreeCampground`, `FreeRentalBike` and the rental arrivals (guests already there finish,
+    booked campers stay), no fleet care; a closed lift releases its queue, is left out of routing and only carries riders already
+    aboard (`ParkSchedule.LiftRunning`). Both cost `ParkRules.ClosedUpkeepPermille` of their upkeep (a company lift's bike access
+    fee is still billed). Events `FacilityOpenChanged` / `LiftOpenChanged`; the windows' power button (`InspectorWindow.IsOpenNow`,
+    `PowerButton`) toggles them, and trails (`SetTrailClosedCommand`).
     Where the scenario has bar types (`BarsNeeded`), lunch is at a bar in reach with a free seat, accepted with the price's buy factor
     (else a packed lunch), otherwise the guest rides on; impulse buys (snack, coffee, beer: `ImpulsePermille` per minute between
     laps, `WhenEnergyBelow`) only at a bar. **Stops on the way:** at most once per lap, at a leg end with a bar in reach
@@ -405,7 +411,7 @@ level and price; borders on the map: yours teal, for sale yellow, locked grey; n
 `scripts/ui/WorldPicker.cs`, hover: hand cursor + a tip naming it): a rider → follow, a worker → Crew menu at their job,
 a building, lift station / line or trail (a feature: its Features tab) → its **window**, a parking lot → the Park menu, a planned way → Crew menu at its job, land for sale → Land menu at the parcel; menus scroll to and highlight
 the item (`HudPanel.Focus`) · **windows** (RollerCoaster Tycoon style, drag by the header, up to 3 open, Esc closes the top
-one, ◎ shows it on the map): building (Overview · Store (bike shops: departments on the shelf slots, budget / standard / premium range, workshop services, keep a bench free) · Prices (park-wide, per product it sells) · Fleet (rental counter) · Upgrades ·
+one, ◎ shows it on the map, ⏻ power button: open / close the building, lift or trail): building (Overview · Store (bike shops: departments on the shelf slots, budget / standard / premium range, workshop services, keep a bench free) · Prices (park-wide, per product it sells) · Fleet (rental counter) · Upgrades ·
 Finances · Reviews · Info), lift (Overview · Bike access · Finances (lift pass) · Reviews · Info), trail (Overview ·
 Features (repairs, cameras, clip price) · Safety · Sponsor · Reviews); clicking the park name in the bar opens the Park menu;
 the Trails and Lifts menus link to them · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag

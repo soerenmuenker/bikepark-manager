@@ -36,7 +36,7 @@ internal sealed class LiftSystem : ISimSystem
 
         foreach (var lift in state.Lifts)
         {
-            if (lift.BikeCarrierPermille <= 0 && lift.Queue.Count > 0)
+            if ((lift.BikeCarrierPermille <= 0 || lift.Closed) && lift.Queue.Count > 0)
                 ReleaseQueue(ctx, lift);
             if (ParkSchedule.LiftRunning(state, lift, ctx.Tick))
                 Dispatch(ctx, lift);

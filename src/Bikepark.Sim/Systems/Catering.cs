@@ -84,7 +84,7 @@ internal static class Catering
 
     /// <summary>True if some bar of the park serves a lunch the guest could afford (worth riding on to find a seat).</summary>
     public static bool AnyLunchAffordable(WorldState state, Guest guest) =>
-        state.Facilities.Any(f => FacilityMath.FindType(state, f.TypeId) is { Kind: FacilityKind.Bar } type
+        state.Facilities.Any(f => !f.Closed && FacilityMath.FindType(state, f.TypeId) is { Kind: FacilityKind.Bar } type
                                   && FacilityMath.ProductsOf(state, type, f).Any(p => p.Lunch && guest.CashCents >= FacilityMath.PriceOf(state, p)));
 
     /// <summary>The guest sits down for lunch at the bar: paid, seated until the lunch is over.</summary>

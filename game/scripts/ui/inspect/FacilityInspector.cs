@@ -34,8 +34,22 @@ internal sealed partial class FacilityInspector : InspectorWindow
 
     protected override string SubtitleText() =>
         Type is { } type && Facility is { } f
-            ? $"{type.Name}" + (f.Level > 0 ? $" · {string.Join(", ", FacilityMath.Bought(type, f).Select(u => u.Name))}" : "")
+            ? (f.Closed ? "CLOSED · " : "") + $"{type.Name}" + (f.Level > 0 ? $" · {string.Join(", ", FacilityMath.Bought(type, f).Select(u => u.Name))}" : "")
             : "";
+
+    protected override bool? IsOpenNow() => Facility is { } f ? !f.Closed : null;
+
+    protected override void SetOpen(bool open) => Ctx.Host.Enqueue(new SetFacilityClosedCommand(Target.Id, !open));
+
+    protected override string PowerTip(bool open)
+    {
+        if (Facility is not { } f || Type is not { } type) return "";
+        long full = FacilityMath.Upkeep(State, type, new Facility { TypeId = f.TypeId, Level = f.Level, Range = f.Range });
+        long closed = full * State.Rules.ClosedUpkeepPermille / 1000;
+        return open
+            ? $"Open\nClick to close it: it serves nobody new (guests already there finish), and costs only {UiTheme.Money(closed)} a day instead of {UiTheme.Money(full)}."
+            : $"Closed\nIt serves nobody and costs {UiTheme.Money(closed)} a day. Click to open it again ({UiTheme.Money(full)} a day).";
+    }
 
     protected override Vector2? Location() =>
         Facility is { } f && State.TerrainEdits.FirstOrDefault(e => e.Id == f.TerrainEditId) is { } edit
@@ -44,7 +58,7 @@ internal sealed partial class FacilityInspector : InspectorWindow
 
     protected override string Signature() =>
         Facility is { } f
-            ? $"{f.Level}|{Ctx.Kpi.Level}|{f.Fleet.Count}|{State.Reputation.TotalReviews / 10}|{string.Join(",", f.Departments)}|{f.Range}|" +
+            ? $"{f.Level}|{f.Closed}|{Ctx.Kpi.Level}|{f.Fleet.Count}|{State.Reputation.TotalReviews / 10}|{string.Join(",", f.Departments)}|{f.Range}|" +
               $"{string.Join(",", f.ServicesOff)}|{f.ReserveBench}"
             : "";
 
@@ -113,6 +127,8 @@ internal sealed partial class FacilityInspector : InspectorWindow
     private string StatusLine()
     {
         if (Facility is not { } f || Type is not { } type) return "";
+        if (f.Closed)
+            return "Closed: it serves nobody until you open it again (power button above).";
         if (FacilityMath.HasRental(type, f) && f.Fleet.Count == 0)
             return "No rental bikes yet: buy some in the Fleet tab.";
         if (f.TurnedAwayToday > 0 && type.Kind == FacilityKind.Bar)

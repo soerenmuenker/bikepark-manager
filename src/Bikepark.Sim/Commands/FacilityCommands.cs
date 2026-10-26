@@ -164,3 +164,43 @@ public sealed record SetReserveBenchCommand(int FacilityId, bool On) : ICommand
 
     public void Apply(SimContext ctx) => ctx.State.Facilities.First(f => f.Id == FacilityId).ReserveBench = On;
 }
+
+/// <summary>
+/// Closes a building (bar, bike shop, campground) or opens it again: closed, it serves nobody new and costs only part of
+/// its upkeep (<see cref="ParkRules.ClosedUpkeepPermille"/>).
+/// </summary>
+public sealed record SetFacilityClosedCommand(int FacilityId, bool Closed) : ICommand
+{
+    public string? Validate(SimContext ctx)
+    {
+        if (ctx.State.Facilities.FirstOrDefault(f => f.Id == FacilityId) is not { } facility) return "No such building.";
+        return facility.Closed == Closed ? $"{facility.Name} is already {(Closed ? "closed" : "open")}." : null;
+    }
+
+    public void Apply(SimContext ctx)
+    {
+        var facility = ctx.State.Facilities.First(f => f.Id == FacilityId);
+        facility.Closed = Closed;
+        ctx.Publish(new FacilityOpenChanged(ctx.Tick, FacilityId, !Closed));
+    }
+}
+
+/// <summary>
+/// Closes a lift or opens it again: closed, nobody boards (riders aboard are carried up), riders route without it, and an own
+/// lift costs only part of its upkeep. Any lift can be closed, also one still being built (it stays closed when ready).
+/// </summary>
+public sealed record SetLiftClosedCommand(int LiftId, bool Closed) : ICommand
+{
+    public string? Validate(SimContext ctx)
+    {
+        if (ctx.State.Lifts.FirstOrDefault(l => l.Id == LiftId) is not { } lift) return "No such lift.";
+        return lift.Closed == Closed ? $"{lift.Name} is already {(Closed ? "closed" : "open")}." : null;
+    }
+
+    public void Apply(SimContext ctx)
+    {
+        var lift = ctx.State.Lifts.First(l => l.Id == LiftId);
+        lift.Closed = Closed;
+        ctx.Publish(new LiftOpenChanged(ctx.Tick, LiftId, !Closed));
+    }
+}

@@ -183,6 +183,8 @@ internal static class TestWorlds
         new(810, new SetShopRangeCommand(99, ShopRange.Premium)),
         new(810, new SetWorkshopServiceCommand(99, "tuneup", false)),
         new(810, new SetReserveBenchCommand(99, true)),
+        new(820, new SetFacilityClosedCommand(99, true)), // rejected: no such building
+        new(820, new SetLiftClosedCommand(99, true)), // rejected: no such lift
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

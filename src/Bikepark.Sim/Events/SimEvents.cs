@@ -306,6 +306,12 @@ public sealed record CamperSleeping(long Tick, int GuestId, int CampgroundId, in
 /// <summary>A camper woke up for another day in the park.</summary>
 public sealed record CamperWokeUp(long Tick, int GuestId) : ISimEvent;
 
+/// <summary>The player closed a building or opened it again.</summary>
+public sealed record FacilityOpenChanged(long Tick, int FacilityId, bool Open) : ISimEvent;
+
+/// <summary>The player closed a lift or opened it again.</summary>
+public sealed record LiftOpenChanged(long Tick, int LiftId, bool Open) : ISimEvent;
+
 /// <summary>The park bought a building's next upgrade.</summary>
 public sealed record FacilityUpgraded(long Tick, int FacilityId, string UpgradeName, int Level) : ISimEvent;
 

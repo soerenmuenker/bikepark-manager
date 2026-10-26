@@ -148,6 +148,12 @@ public sealed class Facility
     /// <summary>Upgrades bought (0 = as built; the first <see cref="FacilityType.Upgrades"/> up to this count).</summary>
     public int Level { get; set; }
 
+    /// <summary>
+    /// Closed by the player: serves nobody new (guests already seated finish, booked campers stay their nights, rental
+    /// bikes out come back), no fleet care, and only <see cref="State.ParkRules.ClosedUpkeepPermille"/> of its upkeep.
+    /// </summary>
+    public bool Closed { get; set; }
+
     public long TotalRevenueCents { get; set; }
     public long RevenueTodayCents { get; set; }
 
@@ -242,9 +248,12 @@ public static class FacilityMath
     /// <summary>The building's upkeep as built and upgraded (before a bike shop's range).</summary>
     public static long Upkeep(FacilityType type, Facility facility) => type.UpkeepPerDayCents + Bought(type, facility).Sum(u => u.UpkeepPerDayCents);
 
-    /// <summary>What the building costs a day: its upkeep, scaled by a bike shop's range.</summary>
-    public static long Upkeep(WorldState state, FacilityType type, Facility facility) =>
-        type.Kind == FacilityKind.BikeShop ? Upkeep(type, facility) * RangeOf(state, facility).UpkeepFactorPermille / 1000 : Upkeep(type, facility);
+    /// <summary>What the building costs a day: its upkeep, scaled by a bike shop's range, and only a share while closed.</summary>
+    public static long Upkeep(WorldState state, FacilityType type, Facility facility)
+    {
+        long upkeep = type.Kind == FacilityKind.BikeShop ? Upkeep(type, facility) * RangeOf(state, facility).UpkeepFactorPermille / 1000 : Upkeep(type, facility);
+        return facility.Closed ? upkeep * state.Rules.ClosedUpkeepPermille / 1000 : upkeep;
+    }
 
     // ---------------------------------------------------------------- bike shops
 
@@ -341,7 +350,7 @@ public static class FacilityMath
         foreach (var station in state.Facilities)
         {
             if (stationId != 0 && station.Id != stationId) continue;
-            if (FindType(state, station.TypeId) is not { Kind: FacilityKind.BikeShop } type || !HasRental(type, station)) continue;
+            if (station.Closed || FindType(state, station.TypeId) is not { Kind: FacilityKind.BikeShop } type || !HasRental(type, station)) continue;
             RentalBike? best = null;
             foreach (var bike in station.Fleet)
                 if (bike.RentedBy == 0 && bike.ConditionPermille > 0 && (best is null || bike.ConditionPermille > best.ConditionPermille))
@@ -382,7 +391,7 @@ public static class FacilityMath
     {
         foreach (var camp in state.Facilities)
         {
-            if (FindType(state, camp.TypeId) is not { Kind: FacilityKind.Campground } type) continue;
+            if (camp.Closed || FindType(state, camp.TypeId) is not { Kind: FacilityKind.Campground } type) continue;
             if (PitchesTaken(state, camp) >= Pitches(type, camp)) continue;
             if (ProductsOf(state, type, camp).FirstOrDefault(p => p.Overnight) is { } night) return (camp, type, night);
         }
@@ -501,7 +510,7 @@ public static class FacilityMath
         long reach = state.FacilityRules.ServeReachMeters * 100L;
         foreach (var facility in state.Facilities)
         {
-            if (FindType(state, facility.TypeId) is not { } type || type.Kind != kind) continue;
+            if (facility.Closed || FindType(state, facility.TypeId) is not { } type || type.Kind != kind) continue;
             if (LiftNetwork.Pad(state, facility.TerrainEditId) is not { } pad) continue;
             long d = pad.DistanceOutside(at.X, at.Z);
             if (d <= reach) found.Add((facility, type, d));
