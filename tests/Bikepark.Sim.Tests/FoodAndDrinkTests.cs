@@ -446,10 +446,9 @@ public class FoodAndDrinkTests
                 type["merchPriceCents"] = 2500;
                 type["merchCostPermille"] = 450;
             }
-            type["buyChancePermille"] = id == "merch_shop" ? 120 : 0;
         }
         world["facilityTypes"] = new JsonArray(world["facilityTypes"]!.AsArray().OfType<JsonObject>()
-            .Where(t => t["id"]!.GetValue<string>() is "snack_bar" or "merch_shop" or "bike_cafe").Select(t => (JsonNode)t.DeepClone()).ToArray());
+            .Where(t => t["id"]!.GetValue<string>() is "snack_bar" or "beer_rondel" or "bike_cafe").Select(t => (JsonNode)t.DeepClone()).ToArray());
         foreach (var facility in world["facilities"]!.AsArray().OfType<JsonObject>())
         {
             facility.Remove("level");
@@ -461,10 +460,9 @@ public class FoodAndDrinkTests
         world["park"]!.AsObject().Remove("beerFromMinute");
 
         var loaded = SaveGame.Deserialize(root.ToJsonString());
-        Assert.Equal(["lunch", "snack", "merch"], loaded.ProductTypes.Select(p => p.Id));
+        Assert.Equal(["lunch", "snack"], loaded.ProductTypes.Select(p => p.Id));
         Assert.Equal(1400, loaded.ProductTypes[0].ReferencePriceCents); // the first building's price
         Assert.True(loaded.ProductTypes[0].Lunch);
-        Assert.Equal(450, loaded.ProductTypes.Single(p => p.Id == "merch").GoodsCostPermille);
         Assert.Equal(["lunch", "snack"], loaded.FacilityTypes.Single(t => t.Id == "snack_bar").Products);
         Assert.All(loaded.Facilities, f => Assert.Equal(0, f.Level));
         var running = new Simulation(loaded);

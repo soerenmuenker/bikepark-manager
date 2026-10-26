@@ -359,8 +359,6 @@ public partial class BuildPanel : HudPanel
                     {
                         Bikepark.Sim.Facilities.FacilityKind.Bar => UiIcon.Bar,
                         Bikepark.Sim.Facilities.FacilityKind.Campground => UiIcon.Tent,
-                        Bikepark.Sim.Facilities.FacilityKind.Rental => UiIcon.Riders,
-                        Bikepark.Sim.Facilities.FacilityKind.Service => UiIcon.Tool,
                         _ => UiIcon.Shop,
                     }, type.Name, "",
                     FacilityTooltip(type), () => ToggleFacility(id)) { CustomMinimumSize = new Vector2(150, 104) };
@@ -509,11 +507,13 @@ public partial class BuildPanel : HudPanel
                 new[] { $"Sells {sells}", $"{type.Seats} seats", "Without a bar guests bring a packed lunch: no money for you, less fun for them" }),
             Bikepark.Sim.Facilities.FacilityKind.Campground => ("Some arriving guests stay for a few nights and ride again every morning.",
                 new[] { $"{type.Pitches} pitches", $"Stays of {state.FacilityRules.MinNights}–{state.FacilityRules.MaxNights} nights, paid on arrival" }),
-            Bikepark.Sim.Facilities.FacilityKind.Rental => ("Rents bikes by the day to extra guests without one (mostly beginners).",
-                new[] { $"Bikes {UiTheme.Money(type.BikeCostCents)} each, up to {type.MaxFleet}", "Bikes wear and are retired at 0 %" }),
-            Bikepark.Sim.Facilities.FacilityKind.Service => ("Riders whose bike broke in a crash get it fixed here and ride on instead of going home.",
-                new[] { $"{type.Seats} workbenches" }),
-            _ => ("Guests shop here between laps and on their way home: the happier, the likelier.", new[] { $"Sells {sells}" }),
+            _ => ("Everything bike: a store, a workshop and (upgraded) bike rental. Each upgrade grows the building.",
+                new[]
+                {
+                    $"{type.ShelfSlots} shelf slots: stock what your guests like ({sells.Replace(", bike repair", "")}), in a budget, standard or premium range",
+                    $"{type.Workbenches} workbench{(type.Workbenches == 1 ? "" : "es")}: riders whose bike broke in a crash ride on instead of going home",
+                    "Upgrades add benches, tune-ups and suspension setups, a rental fleet, more shelves and complete bikes",
+                }),
         };
         var lines = new List<string>(facts)
         {

@@ -17,9 +17,11 @@ internal static class Catering
     public static bool AlcoholServed(WorldState state, long tick) => GameTime.MinuteOfDay(tick) >= state.Park.BeerFromMinute;
 
     /// <summary>
-    /// Maybe buys one thing at the nearest bar serving <paramref name="point"/>: products in catalog order, each with its
-    /// impulse chance × <paramref name="scalePermille"/> × the price's buy factor (drinks with alcohol also × mood, and
-    /// less the more the guest has had). Lunch and merch are not impulse buys. True if something was bought.
+    /// Maybe buys one thing at the nearest bar (or bike shop) serving <paramref name="point"/>: products in catalog order,
+    /// each with its impulse chance (in the rain plus its rain chance: rain jackets) × <paramref name="scalePermille"/> ×
+    /// the price's buy factor × how much the guest's skill group likes it (drinks with alcohol also × mood, and less the more
+    /// the guest has had; protectors more after seeing a crash). Lunch is no impulse buy, shop goods are bought once a
+    /// visit. True if something was bought.
     /// </summary>
     public static bool TryImpulse(SimContext ctx, Guest guest, PointCm? point, int scalePermille, FacilityKind kind = FacilityKind.Bar)
     {
@@ -27,16 +29,21 @@ internal static class Catering
         var bars = FacilityMath.InReach(state, point, kind);
         if (bars.Count == 0) return false;
         var (bar, type) = bars[0];
+        bool raining = Weather.WeatherMath.IsRaining(state, ctx.Tick);
         foreach (var product in FacilityMath.ProductsOf(state, type, bar))
         {
-            if (product.Lunch || product.Merch || product.ImpulsePermille <= 0 || guest.Energy >= product.WhenEnergyBelow) continue;
-            if (product.Protection && guest.Protected) continue; // has some already
+            int impulse = product.ImpulsePermille + (raining ? product.RainImpulsePermille : 0);
+            if (product.Lunch || impulse <= 0 || guest.Energy >= product.WhenEnergyBelow) continue;
+            if (FacilityMath.HasBought(guest, product)) continue; // has some already
             if (product.Alcohol > 0 && !AlcoholServed(state, ctx.Tick)) continue;
-            long price = FacilityMath.PriceOf(state, product);
-            if (guest.CashCents < price) continue;
-            long chance = (long)product.ImpulsePermille * scalePermille / 1000 * FacilityMath.BuyFactorPermille(product, price) / 1000;
+            long price = FacilityMath.PriceAt(state, product, bar);
+            if (!product.ByCard && guest.CashCents < price) continue;
+            long chance = (long)impulse * scalePermille / 1000 * FacilityMath.BuyFactorAt(state, product, bar) / 1000
+                          * FacilityMath.GroupFactorPermille(state, product, bar, guest) / 1000;
             if (product.Alcohol > 0)
                 chance = chance * Math.Clamp(guest.Happiness, 0, 1000) / 1000 * (1000 - Math.Clamp(guest.Alcohol, 0, 1000)) / 1000;
+            if (product.Protection && guest.CrashesSeen > 0)
+                chance = chance * state.FacilityRules.CrashSeenProtectionPermille / 1000;
             if (!ctx.Rng.ChancePermille((int)Math.Min(1000, chance))) continue;
             Buy(ctx, bar, guest, product);
             return true;
@@ -187,26 +194,31 @@ internal static class Catering
     }
 
     /// <summary>
-    /// A guest going home passes the shop nearest to where they are (or to the arrival base) and buys something with the
-    /// shop's chance, scaled by their mood and the price.
+    /// A guest going home passes the bike shop nearest to where they are (or to the arrival base) and may buy one thing:
+    /// its departments in catalog order, each with its going-home chance × mood × the price's buy factor × how much the
+    /// guest's skill group likes it there (product and range).
     /// </summary>
     public static void BuyMerch(SimContext ctx, WayNetwork network, Guest guest)
     {
         var state = ctx.State;
         if (state.Facilities.Count == 0) return;
-        var shops = FacilityMath.InReach(state, FacilityMath.GuestPoint(state, network, guest), FacilityKind.Shop);
+        var shops = FacilityMath.InReach(state, FacilityMath.GuestPoint(state, network, guest), FacilityKind.BikeShop);
         if (shops.Count == 0 && network.BaseHub is { } hub)
-            shops = FacilityMath.InReach(state, new PointCm(hub.Pad.CenterX, hub.Pad.CenterZ), FacilityKind.Shop);
+            shops = FacilityMath.InReach(state, new PointCm(hub.Pad.CenterX, hub.Pad.CenterZ), FacilityKind.BikeShop);
         if (shops.Count == 0) return;
         var (shop, type) = shops[0];
-        var merch = FacilityMath.ProductsOf(state, type, shop).FirstOrDefault(p => p.Merch && guest.CashCents >= FacilityMath.PriceOf(state, p));
-        if (merch is null) return;
-        long price = FacilityMath.PriceOf(state, merch);
-        long chance = (long)FacilityMath.BuyChancePermille(type, shop) * Math.Clamp(guest.Happiness, 0, 1000) / 1000
-                      * FacilityMath.BuyFactorPermille(merch, price) / 1000;
-        if (!ctx.Rng.ChancePermille((int)Math.Min(1000, chance))) return;
-        Buy(ctx, shop, guest, merch);
-        ctx.Publish(new MerchSold(ctx.Tick, guest.Id, shop.Id, price));
+        foreach (var product in FacilityMath.ProductsOf(state, type, shop))
+        {
+            if (product.HomeChancePermille <= 0 || FacilityMath.HasBought(guest, product)) continue;
+            long price = FacilityMath.PriceAt(state, product, shop);
+            if (!product.ByCard && guest.CashCents < price) continue;
+            long chance = (long)product.HomeChancePermille * Math.Clamp(guest.Happiness, 0, 1000) / 1000
+                          * FacilityMath.BuyFactorAt(state, product, shop) / 1000 * FacilityMath.GroupFactorPermille(state, product, shop, guest) / 1000;
+            if (!ctx.Rng.ChancePermille((int)Math.Min(1000, chance))) continue;
+            Buy(ctx, shop, guest, product);
+            ctx.Publish(new MerchSold(ctx.Tick, guest.Id, shop.Id, price));
+            return;
+        }
     }
 
     private static long Buy(SimContext ctx, Facility facility, Guest guest, ProductType product)

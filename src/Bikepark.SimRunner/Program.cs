@@ -230,10 +230,18 @@ public static class Program
                 return new FacilityReport(x.Id, x.Name, x.TypeId, x.Level,
                     type is null ? [] : Bikepark.Sim.Facilities.FacilityMath.Bought(type, x).Select(u => u.Name).ToList(),
                     type is null ? 0 : type.Kind == Bikepark.Sim.Facilities.FacilityKind.Campground
-                        ? Bikepark.Sim.Facilities.FacilityMath.Pitches(type, x) : Bikepark.Sim.Facilities.FacilityMath.Seats(type, x),
+                        ? Bikepark.Sim.Facilities.FacilityMath.Pitches(type, x) : Bikepark.Sim.Facilities.FacilityMath.Places(type, x),
                     type is null ? [] : Bikepark.Sim.Facilities.FacilityMath.ProductsOf(state, type, x).Select(p => p.Id).ToList(),
                     x.Customers, x.TotalRevenueCents, x.TurnedAway,
-                    x.Sales.Select(s => new ProductSalesReport(s.ProductId, s.Sold, s.RevenueCents)).ToList());
+                    x.Sales.Select(s => new ProductSalesReport(s.ProductId, s.Sold, s.RevenueCents)).ToList(),
+                    type is { Kind: Bikepark.Sim.Facilities.FacilityKind.BikeShop }
+                        ? new BikeShopReport(Bikepark.Sim.Facilities.FacilityMath.ShelfSlots(type, x), x.Departments, x.Range.ToString(),
+                            Bikepark.Sim.Facilities.FacilityMath.Workbenches(type, x),
+                            Bikepark.Sim.Facilities.FacilityMath.UnlockedServices(state, type, x).Select(p => p.Id)
+                                .Append(Bikepark.Sim.Facilities.FacilityMath.FleetCare)
+                                .Where(id => Bikepark.Sim.Facilities.FacilityMath.ServiceOn(state, type, x, id)).ToList(),
+                            x.ReserveBench, x.FleetCareLastNight, Bikepark.Sim.Facilities.FacilityMath.Upkeep(state, type, x))
+                        : null);
             }).ToList(),
             f.TotalFoodCents, f.TotalSnackCents, f.TotalDrinksCents, f.TotalMerchCents, f.TotalMerchCostCents, f.TotalFacilityBuildCents,
             f.TotalFacilityUpkeepCents,
@@ -248,11 +256,12 @@ public static class Program
                 state.Guests.Count(g => g.CampgroundId != 0), state.Guests.Count(g => g.Activity == Bikepark.Sim.State.RiderActivity.Camping),
                 f.TotalCampingCents),
             new BikesReport(
-                state.Facilities.Where(x => x.Fleet.Count > 0 || Bikepark.Sim.Facilities.FacilityMath.FindType(state, x.TypeId)?.Kind == Bikepark.Sim.Facilities.FacilityKind.Rental)
+                state.Facilities.Where(x => x.Fleet.Count > 0 || Bikepark.Sim.Facilities.FacilityMath.FindType(state, x.TypeId) is { } t && Bikepark.Sim.Facilities.FacilityMath.HasRental(t, x))
                     .Select(x => new FleetReport(x.Name, x.Fleet.Count, x.Fleet.Count(b => b.RentedBy != 0),
                         x.Fleet.Count == 0 ? 0 : (int)x.Fleet.Average(b => b.ConditionPermille))).ToList(),
                 state.Stats.TotalRenters, state.Stats.RentersWithoutBike, f.TotalRentalCents, state.Stats.TotalRepairs, f.TotalRepairCents,
-                state.Stats.BikesRetired, state.Safety.BikeOnlyCrashes, state.Guests.Count(g => g.Protected)),
+                state.Stats.BikesRetired, state.Safety.BikeOnlyCrashes, state.Guests.Count(g => g.Protected),
+                state.Guests.Count(g => g.TuneUpPermille > 0), state.Guests.Count(g => g.RedBlackFun > 0)),
             state.Tools.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.Count()));
     }
 
@@ -457,8 +466,13 @@ internal sealed record CameraReport(string Trail, string Feature, int ClipsSold)
 internal sealed record SponsorsReport(List<DealReport> Deals, string ParkTitle, long SponsorCents, long ClipCents, List<CameraReport> Cameras,
     int BuzzPermille, List<string> Log);
 
+/// <summary>Seats: a bar's seats, a campground's pitches, a bike shop's workbenches.</summary>
 internal sealed record FacilityReport(int Id, string Name, string TypeId, int Level, List<string> Upgrades, int Seats, List<string> Products,
-    int Customers, long RevenueCents, long TurnedAway, List<ProductSalesReport> Sales);
+    int Customers, long RevenueCents, long TurnedAway, List<ProductSalesReport> Sales, BikeShopReport? BikeShop);
+
+/// <summary>A bike shop's setup: shelf slots and departments, range, workbenches, services on, fleet care last night, upkeep a day.</summary>
+internal sealed record BikeShopReport(int ShelfSlots, List<string> Departments, string Range, int Workbenches, List<string> Services,
+    bool ReserveBench, int FleetCareLastNightPermille, long UpkeepPerDayCents);
 
 internal sealed record ProductSalesReport(string Product, long Sold, long RevenueCents);
 
@@ -471,9 +485,12 @@ internal sealed record FacilitiesReport(List<FacilityReport> Buildings, long Foo
     long MerchCostCents, long BuildCents, long UpkeepCents, List<ProductReport> Products, int BeerFromMinute, long ApresGuests,
     CampingReport Camping, BikesReport Bikes, Dictionary<string, int> Tools);
 
-/// <summary>Rental fleets (bikes, rented now, average condition permille), renters, repairs, bikes retired, bike-only crashes, guests in protectors now.</summary>
+/// <summary>
+/// Rental fleets (bikes, rented now, average condition permille), renters, repairs, bikes retired, bike-only crashes, guests in
+/// protectors, tuned up and with a suspension setup now.
+/// </summary>
 internal sealed record BikesReport(List<FleetReport> Fleets, long Renters, long RentersWithoutBike, long RentalCents, long Repairs, long RepairCents,
-    long BikesRetired, long BikeOnlyCrashes, int ProtectedNow);
+    long BikesRetired, long BikeOnlyCrashes, int ProtectedNow, int TunedUpNow, int SuspensionSetNow);
 
 internal sealed record FleetReport(string Station, int Bikes, int RentedNow, int AverageConditionPermille);
 

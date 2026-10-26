@@ -3,16 +3,22 @@
 // the reference: elasticityPermille is how much of the buy chance each reference price above it removes (1000: double
 // price, no sales; cheaper adds up to +50 %); paying above the reference costs a little mood and lowers the value part of
 // their review. goodsCostPermille: what one sale costs the park in goods.
-// lunch: sat down for minMinutes..maxMinutes once per visit (bar seats). merch: bought in shops by guests going home.
+// lunch: sat down for minMinutes..maxMinutes once per visit (bar seats).
 // Others are impulse buys: impulsePermille per minute between laps at a bar (scaled up for a stop on the way to a trail,
 // facilityRules.stopScalePermille), only by guests with less energy than whenEnergyBelow. Effects: energy and happiness
 // (0..1000), alcohol (bolder trail choices and more crashes, wears off by the minute), caffeineMinutes (climbing costs
 // half the energy meanwhile). overnight: a night at a campground (campers pay their nights on arrival; the price decides
-// how many arriving guests camp). rental: a rental bike for the day (rental stations; the price decides how many guests
-// without a bike come). repair: fixing a bike broken in a crash at a service shop (seated minMinutes..maxMinutes).
-// clip: a video clip from a photo spot (a camera at a jump), bought after a filmed run.
-// protection: protectors from the pro shop (an impulse buy; crashes are less often serious). Catalog order is the order
-// guests consider things in.
+// how many arriving guests camp). rental: a rental bike for the day (bike shop with a rental counter; the price decides
+// how many guests without a bike come). clip: a video clip from a photo spot (a camera at a jump), bought after a filmed run.
+// Bike shop departments (department: true, each takes a shelf slot, chosen per shop; merch: booked as merch): homeChancePermille
+// is the chance a perfectly happy guest going home buys it, impulsePermille / rainImpulsePermille (only while it rains)
+// between laps, once per visit each; groups: how much beginners / intermediates / experts like it (permille, 1000 = as
+// is); byCard: paid by card, not from the cash the guest brought for the day (gear and bikes). protection: crashes of a guest wearing it are less often
+// serious. withServicePermille: bought with a repair or service at the same shop (parts).
+// Workshop (a workbench for minMinutes..maxMinutes): repair fixes a bike broken in a crash; services (serviceChancePermille,
+// asked once per visit at the first stop near the shop, own bikes only): tuneUpPermille keeps that share of the
+// bike-only crashes, redBlackFun is extra fun on red and black trails for the visit.
+// Catalog order is the order guests consider things in.
 [
   { "id": "lunch", "name": "Lunch", "referencePriceCents": 1400, "maxPriceCents": 4000, "goodsCostPermille": 200,
     "elasticityPermille": 800, "energy": 250, "happiness": 40, "lunch": true, "minMinutes": 30, "maxMinutes": 50 },
@@ -24,16 +30,30 @@
     "elasticityPermille": 700, "energy": 30, "happiness": 20, "alcohol": 100, "impulsePermille": 4 },
   { "id": "snack", "name": "Snack", "referencePriceCents": 400, "maxPriceCents": 1500, "goodsCostPermille": 200,
     "elasticityPermille": 1000, "energy": 50, "happiness": 15, "impulsePermille": 8 },
-  { "id": "merch", "name": "Merch", "referencePriceCents": 2500, "maxPriceCents": 10000, "goodsCostPermille": 450,
-    "elasticityPermille": 1000, "merch": true },
+  { "id": "merch", "name": "Park merch", "referencePriceCents": 2500, "maxPriceCents": 10000, "goodsCostPermille": 450,
+    "elasticityPermille": 1000, "merch": true, "department": true, "homeChancePermille": 120 },
+  { "id": "clothing", "name": "Clothing", "referencePriceCents": 5500, "maxPriceCents": 20000, "goodsCostPermille": 500,
+    "elasticityPermille": 1000, "happiness": 20, "merch": true, "department": true, "homeChancePermille": 50, "rainImpulsePermille": 15, "byCard": true,
+    "groups": { "beginner": 900, "intermediate": 1100, "expert": 1000 } },
   { "id": "pitch", "name": "Pitch (night)", "referencePriceCents": 1500, "maxPriceCents": 6000, "goodsCostPermille": 100,
     "elasticityPermille": 900, "overnight": true },
   { "id": "rental", "name": "Bike rental (day)", "referencePriceCents": 3500, "maxPriceCents": 10000, "goodsCostPermille": 100,
     "elasticityPermille": 900, "rental": true },
+  { "id": "protectors", "name": "Protectors", "referencePriceCents": 4500, "maxPriceCents": 12000, "goodsCostPermille": 500,
+    "elasticityPermille": 1000, "happiness": 10, "protection": true, "department": true, "impulsePermille": 3, "byCard": true,
+    "groups": { "beginner": 2000, "intermediate": 1000, "expert": 600 } },
+  { "id": "parts", "name": "Spare parts", "referencePriceCents": 1800, "maxPriceCents": 6000, "goodsCostPermille": 500,
+    "elasticityPermille": 1000, "department": true, "withServicePermille": 400 },
+  { "id": "bikes", "name": "Bikes", "referencePriceCents": 320000, "maxPriceCents": 900000, "goodsCostPermille": 780,
+    "elasticityPermille": 1200, "happiness": 60, "merch": true, "department": true, "homeChancePermille": 6, "byCard": true,
+    "groups": { "beginner": 200, "intermediate": 1000, "expert": 1600 } },
   { "id": "repair", "name": "Bike repair", "referencePriceCents": 2500, "maxPriceCents": 8000, "goodsCostPermille": 300,
     "elasticityPermille": 600, "repair": true, "minMinutes": 15, "maxMinutes": 30 },
-  { "id": "protectors", "name": "Protectors", "referencePriceCents": 4500, "maxPriceCents": 12000, "goodsCostPermille": 500,
-    "elasticityPermille": 1000, "happiness": 10, "protection": true, "impulsePermille": 3 },
+  { "id": "tuneup", "name": "Tune-up", "referencePriceCents": 2000, "maxPriceCents": 6000, "goodsCostPermille": 150,
+    "elasticityPermille": 900, "happiness": 20, "minMinutes": 10, "maxMinutes": 20, "serviceChancePermille": 120, "tuneUpPermille": 400 },
+  { "id": "suspension", "name": "Suspension setup", "referencePriceCents": 4000, "maxPriceCents": 12000, "goodsCostPermille": 100,
+    "elasticityPermille": 900, "happiness": 20, "minMinutes": 20, "maxMinutes": 30, "serviceChancePermille": 150, "redBlackFun": 80,
+    "groups": { "beginner": 0, "intermediate": 500, "expert": 1500 } },
   { "id": "clip", "name": "Video clip", "referencePriceCents": 1200, "maxPriceCents": 5000, "goodsCostPermille": 50,
     "elasticityPermille": 1000, "happiness": 20, "clip": true }
 ]

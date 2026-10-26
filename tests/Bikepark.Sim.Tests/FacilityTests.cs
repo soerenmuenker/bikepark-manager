@@ -13,7 +13,7 @@ namespace Bikepark.Sim.Tests;
 /// <summary>Bars and shops near gravel paths and hubs: lunch, snacks, drinks and merch at the park's prices; upgrades.</summary>
 public class FacilityTests
 {
-    private static readonly PointCm BarSpot = new(17500, 83000), ShopSpot = new(19500, 89500); // demo_facilities.json
+    private static readonly PointCm BarSpot = new(17500, 83000), ShopSpot = new(25000, 90000); // demo_facilities.json
 
     private static PointCm East(PointCm p) => new(p.X + 1000, p.Z);
 
@@ -44,7 +44,7 @@ public class FacilityTests
         var types = ScenarioLoader.LoadFacilityCatalog(Path.Combine(TestWorlds.RepoRoot(), "data", "facility_types.json"));
         Assert.All(types, t => Assert.Empty(t.Validate()));
         Assert.Equal(0, types.Where(t => t.Kind == FacilityKind.Bar).Min(t => t.RequiredLevel));
-        Assert.Contains(types, t => t.Kind == FacilityKind.Shop);
+        Assert.Contains(types, t => t.Kind == FacilityKind.BikeShop);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class FacilityTests
         Assert.Equal(0, bar.Level);
         Assert.Equal(money - type.BuildCostCents, sim.State.Finance.MoneyCents);
         Assert.Equal(type.BuildCostCents, sim.State.Finance.TotalFacilityBuildCents);
-        Assert.Contains("overlaps another structure", Reject(sim, new BuildFacilityCommand("merch_shop", BarSpot, East(BarSpot))));
+        Assert.Contains("overlaps another structure", Reject(sim, new BuildFacilityCommand("bike_shop", BarSpot, East(BarSpot))));
 
         var poor = Demo(s => s.StartingMoneyCents = 100);
         Assert.Contains("Not enough money", Reject(poor, new BuildFacilityCommand("snack_bar", BarSpot, East(BarSpot))));
@@ -122,16 +122,15 @@ public class FacilityTests
     {
         var sim = Demo(s => s.StartingMoneyCents = 100_000_000);
         sim.State.CrashRules.CollisionDistanceCm = 0;
-        Assert.Null(Reject(sim, new BuildFacilityCommand("merch_shop", ShopSpot, East(ShopSpot))));
+        Assert.Null(Reject(sim, new BuildFacilityCommand("bike_shop", ShopSpot, East(ShopSpot), Departments: ["merch"])));
         var shop = sim.State.Facilities[0];
-        var type = FacilityMath.FindType(sim.State, shop.TypeId)!;
         var sold = new List<MerchSold>();
         sim.Events.Subscribe<MerchSold>(sold.Add);
         sim.RunDays(1);
         sim.Events.Dispatch();
 
         Assert.True(sold.Count > 3, $"{sold.Count} sold");
-        Assert.Equal(sold.Count, shop.Customers);
+        Assert.Equal(sold.Count, shop.Sales.Single(s => s.ProductId == "merch").Sold);
         var merch = FacilityMath.FindProduct(sim.State, "merch")!;
         Assert.Equal(sold.Count * merch.ReferencePriceCents, sim.State.Finance.TotalMerchCents);
         Assert.Equal(sold.Count * (merch.ReferencePriceCents * merch.GoodsCostPermille / 1000), sim.State.Finance.TotalMerchCostCents);

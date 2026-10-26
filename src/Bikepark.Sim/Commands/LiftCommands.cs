@@ -125,22 +125,37 @@ public sealed record BuildParkingLotCommand(string Name, PointCm Center, PointCm
 /// <summary>
 /// Builds a bar or shop near a gravel path or hub, at once: paid at once (needs its park level and the money; scenario
 /// buildings are free). <see cref="StructurePlanner.PlanFacility"/> validates the spot. <paramref name="Level"/>: built with
-/// its first upgrades already in (scenario content; a player pays for them too); <paramref name="Bikes"/>: a rental
-/// station's first fleet bikes (paid like the building).
+/// its first upgrades already in (scenario content; a player pays for them too); <paramref name="Bikes"/>: a bike shop's
+/// first rental bikes (paid like the building); <paramref name="Departments"/>: a bike shop's shelves (null: the first
+/// unlocked departments that fit) and <paramref name="Range"/>.
 /// </summary>
 public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm Toward, string Name = "", WayOrigin Origin = WayOrigin.Player,
-    int Level = 0, int Bikes = 0)
+    int Level = 0, int Bikes = 0, List<string>? Departments = null, Facilities.ShopRange Range = Facilities.ShopRange.Standard)
     : ICommand
 {
     public const int MaxNameLength = 40;
+
+    // Value equality for the departments list too (the event stream of two runs compares commands).
+    public bool Equals(BuildFacilityCommand? other) =>
+        other is not null && TypeId == other.TypeId && Center == other.Center && Toward == other.Toward && Name == other.Name
+        && Origin == other.Origin && Level == other.Level && Bikes == other.Bikes && Range == other.Range
+        && (Departments ?? []).SequenceEqual(other.Departments ?? []) && (Departments is null) == (other.Departments is null);
+
+    public override int GetHashCode() => HashCode.Combine(TypeId, Center, Toward, Name, Level, Bikes, Range);
 
     public string? Validate(SimContext ctx)
     {
         if (Name is { Length: > MaxNameLength }) return $"Name cannot exceed {MaxNameLength} characters.";
         if (Facilities.FacilityMath.FindType(ctx.State, TypeId) is not { } type) return $"Unknown building '{TypeId}'.";
         if (Level < 0 || Level > type.Upgrades.Count) return $"The {type.Name.ToLowerInvariant()} has {type.Upgrades.Count} upgrades.";
-        if (Bikes < 0 || Bikes > 0 && (type.Kind != Facilities.FacilityKind.Rental || Bikes > type.MaxFleet + type.Upgrades.Take(Level).Sum(u => u.MaxFleet)))
+        if (Bikes < 0 || Bikes > 0 && (type.Kind != Facilities.FacilityKind.BikeShop || Bikes > type.MaxFleet + type.Upgrades.Take(Level).Sum(u => u.MaxFleet)))
             return $"The {type.Name.ToLowerInvariant()} can't take {Bikes} bikes.";
+        if ((Departments is not null || Range != Facilities.ShopRange.Standard) && type.Kind != Facilities.FacilityKind.BikeShop)
+            return "Departments and ranges are for bike shops.";
+        if (!Enum.IsDefined(Range)) return "Unknown range.";
+        if (Departments is not null
+            && Facilities.FacilityMath.CannotStock(ctx.State, new Facilities.Facility { TypeId = TypeId, Name = type.Name, Level = Level }, Departments) is { } stock)
+            return stock;
         if (Origin != WayOrigin.Scenario)
         {
             int level = Reputation.ParkProgress.CurrentLevel(ctx.State, ctx.Network);
@@ -168,7 +183,13 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
             Name = string.IsNullOrWhiteSpace(Name) ? $"{type.Name} {state.Facilities.Count(f => f.TypeId == TypeId) + 1}" : Name.Trim(),
             TerrainEditId = edit.Id,
             Level = Level,
+            Range = Range,
         });
+        var built = state.Facilities[^1];
+        if (type.Kind == Facilities.FacilityKind.BikeShop)
+            built.Departments = Departments is null
+                ? Facilities.FacilityMath.DefaultDepartments(state, type, built)
+                : state.ProductTypes.Where(p => Departments.Contains(p.Id)).Select(p => p.Id).ToList();
         for (int i = 0; i < Bikes; i++)
             state.Facilities[^1].Fleet.Add(new Facilities.RentalBike { Id = state.AllocateEntityId() });
         long cost = Cost(state, type);

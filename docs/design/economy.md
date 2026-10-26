@@ -23,12 +23,12 @@ merch. The park sets **one price per product** for all buildings (`Park.Prices`,
 Bars and shops stand **anywhere on the park's land with a gravel path, platform, station or parking lot within
 `accessReachMeters`** (25 m); they serve guests within `serveReachMeters` (80 m). They no longer belong to a lift. Each
 type has **upgrades** bought in order from the Finances menu (`UpgradeFacilityCommand`), each adding seats, products,
-a better shop buy chance or longer après-bike stays:
+shelf slots, workbenches or longer après-bike stays:
 
 | Building | Sells | Upgrades |
 |---|---|---|
 | Snack bar (level 0) | lunch, snack · 24 seats | Espresso machine (+coffee) → Terrace (+24 seats, level 2) |
-| Merch shop (1) | merch | Bigger shelves (+6 % buy chance, level 3) |
+| Bike shop (1) | departments on 3 shelf slots, crash repairs · 1 workbench | see 9.3 (seven upgrades, each a visible extension) |
 | Beer rondel (2) | beer, radler, snack · 30 places | Bigger rondel (+30, level 4) → DJ booth (+30 min après, level 5) |
 | Bike café (6) | lunch, coffee, snack · 80 seats | Barista bar (+radler, +20 seats, level 7) → Sun deck (+40 seats, level 8) |
 
@@ -41,7 +41,7 @@ a better shop buy chance or longer après-bike stays:
 - **On the way** (new): at the end of a route leg (top of a lift, a junction) with a bar in reach, once per lap: a due
   lunch (they sit down and the lap goes on afterwards: `Guest.ResumeLeg`) or an impulse buy with the chances scaled by
   `stopScalePermille`. A café at the top station now earns money.
-- **Going home:** merch at the shop in reach.
+- **Going home:** one thing at the bike shop in reach (merch, clothing or a bike; 9.3).
 
 ### Coffee, beer and après-bike
 
@@ -71,16 +71,42 @@ their buildings sold, at their old prices; the new buildings and upgrades come w
 
 ## 9.3 Bikes (built)
 
-- **Rental station** (level 2): you buy its fleet (900 € a bike, rack of 20; Bigger rack +20; E-bike fleet at level 6).
-  Guests without a bike come on top of the others (15 % of the arrivals at the fair 35 € a day), only when a bike is
-  free: mostly beginners and casual riders; on e-bikes anyone, and they pedal up cheaply and fast. Bikes wear a little
-  per run and in crashes and are retired at 0 % (about two weeks of use).
-- **Broken bikes:** only crashes break bikes. A share of the minor crashes (35 % in both scenarios) hurts only the bike:
-  nobody is injured, the rider rolls down slowly; a renter swaps the bike at the station, an own bike is fixed at a
-  **service shop** in reach (level 1, 2 workbenches, 25 € and 15–30 min), and the rider rides on — without one they go
-  home early.
-- **Pro shop** (level 3): protectors (an impulse buy between laps) halve the share of serious crashes, plus merch.
-- The Demo has a rental station with 15 bikes and a service shop.
+One **bike shop** (level 1, 15,000 €) does everything bike: a store, a workshop and, upgraded, the rental. It replaced
+the merch shop, pro shop, service shop and rental station, which offered little to decide. The player manages it with
+three light levers (Store tab of its window) and grows it with upgrades; every upgrade is a visible extension of the
+building (`FacilityUpgrade.Look`; the 24 × 14 m pad is laid out for the grown shop, so upgrades never touch the terrain).
+
+| Upgrade | Adds | Level | Extension |
+|---|---|---|---|
+| Second workbench | +1 bench, tune-ups | 2 | open workshop lean-to with a workstand |
+| Rental counter | rental fleet (rack of 20, 900 € a bike), fleet care | 2 | rental hut and a rack showing the fleet |
+| Bigger store | +2 shelf slots | 3 | a second store wing |
+| Bigger rack | +20 bikes | 4 | a second rack row |
+| Suspension corner | +1 bench, suspension setups | 5 | glass annex |
+| E-bike fleet | rental e-bikes | 6 | charging posts, green trim |
+| Demo center | the Bikes department | 7 | flags and a test loop |
+
+- **Departments (shelf slots):** more departments than slots (3, 5 with the bigger store), so the player picks what
+  fits the crowd: **park merch** (going home, everyone), **clothing** (going home; rain jackets between laps in the rain),
+  **protectors** (between laps, beginners ×2, twice as likely after seeing a crash; halve the share of serious crashes),
+  **spare parts** (sold with repairs and services) and **bikes** (demo center: rare 3,200 € sales to happy intermediates
+  and experts going home). Gear and bikes are paid by card (not from the day's cash); each department at most once a visit.
+- **Range** (one per shop): budget (prices ×0.7, goods ×0.65, upkeep ×0.9; beginners ×1.4, experts ×0.5), standard,
+  premium (prices ×1.5, goods ×1.5, upkeep ×1.3; beginners ×0.5, experts ×1.6). The range moves the fair price too, so
+  a premium price is no rip-off: the range decides who buys and how big the ticket is. The park-wide price per product
+  stays the lever on top.
+- **Workshop:** crash repairs are always on (a share of the minor crashes, 35 %, only break the bike; the rider rolls
+  down, a renter swaps the bike at the shop, an own bike is fixed on a free bench for 25 € and 15–30 min, else home).
+  Services, offered once a visit to riders on their own bike at their first stop near the shop: **tune-up** (20 €, 60 %
+  fewer crashes break their bike) and **suspension setup** (40 €, +8 % fun on red and black, intermediates and experts).
+  Each can be switched off; **keep a bench free** saves the last bench for crash repairs.
+- **Rental and fleet care:** guests without a bike come on top of the others (15 % of the arrivals at the fair 35 € a
+  day), only when a bike is free: mostly beginners and casual riders; on e-bikes anyone, and they pedal up cheaply and
+  fast. Bikes wear per run and in crashes and are retired at 0 %. With **fleet care** on, every bench restores 40 % of
+  bike condition each night (worst bikes first, 0.25 € of parts per %), so the fleet lasts far longer.
+- The Demo has a bike shop with its second workbench, rental counter and 15 bikes.
+- Old careers (save v12) lose their merch shops, pro shops, service shops and rental stations on loading; the bike shop
+  is new content, so only new careers can build it.
 
 ## 9.4 Sponsors and photo spots (built)
 
@@ -91,7 +117,7 @@ their buildings sold, at their old prices; the new buildings and upgrades come w
   needs a park level and rating stars. The park shows as "… presented by …" and arriving guests take the brand well
   or badly (`mood`).
 - **Benefits:** every brand gives something in its line: Valley Cycles cheaper repair parts and protectors, Talbank
-  half the loan interest, Bergbräu cheaper beer, Summit Outdoor cheaper campgrounds and pro shops, Bolt Energy cheaper
+  half the loan interest, Bergbräu cheaper beer, Summit Outdoor cheaper campgrounds and bike shops, Bolt Energy cheaper
   coffee and snacks that cheer more, Gravity Bikes cheap rental bikes, Steelrope cheaper lifts, Alpen Motors half again
   on every parking fee. A park deal gives them in full, a trail deal 40 %; the best of a kind counts.
 - Deals end at their last day, when the trail is renaturalized or closed for more than two days, or when you end them.

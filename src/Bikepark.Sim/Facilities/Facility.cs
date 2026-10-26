@@ -10,17 +10,22 @@ public enum FacilityKind : byte
     /// <summary>Food and drink: lunch (with a limited number of seats), snacks, coffee, beer.</summary>
     Bar = 0,
 
-    /// <summary>Merchandise: guests on their way home buy something, the happier the likelier.</summary>
-    Shop = 1,
+    /// <summary>
+    /// A bike shop: departments on its shelves (merch, clothing, protectors, parts, bikes), a workshop whose workbenches fix
+    /// broken bikes and do services, and (after the upgrade) a rental fleet.
+    /// </summary>
+    BikeShop = 1,
 
     /// <summary>Pitches for campers: guests who stay a few nights and ride again each morning.</summary>
     Campground = 2,
+}
 
-    /// <summary>A rental station: a fleet of bikes the park bought, rented by the day to guests without a bike.</summary>
-    Rental = 3,
-
-    /// <summary>A service shop: workbenches where guests' broken bikes are fixed, so they can ride on.</summary>
-    Service = 4,
+/// <summary>A bike shop's range (<see cref="Facility.Range"/>): what its departments cost and who buys there.</summary>
+public enum ShopRange : byte
+{
+    Budget = 0,
+    Standard = 1,
+    Premium = 2,
 }
 
 /// <summary>A building model from <c>data/facility_types.json</c>, copied into the world.</summary>
@@ -45,8 +50,9 @@ public sealed class FacilityType
     /// <summary>Guests who can sit at the same time (bars: lunch and après-bike).</summary>
     public int Seats { get; set; }
 
-    /// <summary>Chance that a perfectly happy guest leaving buys something, permille (shops; scaled by mood and price).</summary>
-    public int BuyChancePermille { get; set; }
+    /// <summary>Bike shops: how many departments it can stock, and the workshop's workbenches.</summary>
+    public int ShelfSlots { get; set; }
+    public int Workbenches { get; set; }
 
     /// <summary>Campers it sleeps (campgrounds).</summary>
     public int Pitches { get; set; }
@@ -54,7 +60,7 @@ public sealed class FacilityType
     /// <summary>Mood its campers wake up with (campgrounds: showers, huts).</summary>
     public int MorningMood { get; set; }
 
-    /// <summary>Rental stations: what one more fleet bike costs, and how many the rack holds.</summary>
+    /// <summary>Bike shops: what one more fleet bike costs, and how many the rack holds (the rental counter upgrade adds it).</summary>
     public long BikeCostCents { get; set; }
     public int MaxFleet { get; set; }
 
@@ -76,9 +82,14 @@ public sealed class FacilityType
         if (Kind == FacilityKind.Bar && Seats is < 1 or > 1000) errors.Add($"{p}.seats must be within 1..1000");
         if (Kind == FacilityKind.Campground && Pitches is < 1 or > 1000) errors.Add($"{p}.pitches must be within 1..1000");
         if (Pitches is < 0 or > 1000 || MorningMood is < 0 or > 1000) errors.Add($"{p}: pitches and morningMood within 0..1000");
-        if (Kind == FacilityKind.Rental && (MaxFleet is < 1 or > 500 || BikeCostCents <= 0)) errors.Add($"{p}: a rental station needs maxFleet 1..500 and bikeCostCents > 0");
-        if (Kind == FacilityKind.Service && Seats is < 1 or > 100) errors.Add($"{p}.seats (workbenches) must be within 1..100");
-        if (BuyChancePermille is < 0 or > 1000) errors.Add($"{p}.buyChancePermille must be within 0..1000");
+        if (Kind != FacilityKind.BikeShop && (ShelfSlots != 0 || Workbenches != 0 || MaxFleet != 0 || Upgrades.Any(u => u.ShelfSlots != 0 || u.Workbenches != 0 || u.MaxFleet != 0 || u.EBikes)))
+            errors.Add($"{p}: shelf slots, workbenches and rental bikes are for bike shops");
+        if (Kind == FacilityKind.BikeShop)
+        {
+            if (ShelfSlots is < 1 or > 20 || Workbenches is < 1 or > 100) errors.Add($"{p}: a bike shop needs shelfSlots 1..20 and workbenches 1..100");
+            if (MaxFleet is < 0 or > 500 || Upgrades.Sum(u => u.MaxFleet) + MaxFleet > 500) errors.Add($"{p}: maxFleet within 0..500");
+            if ((MaxFleet > 0 || Upgrades.Any(u => u.MaxFleet > 0)) && BikeCostCents <= 0) errors.Add($"{p}: a rental fleet needs bikeCostCents > 0");
+        }
         foreach (var upgrade in Upgrades) errors.AddRange(upgrade.Validate(p));
         return errors;
     }
@@ -95,17 +106,21 @@ public sealed class FacilityUpgrade
     public long UpkeepPerDayCents { get; set; }
     public int RequiredLevel { get; set; }
 
-    /// <summary>More seats, new products, a better buy chance (shops) and longer après-bike stays.</summary>
+    /// <summary>More seats, new products (bike shops: departments and services to offer), longer après-bike stays.</summary>
     public int Seats { get; set; }
     public List<string> Products { get; set; } = [];
-    public int BuyChancePermille { get; set; }
     public int ApresMinutes { get; set; }
     public int Pitches { get; set; }
     public int MorningMood { get; set; }
 
-    /// <summary>A bigger rack (rental stations), and whether the fleet becomes e-bikes.</summary>
+    /// <summary>Bike shops: more shelf slots and workbenches, a (bigger) rack, and whether the fleet becomes e-bikes.</summary>
+    public int ShelfSlots { get; set; }
+    public int Workbenches { get; set; }
     public int MaxFleet { get; set; }
     public bool EBikes { get; set; }
+
+    /// <summary>Presentation only: which extension of the building the game draws for it (unknown looks draw nothing).</summary>
+    public string Look { get; set; } = "";
 
     public List<string> Validate(string owner)
     {
@@ -114,8 +129,9 @@ public sealed class FacilityUpgrade
         if (string.IsNullOrWhiteSpace(Name)) errors.Add($"{owner}.upgrades: name is required");
         if (CostCents < 0 || UpkeepPerDayCents < 0) errors.Add($"{p}: costs must be >= 0");
         if (RequiredLevel is < 0 or > Reputation.ReputationRules.MaxLevel) errors.Add($"{p}.requiredLevel must be within 0..{Reputation.ReputationRules.MaxLevel}");
-        if (Seats is < 0 or > 1000 || BuyChancePermille is < 0 or > 1000 || ApresMinutes is < 0 or > 600)
-            errors.Add($"{p}: seats, buyChancePermille within 0..1000, apresMinutes within 0..600");
+        if (Seats is < 0 or > 1000 || ApresMinutes is < 0 or > 600) errors.Add($"{p}: seats within 0..1000, apresMinutes within 0..600");
+        if (ShelfSlots is < 0 or > 20 || Workbenches is < 0 or > 100 || MaxFleet is < 0 or > 500)
+            errors.Add($"{p}: shelfSlots within 0..20, workbenches within 0..100, maxFleet within 0..500");
         if (Pitches is < 0 or > 1000 || MorningMood is < 0 or > 1000) errors.Add($"{p}: pitches and morningMood within 0..1000");
         return errors;
     }
@@ -149,8 +165,25 @@ public sealed class Facility
     /// <summary>Sales per product at this building, in the order first sold.</summary>
     public List<ProductSales> Sales { get; set; } = [];
 
-    /// <summary>Rental stations: the bikes the park owns there, in id order.</summary>
+    /// <summary>Bike shops with a rental counter: the bikes the park owns there, in id order.</summary>
     public List<RentalBike> Fleet { get; set; } = [];
+
+    // ---- Bike shops (see FacilityMath: Departments, Services) ----
+
+    /// <summary>The departments on its shelves (department product ids, at most <see cref="FacilityMath.ShelfSlots"/>).</summary>
+    public List<string> Departments { get; set; } = [];
+
+    /// <summary>Budget, standard or premium: prices, goods, upkeep and who likes to buy here.</summary>
+    public ShopRange Range { get; set; } = ShopRange.Standard;
+
+    /// <summary>Workshop services switched off (service product ids, or <see cref="FacilityMath.FleetCare"/>).</summary>
+    public List<string> ServicesOff { get; set; } = [];
+
+    /// <summary>Services never take the last free workbench: it stays free for crash repairs.</summary>
+    public bool ReserveBench { get; set; }
+
+    /// <summary>Fleet condition restored by the workshop last night (permille, summed over the bikes).</summary>
+    public int FleetCareLastNight { get; set; }
 }
 
 /// <summary>One bike of a rental fleet: worn by rides and crashes, retired at 0 %.</summary>
@@ -183,10 +216,79 @@ public static class FacilityMath
 
     public static int Seats(FacilityType type, Facility facility) => type.Seats + Bought(type, facility).Sum(u => u.Seats);
 
+    /// <summary>The building's upkeep as built and upgraded (before a bike shop's range).</summary>
     public static long Upkeep(FacilityType type, Facility facility) => type.UpkeepPerDayCents + Bought(type, facility).Sum(u => u.UpkeepPerDayCents);
 
-    public static int BuyChancePermille(FacilityType type, Facility facility) =>
-        Math.Min(1000, type.BuyChancePermille + Bought(type, facility).Sum(u => u.BuyChancePermille));
+    /// <summary>What the building costs a day: its upkeep, scaled by a bike shop's range.</summary>
+    public static long Upkeep(WorldState state, FacilityType type, Facility facility) =>
+        type.Kind == FacilityKind.BikeShop ? Upkeep(type, facility) * RangeOf(state, facility).UpkeepFactorPermille / 1000 : Upkeep(type, facility);
+
+    // ---------------------------------------------------------------- bike shops
+
+    /// <summary>The workshop service of looking after the rental fleet at night (<see cref="Facility.ServicesOff"/>).</summary>
+    public const string FleetCare = "fleetCare";
+
+    public static int ShelfSlots(FacilityType type, Facility facility) => type.ShelfSlots + Bought(type, facility).Sum(u => u.ShelfSlots);
+
+    public static int Workbenches(FacilityType type, Facility facility) => type.Workbenches + Bought(type, facility).Sum(u => u.Workbenches);
+
+    /// <summary>Guests a building can seat at a time: a bar's seats, a bike shop's workbenches.</summary>
+    public static int Places(FacilityType type, Facility facility) => type.Kind == FacilityKind.BikeShop ? Workbenches(type, facility) : Seats(type, facility);
+
+    /// <summary>True if the building rents bikes (a bike shop with its rental counter).</summary>
+    public static bool HasRental(FacilityType type, Facility facility) => type.Kind == FacilityKind.BikeShop && MaxFleet(type, facility) > 0;
+
+    /// <summary>The departments the shop could stock now (unlocked, catalog order).</summary>
+    public static IEnumerable<ProductType> UnlockedDepartments(WorldState state, FacilityType type, Facility facility) =>
+        state.ProductTypes.Where(p => p.Department && Sells(type, facility, p.Id));
+
+    /// <summary>The workshop services unlocked (tune-up, suspension setup; catalog order), switched on or not.</summary>
+    public static IEnumerable<ProductType> UnlockedServices(WorldState state, FacilityType type, Facility facility) =>
+        state.ProductTypes.Where(p => p.IsService && Sells(type, facility, p.Id));
+
+    /// <summary>True if the shop offers the service (unlocked and not switched off; fleet care: with a rental counter).</summary>
+    public static bool ServiceOn(WorldState state, FacilityType type, Facility facility, string service) =>
+        !facility.ServicesOff.Contains(service)
+        && (service == FleetCare ? HasRental(type, facility) : UnlockedServices(state, type, facility).Any(p => p.Id == service));
+
+    /// <summary>The first departments unlocked in catalog order, as many as fit on the shelves (a new shop's stock).</summary>
+    public static List<string> DefaultDepartments(WorldState state, FacilityType type, Facility facility) =>
+        UnlockedDepartments(state, type, facility).Take(ShelfSlots(type, facility)).Select(p => p.Id).ToList();
+
+    /// <summary>Why the shop can't stock these departments, or null.</summary>
+    public static string? CannotStock(WorldState state, Facility facility, IReadOnlyList<string> departments)
+    {
+        if (FindType(state, facility.TypeId) is not { Kind: FacilityKind.BikeShop } type) return $"{facility.Name} is no bike shop.";
+        if (departments.Distinct().Count() != departments.Count) return "Each department only once.";
+        int slots = ShelfSlots(type, facility);
+        if (departments.Count > slots) return $"{facility.Name} has {slots} shelf slots.";
+        foreach (string id in departments)
+            if (!UnlockedDepartments(state, type, facility).Any(p => p.Id == id))
+                return $"{facility.Name} can't stock '{id}' (yet).";
+        return null;
+    }
+
+    /// <summary>The rules of the shop's range (standard factors without content).</summary>
+    public static ShopRangeRules RangeOf(WorldState state, Facility facility)
+    {
+        var ranges = state.FacilityRules.ShopRanges;
+        int index = (int)facility.Range;
+        return index < ranges.Count ? ranges[index] : ShopRangeRules.Neutral;
+    }
+
+    /// <summary>How much a guest of their skill group likes buying the product here: the product's and the range's liking, permille.</summary>
+    public static int GroupFactorPermille(WorldState state, ProductType product, Facility? facility, Guest guest)
+    {
+        var group = Reputation.ReviewMath.GroupOf(state.ReputationRules, guest.Skill);
+        long factor = product.Groups.For(group);
+        if (facility is not null && product.Department && FindType(state, facility.TypeId)?.Kind == FacilityKind.BikeShop)
+            factor = factor * RangeOf(state, facility).Groups.For(group) / 1000;
+        return (int)factor;
+    }
+
+    /// <summary>True if the guest already bought this department's goods during the visit (each once).</summary>
+    public static bool HasBought(Guest guest, ProductType product) =>
+        product.Protection ? guest.Protected : product.Department && guest.ShopItems.Contains(product.Id);
 
     public static int ApresBonusMinutes(FacilityType type, Facility facility) => Bought(type, facility).Sum(u => u.ApresMinutes);
 
@@ -208,7 +310,7 @@ public static class FacilityMath
         foreach (var station in state.Facilities)
         {
             if (stationId != 0 && station.Id != stationId) continue;
-            if (FindType(state, station.TypeId) is not { Kind: FacilityKind.Rental } type) continue;
+            if (FindType(state, station.TypeId) is not { Kind: FacilityKind.BikeShop } type || !HasRental(type, station)) continue;
             RentalBike? best = null;
             foreach (var bike in station.Fleet)
                 if (bike.RentedBy == 0 && bike.ConditionPermille > 0 && (best is null || bike.ConditionPermille > best.ConditionPermille))
@@ -231,7 +333,8 @@ public static class FacilityMath
     /// <summary>Why the park can't buy that many bikes for the station now, or null.</summary>
     public static string? CannotBuyBikes(WorldState state, Facility station, int count)
     {
-        if (FindType(state, station.TypeId) is not { Kind: FacilityKind.Rental } type) return $"{station.Name} is no rental station.";
+        if (FindType(state, station.TypeId) is not { Kind: FacilityKind.BikeShop } type) return $"{station.Name} is no bike shop.";
+        if (!HasRental(type, station)) return $"{station.Name} has no rental counter yet.";
         if (count is < 1 or > 50) return "Buy 1 to 50 bikes at a time.";
         int max = MaxFleet(type, station);
         if (station.Fleet.Count + count > max) return $"The rack holds {max} bikes ({station.Fleet.Count} there).";
@@ -270,13 +373,18 @@ public static class FacilityMath
     public static long BikeCost(WorldState state, FacilityType type) =>
         Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.BikeDiscount, type.BikeCostCents);
 
-    /// <summary>True if the building sells the product (as built or after an upgrade).</summary>
+    /// <summary>True if the building has the product (as built or after an upgrade; a bike shop may not stock or offer it).</summary>
     public static bool Sells(FacilityType type, Facility facility, string productId) =>
         type.Products.Contains(productId) || Bought(type, facility).Any(u => u.Products.Contains(productId));
 
-    /// <summary>The products it sells, in the order of <see cref="WorldState.ProductTypes"/> (lunch and coffee before snacks).</summary>
+    /// <summary>
+    /// The products it sells, in the order of <see cref="WorldState.ProductTypes"/> (lunch and coffee before snacks). A bike
+    /// shop sells the departments on its shelves and the services switched on.
+    /// </summary>
     public static IEnumerable<ProductType> ProductsOf(WorldState state, FacilityType type, Facility facility) =>
-        state.ProductTypes.Where(p => Sells(type, facility, p.Id));
+        state.ProductTypes.Where(p => Sells(type, facility, p.Id)
+                                      && (type.Kind != FacilityKind.BikeShop
+                                          || (p.Department ? facility.Departments.Contains(p.Id) : !facility.ServicesOff.Contains(p.Id))));
 
     /// <summary>Why the park can't buy the building's next upgrade now, or null.</summary>
     public static string? CannotUpgrade(WorldState state, int level, FacilityType type, Facility facility)
@@ -295,21 +403,43 @@ public static class FacilityMath
     public static long PriceOf(WorldState state, ProductType product) =>
         state.Park.Prices.FirstOrDefault(p => p.ProductId == product.Id)?.PriceCents ?? product.ReferencePriceCents;
 
+    /// <summary>A bike shop's department scales with its range (budget cheaper, premium dearer); everything else is as is.</summary>
+    private static long RangeScaled(WorldState state, ProductType product, Facility? facility, long cents) =>
+        facility is not null && product.Department && FindType(state, facility.TypeId)?.Kind == FacilityKind.BikeShop
+            ? cents * RangeOf(state, facility).PriceFactorPermille / 1000
+            : cents;
+
+    /// <summary>What the product costs at this building: the park's price, scaled by a bike shop's range.</summary>
+    public static long PriceAt(WorldState state, ProductType product, Facility? facility) => RangeScaled(state, product, facility, PriceOf(state, product));
+
+    /// <summary>The price guests find fair at this building (the reference price, scaled by a bike shop's range).</summary>
+    public static long ReferenceAt(WorldState state, ProductType product, Facility? facility) =>
+        RangeScaled(state, product, facility, product.ReferencePriceCents);
+
+    /// <summary>The price's buy factor at this building (<see cref="BuyFactorPermille(ProductType, long, long)"/> against its fair price).</summary>
+    public static int BuyFactorAt(WorldState state, ProductType product, Facility? facility) =>
+        BuyFactorPermille(product, PriceAt(state, product, facility), ReferenceAt(state, product, facility));
+
     /// <summary>
     /// How the price changes the chance to buy, permille: 1000 at the reference price, less above it
     /// (<see cref="ProductType.ElasticityPermille"/> per reference price), more below it (at most 1500).
     /// </summary>
-    public static int BuyFactorPermille(ProductType product, long priceCents)
+    public static int BuyFactorPermille(ProductType product, long priceCents) => BuyFactorPermille(product, priceCents, product.ReferencePriceCents);
+
+    /// <summary>The buy factor against a given fair price (a bike shop's range moves it).</summary>
+    public static int BuyFactorPermille(ProductType product, long priceCents, long referenceCents)
     {
-        long reference = Math.Max(1, product.ReferencePriceCents);
+        long reference = Math.Max(1, referenceCents);
         long factor = 1000 + (reference - priceCents) * product.ElasticityPermille / reference;
         return (int)Math.Clamp(factor, 0, 1500);
     }
 
     /// <summary>Mood a guest loses paying <paramref name="priceCents"/>: <see cref="FacilityRules.RipOffMood"/> per reference price above it.</summary>
     public static int RipOffMood(FacilityRules rules, ProductType product, long priceCents) =>
-        priceCents <= product.ReferencePriceCents ? 0
-            : (int)Math.Min(1000, (priceCents - product.ReferencePriceCents) * rules.RipOffMood / Math.Max(1, product.ReferencePriceCents));
+        RipOffMood(rules, priceCents, product.ReferencePriceCents);
+
+    private static int RipOffMood(FacilityRules rules, long priceCents, long referenceCents) =>
+        priceCents <= referenceCents ? 0 : (int)Math.Min(1000, (priceCents - referenceCents) * rules.RipOffMood / Math.Max(1, referenceCents));
 
     // ---------------------------------------------------------------- where
 
@@ -376,11 +506,11 @@ public static class FacilityMath
         return gap;
     }
 
-    /// <summary>Guests sitting at the bar right now (lunch or après-bike).</summary>
+    /// <summary>Guests sitting at the bar right now (lunch or après-bike), or waiting at a bike shop's workbenches.</summary>
     public static int SeatsTaken(WorldState state, Facility bar) =>
         state.Guests.Count(g => g.FacilityId == bar.Id && g.Activity is RiderActivity.Eating or RiderActivity.Apres);
 
-    public static bool HasFreeSeat(WorldState state, Facility bar, FacilityType type) => SeatsTaken(state, bar) < Seats(type, bar);
+    public static bool HasFreeSeat(WorldState state, Facility bar, FacilityType type) => SeatsTaken(state, bar) < Places(type, bar);
 
     /// <summary>
     /// True if lunch and snacks need a bar: the scenario has bars to build. Scenarios without facility content keep
@@ -407,7 +537,7 @@ public static class FacilityMath
         product.Overnight ? MoneyCategory.Camping
         : product.Clip ? MoneyCategory.Clips
         : product.Rental ? MoneyCategory.Rentals
-        : product.Repair ? MoneyCategory.Repairs
+        : product.IsWorkshop ? MoneyCategory.Repairs
         : product.Merch || product.Protection ? MoneyCategory.Merch
         : product.IsDrink ? MoneyCategory.Drinks : MoneyCategory.Food;
 
@@ -415,18 +545,20 @@ public static class FacilityMath
     private static MoneyCategory GoodsOf(ProductType product) =>
         product.Merch || product.Protection ? MoneyCategory.MerchGoods
         : product.Overnight ? MoneyCategory.CampUpkeep
-        : product.Rental || product.Repair ? MoneyCategory.BikeCosts
+        : product.Rental || product.IsWorkshop ? MoneyCategory.BikeCosts
         : MoneyCategory.FoodGoods;
 
     /// <summary>
-    /// A guest buys a product at a facility at the park's price: revenue for the park and the facility, the goods' cost,
-    /// sales stats, the product's effects and a little lost mood (and value) when it was overpriced.
+    /// A guest buys a product at a facility at the park's price (a bike shop's range scales its departments): revenue for
+    /// the park and the facility, the goods' cost, sales stats, the product's effects and a little lost mood (and value)
+    /// when it was overpriced. Paid from the guest's cash, unless by card (bikes).
     /// </summary>
     public static long Sell(WorldState state, long tick, Facility? facility, Guest guest, ProductType product)
     {
-        long price = PriceOf(state, product);
+        long price = PriceAt(state, product, facility);
+        long reference = ReferenceAt(state, product, facility);
         var finance = state.Finance;
-        guest.CashCents -= price;
+        if (!product.ByCard) guest.CashCents -= price;
         finance.Earn(CategoryOf(product), price);
         if (facility is not null)
         {
@@ -434,7 +566,7 @@ public static class FacilityMath
             facility.RevenueTodayCents += price;
             facility.Customers++;
             facility.CustomersToday++;
-            if (price > product.ReferencePriceCents) facility.OverpricedToday++;
+            if (price > reference) facility.OverpricedToday++;
             var own = facility.Sales.FirstOrDefault(s => s.ProductId == product.Id);
             if (own is null) facility.Sales.Add(own = new ProductSales { ProductId = product.Id });
             own.Sold++;
@@ -444,7 +576,11 @@ public static class FacilityMath
             if (!guest.FacilitiesUsed.Contains(facility.Id)) guest.FacilitiesUsed.Add(facility.Id);
         }
         // A sponsor (brewery, bike brand, ...) may supply the goods cheaper.
-        long goods = Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.GoodsDiscount, price * product.GoodsCostPermille / 1000, product.Id);
+        // Goods: of the standard price, scaled by the range's goods (budget ranges are cheaper to stock, premium dearer).
+        long goods = PriceOf(state, product) * product.GoodsCostPermille / 1000;
+        if (facility is not null && product.Department && FindType(state, facility.TypeId)?.Kind == FacilityKind.BikeShop)
+            goods = goods * RangeOf(state, facility).GoodsFactorPermille / 1000;
+        goods = Sponsors.SponsorMath.Discounted(state, Sponsors.SponsorBenefitKind.GoodsDiscount, goods, product.Id);
         if (goods > 0)
             finance.Spend(GoodsOf(product), goods);
         if (product.Clip)
@@ -457,7 +593,7 @@ public static class FacilityMath
             finance.TotalCampingCents += price;
             finance.CampingTodayCents += price;
         }
-        else if (product.Rental || product.Repair)
+        else if (product.Rental || product.IsWorkshop)
         {
             if (product.Rental) finance.TotalRentalCents += price;
             else finance.TotalRepairCents += price;
@@ -491,11 +627,14 @@ public static class FacilityMath
 
         guest.Energy = Math.Min(1000, guest.Energy + product.Energy);
         int boost = product.Happiness * Sponsors.SponsorMath.Benefit(state, Sponsors.SponsorBenefitKind.MoodBoost, product.Id) / 1000;
-        guest.Happiness = Math.Clamp(guest.Happiness + product.Happiness + boost - RipOffMood(state.FacilityRules, product, price), 0, 1000);
+        guest.Happiness = Math.Clamp(guest.Happiness + product.Happiness + boost - RipOffMood(state.FacilityRules, price, reference), 0, 1000);
         guest.Alcohol = Math.Min(1000, guest.Alcohol + product.Alcohol);
         if (product.Protection) guest.Protected = true;
+        if (product.Department && !guest.ShopItems.Contains(product.Id)) guest.ShopItems.Add(product.Id);
+        if (product.TuneUpPermille > 0) guest.TuneUpPermille = product.TuneUpPermille;
+        if (product.RedBlackFun > 0) guest.RedBlackFun = Math.Max(guest.RedBlackFun, product.RedBlackFun);
         if (product.CaffeineMinutes > 0) guest.CaffeineUntilTick = Math.Max(guest.CaffeineUntilTick, tick + product.CaffeineMinutes);
-        guest.OverpaidCents += Math.Max(0, price - product.ReferencePriceCents);
+        guest.OverpaidCents += Math.Max(0, price - reference);
         return price;
     }
 }

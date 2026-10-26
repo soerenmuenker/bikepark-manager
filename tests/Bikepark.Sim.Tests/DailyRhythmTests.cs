@@ -93,10 +93,12 @@ public class DailyRhythmTests
         {
             sim.Step();
             int minute = GameTime.MinuteOfDay(sim.State.Tick);
-            int eating = sim.State.Guests.Count(g => g.Activity == RiderActivity.Eating);
-            if (minute == 12 * 60 + 30) eatingAt1230 = eating;
-            if (minute == 10 * 60) eatingAt1000 = eating;
-            Assert.All(sim.State.Guests.Where(g => g.Activity == RiderActivity.Eating), g => Assert.True(g.HadLunch));
+            // At a table (not waiting at a bike shop's workbench).
+            var atLunch = sim.State.Guests.Where(g => g.Activity == RiderActivity.Eating
+                && sim.State.Facilities.FirstOrDefault(f => f.Id == g.FacilityId) is not { TypeId: "bike_shop" }).ToList();
+            if (minute == 12 * 60 + 30) eatingAt1230 = atLunch.Count;
+            if (minute == 10 * 60) eatingAt1000 = atLunch.Count;
+            Assert.All(atLunch, g => Assert.True(g.HadLunch));
         }
         sim.Events.Dispatch();
 

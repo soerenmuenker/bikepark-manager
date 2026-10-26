@@ -10,7 +10,7 @@ namespace Bikepark.Sim.Persistence;
 public static class SaveGame
 {
     /// <summary>Bump when the save format changes incompatibly, and add a migration in <see cref="Migrate"/>.</summary>
-    public const int CurrentVersion = 12;
+    public const int CurrentVersion = 13;
 
     private sealed record SaveFile(int Version, WorldState World);
 
@@ -292,6 +292,49 @@ public static class SaveGame
                         if (brand["minRating"]?.GetValue<string>() == "green") brand["minRating"] = "blue";
             }
             version = 12;
+        }
+
+        if (version == 12)
+        {
+            // v13: one bike shop (departments, range, workshop, rental counter) replaces the merch shop, pro shop, service
+            // shop and rental station. Those buildings are gone (their pads too), their renters ride on their own bikes;
+            // the bike shop is new content, so only new careers have it.
+            if (root["world"] is JsonObject world && world["facilityTypes"] is JsonArray types)
+            {
+                var gone = new HashSet<string>();
+                foreach (var type in types.OfType<JsonObject>().ToList())
+                {
+                    type.Remove("buyChancePermille");
+                    if (type["upgrades"] is JsonArray upgrades)
+                        foreach (var upgrade in upgrades.OfType<JsonObject>()) upgrade.Remove("buyChancePermille");
+                    if (type["kind"]?.GetValue<string>() is "shop" or "rental" or "service")
+                    {
+                        gone.Add(type["id"]!.GetValue<string>());
+                        types.Remove(type);
+                    }
+                }
+                var removed = new HashSet<int>();
+                var pads = new HashSet<int>();
+                if (world["facilities"] is JsonArray facilities)
+                    foreach (var facility in facilities.OfType<JsonObject>().ToList())
+                        if (gone.Contains(facility["typeId"]?.GetValue<string>() ?? ""))
+                        {
+                            removed.Add(facility["id"]!.GetValue<int>());
+                            pads.Add(facility["terrainEditId"]?.GetValue<int>() ?? 0);
+                            facilities.Remove(facility);
+                        }
+                if (world["terrainEdits"] is JsonArray edits)
+                    foreach (var edit in edits.OfType<JsonObject>().ToList())
+                        if (pads.Contains(edit["id"]?.GetValue<int>() ?? 0)) edits.Remove(edit);
+                if (world["guests"] is JsonArray guests)
+                    foreach (var guest in guests.OfType<JsonObject>())
+                    {
+                        guest["rentalBikeId"] = 0;
+                        guest["eBike"] = false;
+                        if (removed.Contains(guest["facilityId"]?.GetValue<int>() ?? 0)) guest["facilityId"] = 0;
+                    }
+            }
+            version = 13;
         }
 
         root["version"] = version;

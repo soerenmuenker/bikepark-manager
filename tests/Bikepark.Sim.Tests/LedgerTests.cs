@@ -79,14 +79,15 @@ public class LedgerTests
             Assert.Equal(day.MerchCents, Ledger.Get(day.ByCategory, MoneyCategory.Merch));
             Assert.Equal(day.DrinksCents, Ledger.Get(day.ByCategory, MoneyCategory.Drinks));
         }
-        // Upkeep by kind: the Demo has a snack bar (with its espresso machine), a beer rondel and a merch shop.
+        // Upkeep by kind: the Demo has a snack bar (with its espresso machine), a beer rondel and a bike shop (two upgrades).
         var types = sim.State.FacilityTypes;
         var snackBar = types.Single(t => t.Id == "snack_bar");
         Assert.Equal(snackBar.UpkeepPerDayCents + snackBar.Upgrades[0].UpkeepPerDayCents + types.Single(t => t.Id == "beer_rondel").UpkeepPerDayCents,
             Ledger.Get(days[1].ByCategory, MoneyCategory.BarUpkeep));
         Assert.True(Ledger.Get(days[1].ByCategory, MoneyCategory.Drinks) > 0);
         Assert.True(Ledger.Get(days[1].ByCategory, MoneyCategory.FoodGoods) > 0);
-        Assert.Equal(types.Single(t => t.Id == "merch_shop").UpkeepPerDayCents, Ledger.Get(days[1].ByCategory, MoneyCategory.ShopUpkeep));
+        var bikeShop = types.Single(t => t.Id == "bike_shop");
+        Assert.Equal(bikeShop.UpkeepPerDayCents + bikeShop.Upgrades.Take(2).Sum(u => u.UpkeepPerDayCents), Ledger.Get(days[1].ByCategory, MoneyCategory.ShopUpkeep));
         Assert.All(sim.State.Finance.TodayCents, c => Assert.Equal(0, c));
         Assert.Equal(days[^1].ByCategory, sim.State.DayHistory[^1].ByCategory);
     }

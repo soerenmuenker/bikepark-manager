@@ -131,8 +131,8 @@ internal sealed partial class RiderCard : PanelContainer
             case RiderActivity.OnLift:
                 return $"On {LiftName()}, heading for {target}";
             case RiderActivity.Eating when state.Facilities.FirstOrDefault(f => f.Id == guest.FacilityId) is { } shop
-                                           && Bikepark.Sim.Facilities.FacilityMath.FindType(state, shop.TypeId)?.Kind == Bikepark.Sim.Facilities.FacilityKind.Service:
-                return $"At {shop.Name}: the bike is being fixed until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
+                                           && Bikepark.Sim.Facilities.FacilityMath.FindType(state, shop.TypeId)?.Kind == Bikepark.Sim.Facilities.FacilityKind.BikeShop:
+                return $"At the workshop of {shop.Name} until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
             case RiderActivity.Eating when guest.ResumeLeg >= 0:
                 return $"Stopped for lunch on the way to {target}, until {Clock(GameTime.MinuteOfDay(guest.BusyUntilTick))}";
             case RiderActivity.Eating:

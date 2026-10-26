@@ -178,7 +178,7 @@
   // (minorCloseMinutes, a serious one until the rescue). Each trail's crashes per 10 000 runs over the last rateDays
   // (counted over at least rateMinRuns) are compared with expectedCrashesPer10kRunsByRating: a guest who rode a trail
   // above it rates safety safetyLossPerExtraCrashPer10k permille lower per extra crash (worst trail, at most maxRateSafetyLoss).
-  // bikeOnlyPermille: that share of minor crashes only break the bike (fixed at a service shop, else the rider goes home).
+  // bikeOnlyPermille: that share of minor crashes only break the bike (fixed in a bike shop's workshop, else the rider goes home).
   "crashRules": {
     "bikeOnlyPermille": 350,
     "enabled": true,

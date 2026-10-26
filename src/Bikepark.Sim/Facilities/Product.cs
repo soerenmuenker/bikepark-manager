@@ -1,3 +1,5 @@
+using Bikepark.Sim.Reputation;
+
 namespace Bikepark.Sim.Facilities;
 
 /// <summary>
@@ -39,13 +41,45 @@ public sealed class ProductType
     public int MinMinutes { get; set; }
     public int MaxMinutes { get; set; }
 
-    /// <summary>Sold in shops to guests going home (else a bar's food or drink).</summary>
+    /// <summary>Booked as merch (park merch, clothing, bikes; else a bar's food or drink).</summary>
     public bool Merch { get; set; }
+
+    // ---- Bike shops ----
+
+    /// <summary>A bike shop department: takes a shelf slot; the player picks which ones a shop stocks.</summary>
+    public bool Department { get; set; }
+
+    /// <summary>Chance a perfectly happy guest going home buys it at a bike shop in reach (scaled by mood, price, group, range).</summary>
+    public int HomeChancePermille { get; set; }
+
+    /// <summary>Impulse chance per minute between laps while it rains (rain jackets), on top of <see cref="ImpulsePermille"/>.</summary>
+    public int RainImpulsePermille { get; set; }
+
+    /// <summary>How much each skill group likes buying it (permille; 0: never).</summary>
+    public GroupFactors Groups { get; set; } = new();
+
+    /// <summary>Paid by card: not from the cash the guest brought for the day (gear and bikes).</summary>
+    public bool ByCard { get; set; }
+
+    /// <summary>Bought with a repair or service at the same shop, with this chance (spare parts).</summary>
+    public int WithServicePermille { get; set; }
+
+    /// <summary>
+    /// A workshop service (a workbench for <see cref="MinMinutes"/>..<see cref="MaxMinutes"/>): offered once per visit to
+    /// guests with their own bike at the first stop near the shop, with this chance (scaled by group, price).
+    /// </summary>
+    public int ServiceChancePermille { get; set; }
+
+    /// <summary>Tune-up: of the would-be bike-only crashes this share still breaks the bike, permille (0: no effect).</summary>
+    public int TuneUpPermille { get; set; }
+
+    /// <summary>Suspension setup: fun added to red and black trail segments and features for the visit.</summary>
+    public int RedBlackFun { get; set; }
 
     /// <summary>A night at a campground (one per night, paid on arrival).</summary>
     public bool Overnight { get; set; }
 
-    /// <summary>A rental bike for the day (rental stations), a repair (service shops: seated for MinMinutes..MaxMinutes).</summary>
+    /// <summary>A rental bike for the day, a repair of a bike broken in a crash (a workbench for MinMinutes..MaxMinutes); bike shops.</summary>
     public bool Rental { get; set; }
     public bool Repair { get; set; }
 
@@ -63,6 +97,12 @@ public sealed class ProductType
 
     public bool IsDrink => Alcohol > 0 || CaffeineMinutes > 0;
 
+    /// <summary>A workshop service offered to guests (tune-up, suspension setup).</summary>
+    public bool IsService => ServiceChancePermille > 0;
+
+    /// <summary>Workshop money: repairs, services and the parts sold with them.</summary>
+    public bool IsWorkshop => Repair || IsService || WithServicePermille > 0;
+
     public List<string> Validate()
     {
         var errors = new List<string>();
@@ -77,12 +117,66 @@ public sealed class ProductType
         if (CaffeineMinutes is < 0 or > 600) errors.Add($"{p}.caffeineMinutes must be within 0..600");
         if (Lunch && (MinMinutes < 1 || MaxMinutes < MinMinutes || MaxMinutes > 240))
             errors.Add($"{p}: lunch minutes must satisfy 1 <= minMinutes <= maxMinutes <= 240");
-        if ((Lunch ? 1 : 0) + (Merch ? 1 : 0) + (Overnight ? 1 : 0) + (Rental ? 1 : 0) + (Repair ? 1 : 0) + (Protection ? 1 : 0) + (Clip ? 1 : 0) > 1)
-            errors.Add($"{p}: lunch, merch, overnight, rental, repair and protection exclude each other");
-        if (Repair && (MinMinutes < 1 || MaxMinutes < MinMinutes || MaxMinutes > 240))
-            errors.Add($"{p}: repair minutes must satisfy 1 <= minMinutes <= maxMinutes <= 240");
+        if ((Lunch ? 1 : 0) + (Merch ? 1 : 0) + (Overnight ? 1 : 0) + (Rental ? 1 : 0) + (Repair ? 1 : 0) + (Protection ? 1 : 0) + (Clip ? 1 : 0)
+            + (IsService ? 1 : 0) + (WithServicePermille > 0 ? 1 : 0) > 1)
+            errors.Add($"{p}: lunch, merch, overnight, rental, repair, protection, clip, services and parts exclude each other");
+        if ((Repair || IsService) && (MinMinutes < 1 || MaxMinutes < MinMinutes || MaxMinutes > 240))
+            errors.Add($"{p}: workshop minutes must satisfy 1 <= minMinutes <= maxMinutes <= 240");
+        if (HomeChancePermille is < 0 or > 1000 || RainImpulsePermille is < 0 or > 1000 || WithServicePermille is < 0 or > 1000
+            || ServiceChancePermille is < 0 or > 1000 || TuneUpPermille is < 0 or > 1000 || RedBlackFun is < 0 or > 1000)
+            errors.Add($"{p}: homeChancePermille, rainImpulsePermille, withServicePermille, serviceChancePermille, tuneUpPermille and redBlackFun within 0..1000");
+        if (!Department && (HomeChancePermille > 0 || RainImpulsePermille > 0 || WithServicePermille > 0 || ByCard))
+            errors.Add($"{p}: homeChancePermille, rainImpulsePermille, withServicePermille and byCard are for departments");
+        if (Department && (Lunch || Overnight || Rental || Repair || Clip || IsService || IsDrink))
+            errors.Add($"{p}: a department sells goods (merch, clothing, protectors, parts, bikes)");
+        errors.AddRange(Groups.Validate(p));
         if (ImpulsePermille is < 0 or > 1000 || WhenEnergyBelow is < 0 or > 1000)
             errors.Add($"{p}: impulsePermille and whenEnergyBelow must be within 0..1000");
+        return errors;
+    }
+}
+
+/// <summary>How much each skill group likes something, permille (1000: as is).</summary>
+public sealed class GroupFactors
+{
+    public int Beginner { get; set; } = 1000;
+    public int Intermediate { get; set; } = 1000;
+    public int Expert { get; set; } = 1000;
+
+    public int For(SkillGroup group) => group switch
+    {
+        SkillGroup.Beginner => Beginner,
+        SkillGroup.Intermediate => Intermediate,
+        _ => Expert,
+    };
+
+    public List<string> Validate(string owner) =>
+        Beginner is < 0 or > 5000 || Intermediate is < 0 or > 5000 || Expert is < 0 or > 5000 ? [$"{owner}.groups: within 0..5000"] : [];
+}
+
+/// <summary>
+/// A bike shop range (<see cref="ShopRange"/>): its departments' prices and fair prices, the goods and the upkeep scale by
+/// these, and each skill group likes it this much.
+/// </summary>
+public sealed class ShopRangeRules
+{
+    public string Name { get; set; } = "";
+    public int PriceFactorPermille { get; set; } = 1000;
+    public int GoodsFactorPermille { get; set; } = 1000;
+    public int UpkeepFactorPermille { get; set; } = 1000;
+    public GroupFactors Groups { get; set; } = new();
+
+    /// <summary>All factors 1000 (scenarios without ranges).</summary>
+    public static readonly ShopRangeRules Neutral = new() { Name = "Standard" };
+
+    public List<string> Validate(string owner)
+    {
+        var errors = new List<string>();
+        string p = $"{owner}[{Name}]";
+        if (string.IsNullOrWhiteSpace(Name)) errors.Add($"{owner}: name is required");
+        if (PriceFactorPermille is < 100 or > 5000 || GoodsFactorPermille is < 100 or > 5000 || UpkeepFactorPermille is < 100 or > 5000)
+            errors.Add($"{p}: factors within 100..5000");
+        errors.AddRange(Groups.Validate(p));
         return errors;
     }
 }
@@ -160,7 +254,27 @@ public sealed class FacilityRules
     public int CampEnergyMax { get; set; } = 1000;
     public int CampMood { get; set; } = 30;
 
-    // ---- Bikes (only with a rental station / service shop) ----
+    // ---- Bikes (only with a bike shop) ----
+
+    /// <summary>
+    /// Bike shop ranges in <see cref="ShopRange"/> order (budget, standard, premium): price, goods and upkeep factors and how
+    /// much each skill group likes buying there.
+    /// </summary>
+    public List<ShopRangeRules> ShopRanges { get; set; } =
+    [
+        new() { Name = "Budget", PriceFactorPermille = 700, GoodsFactorPermille = 650, UpkeepFactorPermille = 900,
+                Groups = new() { Beginner = 1400, Intermediate = 1000, Expert = 500 } },
+        new() { Name = "Standard" },
+        new() { Name = "Premium", PriceFactorPermille = 1500, GoodsFactorPermille = 1500, UpkeepFactorPermille = 1300,
+                Groups = new() { Beginner = 500, Intermediate = 1000, Expert = 1600 } },
+    ];
+
+    /// <summary>Protectors sell this much better (permille) to guests who have seen a crash.</summary>
+    public int CrashSeenProtectionPermille { get; set; } = 2000;
+
+    /// <summary>Fleet care: condition (permille, over the fleet) each workbench restores a night, and the parts per permille.</summary>
+    public int FleetCarePerBenchPermille { get; set; } = 400;
+    public int FleetCareCentsPerPermille { get; set; } = 25;
 
     /// <summary>Guests without a bike who come to rent one, in permille of the other arrivals (at the fair rental price, with a free bike).</summary>
     public int RenterSharePermille { get; set; } = 150;
@@ -195,6 +309,11 @@ public sealed class FacilityRules
         if (RenterSharePermille is < 0 or > 5000 || RenterSkillMax is < 0 or > 1000) errors.Add($"{p}: renterSharePermille within 0..5000, renterSkillMax within 0..1000");
         if (RentalWearPerRun is < 0 or > 1000 || RentalCrashWear is < 0 or > 1000) errors.Add($"{p}: rental wear within 0..1000");
         if (EBikeClimbPermille is < 1 or > 1000) errors.Add($"{p}.eBikeClimbPermille must be within 1..1000");
+        if (ShopRanges.Count is not (0 or 3)) errors.Add($"{p}.shopRanges: budget, standard and premium (or none)");
+        foreach (var range in ShopRanges) errors.AddRange(range.Validate($"{p}.shopRanges"));
+        if (CrashSeenProtectionPermille is < 0 or > 10_000) errors.Add($"{p}.crashSeenProtectionPermille must be within 0..10000");
+        if (FleetCarePerBenchPermille is < 0 or > 20_000 || FleetCareCentsPerPermille is < 0 or > 10_000)
+            errors.Add($"{p}: fleetCarePerBenchPermille within 0..20000, fleetCareCentsPerPermille within 0..10000");
         return errors;
     }
 }

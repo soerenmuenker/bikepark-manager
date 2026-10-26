@@ -62,11 +62,11 @@ public sealed class CrashRules
 
     /// <summary>
     /// Share of the would-be minor crashes that only break the bike (permille; 0 = never): no injury, a little mood, then
-    /// the service shop (or a new rental bike) or home.
+    /// a bike shop's workshop (or a new rental bike) or home.
     /// </summary>
     public int BikeOnlyPermille { get; set; }
 
-    /// <summary>Protectors (pro shop) cut the share of serious crashes to this (permille of it).</summary>
+    /// <summary>Protectors (bike shop) cut the share of serious crashes to this (permille of it).</summary>
     public int ProtectedSeriousPermille { get; set; } = 500;
 
     /// <summary>Alcohol makes riders sloppy: the chance rises by up to this at full alcohol (1000), linearly.</summary>

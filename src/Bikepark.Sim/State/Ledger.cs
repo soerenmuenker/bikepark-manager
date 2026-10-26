@@ -24,7 +24,7 @@ public enum MoneyCategory : byte
     LiftUpkeep = 7,
     BarUpkeep = 8,
     ShopUpkeep = 9,
-    /// <summary>The goods merch shops sell.</summary>
+    /// <summary>The goods bike shops sell (merch, clothing, protectors, bikes).</summary>
     MerchGoods = 10,
     /// <summary>Weekly loan installments.</summary>
     LoanInstallments = 11,
@@ -61,9 +61,9 @@ public enum MoneyCategory : byte
     // Appended (Phase 9.3)
     /// <summary>Rental bikes for the day (regular income).</summary>
     Rentals = 25,
-    /// <summary>Bikes fixed at the service shop (regular income).</summary>
+    /// <summary>Bikes fixed, services and parts at bike shop workshops (regular income).</summary>
     Repairs = 26,
-    /// <summary>Upkeep of rental stations and service shops, parts (regular expense).</summary>
+    /// <summary>Workshop parts, fleet care and rental bike costs (regular expense).</summary>
     BikeCosts = 27,
 
     // Appended (Phase 9.4)

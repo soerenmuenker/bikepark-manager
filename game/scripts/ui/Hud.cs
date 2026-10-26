@@ -1030,7 +1030,7 @@ public partial class Hud : CanvasLayer
                     : $"Minor crash on the {LiftName(e.LiftId)} track (hit by a rider on {TrailName(e.WayId)}): the rider gets off and goes home",
                     e.Severity == Bikepark.Sim.Safety.InjurySeverity.Serious ? UiTheme.Bad : UiTheme.Warn);
             else if (e.BikeOnly)
-                Toast($"Crash on {TrailName(e.WayId)}{where}: nobody hurt, but the bike is broken (service shop or home)", UiTheme.Warn);
+                Toast($"Crash on {TrailName(e.WayId)}{where}: nobody hurt, but the bike is broken (bike shop workshop or home)", UiTheme.Warn);
             else if (e.Severity == Bikepark.Sim.Safety.InjurySeverity.Serious)
                 Toast($"Serious crash on {TrailName(e.WayId)}{where}: rescue helicopter called, the trail is blocked", UiTheme.Bad);
             else

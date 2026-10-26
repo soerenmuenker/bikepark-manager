@@ -46,7 +46,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
         for (int i = 0; i < arrivals; i++)
             TryAdmitGuest(ctx);
 
-        // Guests without a bike come on top, to rent one (only where the park has a rental station).
+        // Guests without a bike come on top, to rent one (only where a bike shop has a rental counter).
         if (RentalPrice(state) is { } rental)
         {
             long renters = (long)expectedPermille * state.FacilityRules.RenterSharePermille / 1000
@@ -57,11 +57,12 @@ internal sealed class GuestArrivalSystem : ISimSystem
         }
     }
 
-    /// <summary>The first rental station's rental product and the park's price for it, or null without a rental station.</summary>
+    /// <summary>The first rental counter's rental product and the park's price for it, or null without one.</summary>
     private static (ProductType Product, long PriceCents)? RentalPrice(WorldState state)
     {
         foreach (var station in state.Facilities)
-            if (FacilityMath.FindType(state, station.TypeId) is { Kind: FacilityKind.Rental } type && Bikes.RentalProduct(state, type, station) is { } product)
+            if (FacilityMath.FindType(state, station.TypeId) is { Kind: FacilityKind.BikeShop } type && FacilityMath.HasRental(type, station)
+                && Bikes.RentalProduct(state, type, station) is { } product)
                 return (product, FacilityMath.PriceOf(state, product));
         return null;
     }
@@ -117,7 +118,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
         var state = ctx.State;
         long fee = state.Park.EntryFeeCents;
 
-        // Renters need a free bike (and the rental station's price).
+        // Renters need a free bike (and the rental counter's price).
         (Facility Station, FacilityType Type, RentalBike Bike)? bike = null;
         ProductType? rental = null;
         if (renter)
@@ -127,7 +128,7 @@ internal sealed class GuestArrivalSystem : ISimSystem
             if (rental is null)
             {
                 state.Stats.RentersWithoutBike++;
-                if (state.Facilities.FirstOrDefault(f => FacilityMath.FindType(state, f.TypeId)?.Kind == FacilityKind.Rental) is { } station)
+                if (state.Facilities.FirstOrDefault(f => FacilityMath.FindType(state, f.TypeId) is { } t && FacilityMath.HasRental(t, f)) is { } station)
                 {
                     station.TurnedAwayToday++;
                     station.TurnedAway++;
@@ -352,7 +353,7 @@ internal sealed class GuestSystem : ISimSystem
         }
         var point = FacilityMath.GuestPoint(state, ctx.Network, guest);
         if (!Catering.TryImpulse(ctx, guest, point, 1000))
-            Catering.TryImpulse(ctx, guest, point, 1000, FacilityKind.Shop); // protectors at the pro shop
+            Catering.TryImpulse(ctx, guest, point, 1000, FacilityKind.BikeShop); // protectors, rain jackets at a bike shop
     }
 
     /// <summary>On a lift whose cabins keep riders dry (T-bars and chairlifts don't).</summary>
@@ -398,9 +399,12 @@ internal sealed class GuestSystem : ISimSystem
             return null;
         if (guest.Injury != InjurySeverity.None)
             return GuestLeaveReason.Injured; // down at last: home to recover
-        // Down with a broken bike: to the service shop or the rental station; if nobody can fix it, home.
+        // Down with a broken bike: to a bike shop's workshop (or a new rental bike); if nobody can fix it, home.
         if (guest.Activity == RiderActivity.Idle && guest.BikeBroken && !Bikes.TryFix(ctx, guest))
             return GuestLeaveReason.BikeBroken;
+        // The first time near a bike shop: maybe a tune-up or a suspension setup at the workshop.
+        if (guest.Activity == RiderActivity.Idle && !guest.WorkshopAsked)
+            Bikes.TryService(ctx, guest);
         if (guest.Activity == RiderActivity.Eating)
             return null; // at the workbench
         if (guest.Activity == RiderActivity.Idle && guest.Alcohol >= ctx.State.FacilityRules.TooDrunkAlcohol)
@@ -438,17 +442,17 @@ internal sealed class FinanceSystem : ISimSystem
         // Photo spots: each camera's upkeep.
         long cameras = state.Ways.Sum(w => w.Features.Count(f => f.Camera)) * state.SponsorRules.CameraUpkeepPerDayCents;
         if (cameras > 0) state.Finance.Spend(MoneyCategory.CameraUpkeep, cameras);
+        Bikes.FleetCare(state); // the workshops service the rental fleets for tomorrow
         long facilityUpkeep = 0;
         foreach (var facility in state.Facilities)
         {
             if (FacilityMath.FindType(state, facility.TypeId) is not { } type) continue;
-            long upkeep = FacilityMath.Upkeep(type, facility);
+            long upkeep = FacilityMath.Upkeep(state, type, facility);
             if (upkeep <= 0) continue;
             state.Finance.Spend(type.Kind switch
             {
                 FacilityKind.Bar => MoneyCategory.BarUpkeep,
                 FacilityKind.Campground => MoneyCategory.CampUpkeep,
-            FacilityKind.Rental or FacilityKind.Service => MoneyCategory.BikeCosts,
                 _ => MoneyCategory.ShopUpkeep,
             }, upkeep);
             facilityUpkeep += upkeep;

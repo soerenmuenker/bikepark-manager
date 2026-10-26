@@ -608,11 +608,23 @@ public sealed class Guest
     /// <summary>Riding a rental e-bike: climbing is cheap.</summary>
     public bool EBike { get; set; }
 
-    /// <summary>The bike broke in a crash: rolling down slowly, then to the service shop (or a new rental bike), else home.</summary>
+    /// <summary>The bike broke in a crash: rolling down slowly, then to a bike shop's workshop (or a new rental bike), else home.</summary>
     public bool BikeBroken { get; set; }
 
-    /// <summary>Wears protectors from the pro shop: crashes are less often serious.</summary>
+    /// <summary>Wears protectors from a bike shop: crashes are less often serious.</summary>
     public bool Protected { get; set; }
+
+    /// <summary>Bike shop departments bought from this visit (each once: merch, clothing, parts, a bike).</summary>
+    public List<string> ShopItems { get; set; } = [];
+
+    /// <summary>A bike shop's workshop services were offered (once per visit, at the first stop near a shop).</summary>
+    public bool WorkshopAsked { get; set; }
+
+    /// <summary>Tuned up: of the would-be bike-only crashes this share still breaks the bike (0: not tuned up).</summary>
+    public int TuneUpPermille { get; set; }
+
+    /// <summary>Suspension set up: fun added on red and black trails.</summary>
+    public int RedBlackFun { get; set; }
 
     /// <summary>Filmed landing a jump with a camera this run (the feature; 0: not filmed), and how much they enjoyed it.</summary>
     public int FilmedFeatureId { get; set; }

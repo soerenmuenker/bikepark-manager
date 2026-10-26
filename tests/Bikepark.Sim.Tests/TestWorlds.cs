@@ -1,6 +1,7 @@
 using Bikepark.Sim.Banking;
 using System.Text.Json;
 using Bikepark.Sim.Commands;
+using Bikepark.Sim.Facilities;
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.Persistence;
 using Bikepark.Sim.Scenarios;
@@ -177,6 +178,11 @@ internal static class TestWorlds
         new(800, new ApplySponsorCommand("acme", 2)),
         new(800, new AcceptSponsorCommand(99)),
         new(800, new PlaceCameraCommand(2, 4)),
+        // Bike shops (none in the test world): all rejected.
+        new(810, new SetShopDepartmentsCommand(99, ["merch"])),
+        new(810, new SetShopRangeCommand(99, ShopRange.Premium)),
+        new(810, new SetWorkshopServiceCommand(99, "tuneup", false)),
+        new(810, new SetReserveBenchCommand(99, true)),
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

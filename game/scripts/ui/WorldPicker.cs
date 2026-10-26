@@ -134,6 +134,9 @@ internal sealed partial class WorldPicker : Node
                     $" · {Bikepark.Sim.Facilities.FacilityMath.SeatsTaken(state, facility)}/{Bikepark.Sim.Facilities.FacilityMath.Seats(type, facility)} seats taken",
                 Bikepark.Sim.Facilities.FacilityKind.Campground =>
                     $" · {Bikepark.Sim.Facilities.FacilityMath.PitchesTaken(state, facility)}/{Bikepark.Sim.Facilities.FacilityMath.Pitches(type, facility)} pitches booked",
+                Bikepark.Sim.Facilities.FacilityKind.BikeShop =>
+                    $" · {Bikepark.Sim.Facilities.FacilityMath.SeatsTaken(state, facility)}/{Bikepark.Sim.Facilities.FacilityMath.Workbenches(type, facility)} benches busy" +
+                    (Bikepark.Sim.Facilities.FacilityMath.HasRental(type, facility) ? $" · {facility.Fleet.Count(b => b.RentedBy == 0)} bikes in the rack" : ""),
                 _ => "",
             };
             int facilityId = facility.Id;

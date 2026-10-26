@@ -34,7 +34,7 @@ public partial class FinancePanel : HudPanel
         new("Sponsors & media", [MoneyCategory.CameraUpkeep], [MoneyCategory.Sponsors, MoneyCategory.Clips],
             "Trail and park sponsors (once their sign stands) · clips sold at photo spots · camera upkeep"),
         new("Bikes", [MoneyCategory.BikeCosts], [MoneyCategory.Rentals, MoneyCategory.Repairs],
-            "Bike rentals and repairs · parts and upkeep of rental stations and service shops (new fleet bikes are one-offs)"),
+            "Bike rentals, repairs and workshop services · parts, fleet care and rental upkeep (new fleet bikes are one-offs)"),
         new("Crew", [MoneyCategory.Wages], [], "Daily wages of your crew (Crew menu: hire and dismiss)"),
         new("Park staff", [MoneyCategory.ParkStaff], [], "Managers, ticket office, first aid, cleaning and marketing: every day, open or not (Crew menu → Park staff)"),
         new("Loans", [], [], "Weekly installments of your running loans, per day", Loans: true),
@@ -394,8 +394,7 @@ public partial class FinancePanel : HudPanel
             var kind = FacilityMath.FindType(state, facility.TypeId)?.Kind;
             places.Add(($"f{facility.Id}", facility.Name, kind switch
                 {
-                    FacilityKind.Bar => UiIcon.Bar, FacilityKind.Campground => UiIcon.Tent, FacilityKind.Rental => UiIcon.Riders,
-                    FacilityKind.Service => UiIcon.Tool, _ => UiIcon.Shop,
+                    FacilityKind.Bar => UiIcon.Bar, FacilityKind.Campground => UiIcon.Tent, _ => UiIcon.Shop,
                 }, facility.RevenueTodayCents, facility.TotalRevenueCents, new InspectTarget(InspectKind.Facility, facility.Id)));
         }
         foreach (var lift in state.Lifts.Where(l => l.Stats.PassRevenueCents > 0 || state.Park.LiftTicketCents > 0))
@@ -554,9 +553,9 @@ public partial class FinancePanel : HudPanel
     /// <summary>Lines that can never move in this scenario are left out (no shops, no loans, no base staff).</summary>
     private static bool Shown(WorldState state, BudgetLine line) => line.Name switch
     {
-        "Merch" => state.FacilityTypes.Any(t => t.Kind == FacilityKind.Shop),
+        "Merch" => state.FacilityTypes.Any(t => t.Kind == FacilityKind.BikeShop),
         "Parking & camping" => state.ParkingLots.Count > 0 || state.FacilityTypes.Any(t => t.Kind == FacilityKind.Campground),
-        "Bikes" => state.FacilityTypes.Any(t => t.Kind is FacilityKind.Rental or FacilityKind.Service),
+        "Bikes" => state.FacilityTypes.Any(t => t.Kind == FacilityKind.BikeShop),
         "Sponsors & media" => state.SponsorTypes.Count > 0,
         "Park staff" => state.StaffRules.Enabled || state.Rules.DailyUpkeepCents > 0,
         "Loans" => state.LoanRules.Offers.Count > 0 || state.Loans.Count > 0,

@@ -66,7 +66,7 @@ public sealed record SetBeerHoursCommand(int FromMinute) : ICommand
 }
 
 /// <summary>
-/// Buys bikes for a rental station's fleet (new, in perfect condition), at the station's price per bike, up to its rack
+/// Buys bikes for a bike shop's rental fleet (new, in perfect condition), at the shop's price per bike, up to its rack
 /// (<see cref="FacilityMath.MaxFleet"/>).
 /// </summary>
 public sealed record BuyRentalBikesCommand(int FacilityId, int Count) : ICommand
@@ -86,5 +86,81 @@ public sealed record BuyRentalBikesCommand(int FacilityId, int Count) : ICommand
         long cost = Count * FacilityMath.BikeCost(state, type);
         state.Finance.Invest(MoneyCategory.Buildings, cost, ctx.Tick, $"{station.Name}: {Count} rental bike{(Count == 1 ? "" : "s")}");
         state.Finance.TotalFacilityBuildCents += cost;
+        ctx.Publish(new RentalBikesBought(ctx.Tick, station.Id, Count));
     }
+}
+
+/// <summary>Sets the departments on a bike shop's shelves (unlocked ones, at most its shelf slots; in any order).</summary>
+public sealed record SetShopDepartmentsCommand(int FacilityId, List<string> Departments) : ICommand
+{
+    // Value equality for the list too (the event stream of two runs compares commands).
+    public bool Equals(SetShopDepartmentsCommand? other) =>
+        other is not null && FacilityId == other.FacilityId && Departments.SequenceEqual(other.Departments);
+
+    public override int GetHashCode() => HashCode.Combine(FacilityId, Departments.Count);
+
+    public string? Validate(SimContext ctx) =>
+        ctx.State.Facilities.FirstOrDefault(f => f.Id == FacilityId) is not { } shop
+            ? "No such building."
+            : FacilityMath.CannotStock(ctx.State, shop, Departments);
+
+    public void Apply(SimContext ctx)
+    {
+        var state = ctx.State;
+        var shop = state.Facilities.First(f => f.Id == FacilityId);
+        // Kept in catalog order, so the shelves read the same however the player picked them.
+        shop.Departments = state.ProductTypes.Where(p => Departments.Contains(p.Id)).Select(p => p.Id).ToList();
+    }
+}
+
+/// <summary>Sets a bike shop's range: budget, standard or premium.</summary>
+public sealed record SetShopRangeCommand(int FacilityId, ShopRange Range) : ICommand
+{
+    public string? Validate(SimContext ctx)
+    {
+        var state = ctx.State;
+        if (state.Facilities.FirstOrDefault(f => f.Id == FacilityId) is not { } shop) return "No such building.";
+        if (FacilityMath.FindType(state, shop.TypeId)?.Kind != FacilityKind.BikeShop) return $"{shop.Name} is no bike shop.";
+        return Enum.IsDefined(Range) ? null : "Unknown range.";
+    }
+
+    public void Apply(SimContext ctx) => ctx.State.Facilities.First(f => f.Id == FacilityId).Range = Range;
+}
+
+/// <summary>
+/// Switches a bike shop's workshop service on or off: an unlocked service product (tune-up, suspension setup) or
+/// <see cref="FacilityMath.FleetCare"/> (with a rental counter). Crash repairs are always on.
+/// </summary>
+public sealed record SetWorkshopServiceCommand(int FacilityId, string Service, bool On) : ICommand
+{
+    public string? Validate(SimContext ctx)
+    {
+        var state = ctx.State;
+        if (state.Facilities.FirstOrDefault(f => f.Id == FacilityId) is not { } shop) return "No such building.";
+        if (FacilityMath.FindType(state, shop.TypeId) is not { Kind: FacilityKind.BikeShop } type) return $"{shop.Name} is no bike shop.";
+        bool known = Service == FacilityMath.FleetCare
+            ? FacilityMath.HasRental(type, shop)
+            : FacilityMath.UnlockedServices(state, type, shop).Any(p => p.Id == Service);
+        return known ? null : $"{shop.Name} doesn't offer '{Service}'.";
+    }
+
+    public void Apply(SimContext ctx)
+    {
+        var shop = ctx.State.Facilities.First(f => f.Id == FacilityId);
+        shop.ServicesOff.Remove(Service);
+        if (!On) shop.ServicesOff.Add(Service);
+    }
+}
+
+/// <summary>Keeps (or stops keeping) the last free workbench of a bike shop for crash repairs.</summary>
+public sealed record SetReserveBenchCommand(int FacilityId, bool On) : ICommand
+{
+    public string? Validate(SimContext ctx)
+    {
+        var state = ctx.State;
+        if (state.Facilities.FirstOrDefault(f => f.Id == FacilityId) is not { } shop) return "No such building.";
+        return FacilityMath.FindType(state, shop.TypeId)?.Kind == FacilityKind.BikeShop ? null : $"{shop.Name} is no bike shop.";
+    }
+
+    public void Apply(SimContext ctx) => ctx.State.Facilities.First(f => f.Id == FacilityId).ReserveBench = On;
 }

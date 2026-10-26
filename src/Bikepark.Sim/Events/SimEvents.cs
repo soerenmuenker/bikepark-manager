@@ -53,7 +53,7 @@ public enum GuestLeaveReason
     /// <summary>Had too much to drink to ride on.</summary>
     Drunk,
 
-    /// <summary>Their bike broke in a crash and nobody could fix it (no service shop, no free rental bike).</summary>
+    /// <summary>Their bike broke in a crash and nobody could fix it (no bike shop workshop, no free rental bike).</summary>
     BikeBroken,
 }
 
@@ -291,8 +291,14 @@ public sealed record ClipSold(long Tick, int GuestId, int WayId, int FeatureId, 
 /// <summary>A rental bike worn down to 0 % was retired from the fleet.</summary>
 public sealed record RentalBikeRetired(long Tick, int StationId, int BikeId) : ISimEvent;
 
-/// <summary>A guest's broken bike was fixed (at a service shop: <paramref name="FacilityId"/>; or swapped for another rental bike).</summary>
+/// <summary>The park bought bikes for a bike shop's rental fleet.</summary>
+public sealed record RentalBikesBought(long Tick, int FacilityId, int Count) : ISimEvent;
+
+/// <summary>A guest's broken bike was fixed (at a bike shop's workshop: <paramref name="FacilityId"/>; or swapped for another rental bike).</summary>
 public sealed record BikeFixed(long Tick, int GuestId, int FacilityId, bool Swapped) : ISimEvent;
+
+/// <summary>A guest booked a workshop service (tune-up, suspension setup) at a bike shop.</summary>
+public sealed record WorkshopServiceSold(long Tick, int GuestId, int FacilityId, string ProductId, long PriceCents) : ISimEvent;
 
 /// <summary>A camper went to sleep at their campground (<paramref name="NightsLeft"/> after this one).</summary>
 public sealed record CamperSleeping(long Tick, int GuestId, int CampgroundId, int NightsLeft) : ISimEvent;

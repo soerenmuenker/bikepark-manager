@@ -206,7 +206,7 @@ public class SponsorTests
     public void Benefits_CountInFullForThePark_InPartForATrail_TheBestWins_AndStopWithTheDeal()
     {
         var sim = Demo();
-        var rental = FacilityMath.FindType(sim.State, "rental_station")!;
+        var rental = FacilityMath.FindType(sim.State, "bike_shop")!;
         Assert.Equal(rental.BikeCostCents, FacilityMath.BikeCost(sim.State, rental));
 
         var trailDeal = Running(sim, "gravity", Trail(sim, "Red Rocket").Id);

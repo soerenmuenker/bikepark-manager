@@ -607,7 +607,8 @@ internal sealed class RiderSystem : ISimSystem
         bool jump = feature is { } f && ReviewMath.IsJump(f.Type.Kind);
         bool serious = ctx.Rng.ChancePermille(CrashMath.SeriousPermille(rules, cause, jump, difficulty, guest.Skill, guest.Protected));
         // Some minor crashes only break the bike: no injury; the rider rolls down slowly and gets it fixed (or goes home).
-        bool bikeOnly = !serious && ctx.Rng.ChancePermille(rules.BikeOnlyPermille);
+        int bikeOnlyShare = guest.TuneUpPermille > 0 ? rules.BikeOnlyPermille * guest.TuneUpPermille / 1000 : rules.BikeOnlyPermille; // tuned up
+        bool bikeOnly = !serious && ctx.Rng.ChancePermille(bikeOnlyShare);
         guest.Injury = serious ? InjurySeverity.Serious : bikeOnly ? InjurySeverity.None : InjurySeverity.Minor;
         guest.BikeBroken |= bikeOnly;
         Bikes.Wear(state, guest, state.FacilityRules.RentalCrashWear);
@@ -926,6 +927,7 @@ internal sealed class RiderSystem : ISimSystem
         };
         int fun = (match * 50 + style * 50) / 100;
         if (type.Difficulty > guest.Skill + 200) fun /= 2; // scared
+        if (guest.RedBlackFun > 0 && type.Difficulty > WayGeometry.BlueMaxDifficulty) fun = Math.Min(1000, fun + guest.RedBlackFun); // suspension set up
         return fun;
     }
 
@@ -949,6 +951,7 @@ internal sealed class RiderSystem : ISimSystem
 
         int fun = (match * 45 + speedScore * 25 + style * 30) / 100;
         if (difficulty > guest.Skill + 200) fun /= 2; // scared
+        if (guest.RedBlackFun > 0 && difficulty > WayGeometry.BlueMaxDifficulty) fun = Math.Min(1000, fun + guest.RedBlackFun); // suspension set up
         return fun;
     }
 }

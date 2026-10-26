@@ -98,6 +98,9 @@ public partial class LiftView : Node3D
         _subscriptions.Add(sim.Events.Subscribe<PlatformDeleted>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<StructureRenaturalized>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<FacilityBuilt>(_ => _dirty = true));
+        _subscriptions.Add(sim.Events.Subscribe<FacilityUpgraded>(_ => _dirty = true)); // a bike shop grows an extension
+        _subscriptions.Add(sim.Events.Subscribe<RentalBikesBought>(_ => _dirty = true)); // bikes in its rack
+        _subscriptions.Add(sim.Events.Subscribe<RentalBikeRetired>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<SponsorSignBuilt>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<SponsorshipEnded>(_ => _dirty = true));
         _subscriptions.Add(sim.Events.Subscribe<CameraPlaced>(_ => _dirty = true));
@@ -147,7 +150,9 @@ public partial class LiftView : Node3D
             if (LiftNetwork.Pad(state, facility.TerrainEditId) is not { } pad) continue;
             var type = Bikepark.Sim.Facilities.FacilityMath.FindType(state, facility.TypeId);
             AddMesh(Surface(pad, Gravel), $"{facility.Name} terrace");
-            AddMesh(Building(pad, type?.Kind ?? Bikepark.Sim.Facilities.FacilityKind.Shop), facility.Name);
+            AddMesh(type?.Kind == Bikepark.Sim.Facilities.FacilityKind.BikeShop
+                ? BikeShop(pad, type, facility)
+                : Building(pad, type?.Kind ?? Bikepark.Sim.Facilities.FacilityKind.Bar), facility.Name);
             AddLabel(facility.Name, LiftShapes.Center(pad, 7f));
         }
 
@@ -204,7 +209,7 @@ public partial class LiftView : Node3D
     /// hut next to an open bull-wheel frame (T-bar).
     /// </summary>
     /// <summary>
-    /// A bar (a wooden hut at the back, tables with umbrellas in front) or a shop (a white hut with a coloured awning),
+    /// A bar (a wooden hut at the back, tables with umbrellas in front) or a campground (a reception hut and tents),
     /// filling the pad (local x along its length, z across).
     /// </summary>
     private static ArrayMesh Building(TerrainPad pad, Bikepark.Sim.Facilities.FacilityKind kind)
@@ -243,15 +248,117 @@ public partial class LiftView : Node3D
                 for (float z = -w + 2.0f; z <= w - 1.8f; z += 4.0f)
                     Tent(b, x, z, canvas[n++ % canvas.Length]);
         }
-        else
+        return Placed(b.ToMesh(), pad);
+    }
+
+    private static readonly Color ShopWall = new(0.90f, 0.88f, 0.82f), ShopRoof = new(0.18f, 0.55f, 0.58f), ShopOrange = new(0.95f, 0.45f, 0.20f),
+        Glass = new(0.35f, 0.55f, 0.70f), Steel = new(0.45f, 0.47f, 0.50f), Tyre = new(0.10f, 0.10f, 0.11f);
+
+    /// <summary>
+    /// A bike shop on its pad (laid out for the fully grown shop, about 24 × 14 m; local x along its length, the front at +x):
+    /// the store at the back on the left, and one extension per bought upgrade, chosen by its <c>Look</c>: an open workshop
+    /// with a workstand, the rental hut and its rack (with the fleet's bikes), a second store wing, a second rack row, a
+    /// glass suspension annex, charging posts for e-bikes, and the demo center's flags and test loop. Unknown looks draw nothing.
+    /// </summary>
+    private static ArrayMesh BikeShop(TerrainPad pad, Bikepark.Sim.Facilities.FacilityType type, Bikepark.Sim.Facilities.Facility facility)
+    {
+        var b = new FlatMeshBuilder();
+        // Designed on a 24 × 14 m pad; other pads stretch it.
+        float sx = pad.HalfLengthCm / 100f / 12f, sz = pad.HalfWidthCm / 100f / 7f;
+        void Box(float x0, float y0, float z0, float x1, float y1, float z1, Color color) =>
+            b.Box(new Vector3(x0 * sx, y0, z0 * sz), new Vector3(x1 * sx, y1, z1 * sz), color);
+        var looks = Bikepark.Sim.Facilities.FacilityMath.Bought(type, facility).Select(u => u.Look).ToHashSet();
+        bool eBikes = Bikepark.Sim.Facilities.FacilityMath.EBikes(type, facility);
+
+        // The store: white walls, teal roof, a display window to the front and the orange shop sign.
+        Box(-11.5f, 0, -6.5f, -4.5f, 3.2f, -0.5f, ShopWall);
+        Box(-11.8f, 3.2f, -6.8f, -4.2f, 3.6f, -0.2f, ShopRoof);
+        Box(-4.5f, 0.6f, -5.8f, -4.4f, 2.5f, -1.2f, Glass);
+        Box(-4.4f, 2.6f, -6.2f, -3.6f, 2.75f, -0.8f, ShopOrange); // awning
+        Box(-9.0f, 3.6f, -4.2f, -7.0f, 4.6f, -2.8f, ShopOrange); // sign
+        if (looks.Contains("wing"))
         {
-            b.Box(new Vector3(-l + 0.7f, 0, -w + 0.7f), new Vector3(l - 0.7f, 3.0f, w - 0.7f), new Color(0.90f, 0.88f, 0.82f));
-            b.Box(new Vector3(-l + 0.4f, 3.0f, -w + 0.4f), new Vector3(l - 0.4f, 3.4f, w - 0.4f), new Color(0.18f, 0.55f, 0.58f));
-            // Awning over the front (local +x) and a sign on the roof.
-            b.Box(new Vector3(l - 0.7f, 2.2f, -w + 0.9f), new Vector3(l + 0.4f, 2.35f, w - 0.9f), new Color(0.95f, 0.45f, 0.20f));
-            b.Box(new Vector3(-0.8f, 3.4f, -w * 0.5f), new Vector3(0.8f, 4.4f, w * 0.5f), new Color(0.95f, 0.45f, 0.20f));
+            // A second wing to the right, a little lower, with its own roof and window.
+            Box(-11.5f, 0, -0.5f, -5.0f, 2.9f, 5.0f, ShopWall);
+            Box(-11.8f, 2.9f, -0.5f, -4.7f, 3.3f, 5.3f, ShopRoof.Darkened(0.15f));
+            Box(-5.0f, 0.6f, 0.4f, -4.9f, 2.2f, 4.2f, Glass);
+        }
+        if (looks.Contains("workshop"))
+        {
+            // An open lean-to in front of the store: posts, a sloping roof, a workstand with a bike.
+            Box(-4.0f, 0, -6.6f, -3.8f, 2.8f, -6.4f, Steel);
+            Box(0.3f, 0, -6.6f, 0.5f, 2.4f, -6.4f, Steel);
+            Box(0.3f, 0, -2.6f, 0.5f, 2.4f, -2.4f, Steel);
+            Box(-4.2f, 2.6f, -6.8f, 0.7f, 2.8f, -2.2f, new Color(0.30f, 0.32f, 0.35f));
+            Box(-3.9f, 0, -6.5f, -3.6f, 2.4f, -2.5f, new Color(0.55f, 0.56f, 0.58f)); // roller door, open
+            Box(-1.9f, 0, -4.6f, -1.7f, 1.1f, -4.4f, Steel); // workstand
+            Bike(b, -1.8f * sx, -4.5f * sz, 0.5f, ShopOrange);
+        }
+        if (looks.Contains("suspension"))
+        {
+            // A glass annex with a coloured stripe and a suspension stand inside.
+            Box(-3.6f, 0, 2.0f, 1.0f, 2.8f, 6.5f, Glass.Lerp(ShopWall, 0.35f));
+            Box(-3.8f, 2.8f, 1.8f, 1.2f, 3.1f, 6.7f, ShopRoof);
+            Box(1.0f, 1.9f, 2.0f, 1.1f, 2.3f, 6.5f, new Color(0.85f, 0.20f, 0.55f));
+        }
+
+        int bikes = facility.Fleet.Count;
+        if (looks.Contains("rental"))
+        {
+            // The rental hut (green trim with e-bikes) and the first rack row along the front.
+            Box(3.0f, 0, -6.5f, 6.5f, 2.6f, -3.5f, new Color(0.62f, 0.44f, 0.27f));
+            Box(2.8f, 2.6f, -6.7f, 6.7f, 3.0f, -3.3f, eBikes ? new Color(0.30f, 0.75f, 0.35f) : new Color(0.33f, 0.20f, 0.14f));
+            Rack(b, 3.0f * sx, 11.5f * sx, -1.4f * sz, Math.Min(bikes, 20), eBikes);
+        }
+        if (looks.Contains("rack"))
+            Rack(b, 3.0f * sx, 11.5f * sx, 0.8f * sz, Math.Clamp(bikes - 20, 0, 20), eBikes);
+        if (looks.Contains("charging"))
+            for (float x = 3.5f; x <= 11.2f; x += 1.6f)
+            {
+                Box(x - 0.12f, 0, 2.3f, x + 0.12f, 1.2f, 2.6f, ShopWall);
+                Box(x - 0.13f, 1.0f, 2.25f, x + 0.13f, 1.15f, 2.65f, new Color(0.30f, 0.75f, 0.35f));
+            }
+        if (looks.Contains("demo"))
+        {
+            // Flags at the corners, a showroom sign on the store and a little test loop of marker posts.
+            var flags = new[] { ShopOrange, new Color(0.25f, 0.55f, 0.85f) };
+            int n = 0;
+            foreach (var (x, z) in new[] { (11.6f, -6.6f), (11.6f, 6.6f), (2.6f, 6.6f) })
+            {
+                Box(x - 0.06f, 0, z - 0.06f, x + 0.06f, 5.0f, z + 0.06f, Steel);
+                Box(x - 0.05f, 3.8f, z, x + 0.05f, 4.9f, z + (z > 0 ? -1.2f : 1.2f), flags[n++ % flags.Length]);
+            }
+            Box(-11.0f, 3.6f, -6.0f, -9.6f, 4.3f, -1.0f, ShopRoof.Lightened(0.3f));
+            for (int i = 0; i < 10; i++)
+            {
+                float a = Mathf.Tau * i / 10f;
+                float x = 7.5f + MathF.Cos(a) * 3.0f, z = 4.6f + MathF.Sin(a) * 1.6f;
+                Box(x - 0.1f, 0, z - 0.1f, x + 0.1f, 0.7f, z + 0.1f, i % 2 == 0 ? ShopOrange : ShopWall);
+            }
         }
         return Placed(b.ToMesh(), pad);
+    }
+
+    /// <summary>A rack along local x from <paramref name="x0"/> to <paramref name="x1"/> at <paramref name="z"/>, with this many bikes in it.</summary>
+    private static void Rack(FlatMeshBuilder b, float x0, float x1, float z, int bikes, bool eBikes)
+    {
+        b.Box(new Vector3(x0, 0.45f, z - 0.05f), new Vector3(x1, 0.55f, z + 0.05f), Steel);
+        b.Box(new Vector3(x0, 0, z - 0.05f), new Vector3(x0 + 0.1f, 0.55f, z + 0.05f), Steel);
+        b.Box(new Vector3(x1 - 0.1f, 0, z - 0.05f), new Vector3(x1, 0.55f, z + 0.05f), Steel);
+        float step = (x1 - x0 - 0.4f) / 20f;
+        var frames = new[] { new Color(0.85f, 0.25f, 0.22f), new Color(0.25f, 0.45f, 0.85f), new Color(0.15f, 0.15f, 0.17f) };
+        for (int i = 0; i < bikes; i++)
+            Bike(b, x0 + 0.2f + (i + 0.5f) * step, z, 0, eBikes ? new Color(0.30f, 0.75f, 0.35f) : frames[i % frames.Length]);
+    }
+
+    /// <summary>A bike seen from the side along local z (two wheels, a frame, a bar), standing <paramref name="lift"/> m up.</summary>
+    private static void Bike(FlatMeshBuilder b, float x, float z, float lift, Color frame)
+    {
+        b.Wheel(new Vector3(x, lift + 0.34f, z - 0.55f), 0.34f, 0.06f, 10, Tyre);
+        b.Wheel(new Vector3(x, lift + 0.34f, z + 0.55f), 0.34f, 0.06f, 10, Tyre);
+        b.Box(new Vector3(x - 0.03f, lift + 0.36f, z - 0.5f), new Vector3(x + 0.03f, lift + 0.72f, z + 0.45f), frame);
+        b.Box(new Vector3(x - 0.3f, lift + 0.9f, z + 0.4f), new Vector3(x + 0.3f, lift + 0.95f, z + 0.46f), Tyre); // bar
+        b.Box(new Vector3(x - 0.03f, lift + 0.72f, z + 0.4f), new Vector3(x + 0.03f, lift + 0.92f, z + 0.46f), frame);
     }
 
     /// <summary>An A-frame tent (2.4 m long, 2 m wide, 1.3 m high) centred at (x, z), ridge along local x.</summary>
