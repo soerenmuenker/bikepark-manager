@@ -67,7 +67,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
-- `data/` – JSON content (`terrain/`: imported real terrain; `scenarios/`: `farrenpoint.json` = the second career map, real terrain and only the real gravel tracks, no lifts (Farrenpoint, Bavaria; 75,000 € start, otherwise the Starter's rules); `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
+- `data/` – JSON content (`terrain/`: imported real terrain; `scenarios/`: `auer_berg.json` = the second career map, real terrain with its real tracks and roads (made with the map maker); `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
   rented; tests and demo scripts use it) and `starter_valley.json` = the career (25,000 € start, bank loans, bankruptcy after 14 days in the red; old ski hill with
   a derelict T-bar, the unfinished blue Easy Peasy (built, then its bottom quarter renaturalized at tick 0: loose end,
   closed until the player connects it), parcels to buy, company gondola locked; a `welcome` note (`Scenarios/WelcomeNote`,

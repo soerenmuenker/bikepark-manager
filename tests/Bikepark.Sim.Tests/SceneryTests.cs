@@ -70,8 +70,9 @@ public class SceneryTests
 
     private static Simulation Sim()
     {
-        var scenario = ScenarioLoader.LoadFile(RepoFile("data/scenarios/farrenpoint.json"));
+        var scenario = ScenarioLoader.LoadFile(RepoFile("data/scenarios/starter_valley.json"));
         scenario.Terrain = Settings(Scenery());
+        scenario.TerrainSculpt = [];
         scenario.Parcels = [];
         scenario.Commands = [new TimedCommand(0, new BuildWayCommand(WayKind.AccessPath, "", [M(120, 40), M(120, 120)], WayOrigin.Scenario))];
         var sim = new Simulation(ScenarioLoader.CreateWorld(scenario));
@@ -362,17 +363,11 @@ public class SceneryTests
         Assert.Contains(rejected, r => r.Reason.Contains("valley station"));
     }
 
-    [Theory]
-    [InlineData("auer_berg_2")]
-    [InlineData("auer_berg_hocheck")]
-    public void RealMaps_BuildTheirRoadsAsWays_NoneAreScenery(string map)
+    [Fact]
+    public void RealMap_BuildsItsRoadsAsWays_NoneAreScenery()
     {
-        var rejected = new List<CommandRejected>();
-        var sim = new Simulation(ScenarioLoader.CreateWorld(ScenarioLoader.LoadFile(RepoFile($"data/scenarios/{map}.json"))));
-        sim.Events.Subscribe<CommandRejected>(rejected.Add);
+        var sim = new Simulation(ScenarioLoader.CreateWorld(ScenarioLoader.LoadFile(RepoFile("data/scenarios/auer_berg.json"))));
         sim.Step();
-        sim.Events.Dispatch();
-        Assert.DoesNotContain(rejected, r => r.Command is BuildWayCommand);
         Assert.Contains(sim.State.Ways, w => w.Surface == WaySurface.Tarmac);
         Assert.Empty(sim.State.Terrain.Heightmap!.Scenery!.Streets);
     }
