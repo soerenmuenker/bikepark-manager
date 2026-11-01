@@ -62,6 +62,13 @@ public static class TerrainSculptor
     {
         if (strokes.Count == 0) return baseGrid;
 
+        // Water sits on the ground: on a map with scenery the height strokes go in before it is carved.
+        if (baseGrid.Settings.Heightmap?.Scenery is not null && strokes.Any(s => s.Tool != SculptTool.Paint))
+        {
+            baseGrid = TerrainGenerator.Generate(baseGrid.Settings, baseGrid.Seed, strokes.Where(s => s.Tool != SculptTool.Paint).ToList());
+            strokes = strokes.Where(s => s.Tool == SculptTool.Paint).ToList();
+        }
+
         int n = baseGrid.Samples;
         int[] heights = baseGrid.Heights.ToArray();
         byte[] trees = baseGrid.TreeDensity.ToArray();
@@ -89,6 +96,14 @@ public static class TerrainSculptor
 
         ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, n);
         return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery);
+    }
+
+    /// <summary>Raises and lowers the heights by the height strokes, in list order.</summary>
+    internal static void ApplyHeights(IReadOnlyList<TerrainStroke> strokes, int[] heights, int n)
+    {
+        foreach (var stroke in strokes)
+            ForEachWeight(stroke, n, (i, weight) =>
+                heights[i] += (stroke.Tool == SculptTool.Raise ? 1 : -1) * (int)((long)stroke.HeightCm * weight / 1000));
     }
 
     private static byte Blend(byte value, int target, long weight) => (byte)(value + (target - value) * weight / 1000);

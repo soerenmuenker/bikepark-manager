@@ -18,7 +18,10 @@ public static class TerrainGenerator
 {
     private readonly record struct Ridge(long Ux, long Uz, long LengthM, long WidthM, uint MeanderSeed);
 
-    public static TerrainGrid Generate(TerrainSettings settings, ulong worldSeed)
+    public static TerrainGrid Generate(TerrainSettings settings, ulong worldSeed) => Generate(settings, worldSeed, []);
+
+    /// <summary>With the scenario's height strokes on the ground before the water is carved, so water follows them (real maps).</summary>
+    internal static TerrainGrid Generate(TerrainSettings settings, ulong worldSeed, IReadOnlyList<TerrainStroke> heightStrokes)
     {
         var errors = settings.Validate();
         if (errors.Count > 0)
@@ -31,6 +34,7 @@ public static class TerrainGenerator
 
         int[] heights = settings.Heightmap is { } map ? FromHeightmap(map, settings, n, seeds) : Shape(settings, n, rng, seeds);
         var water = new byte[n * n];
+        TerrainSculptor.ApplyHeights(heightStrokes, heights, n);
         var scenery = settings.Heightmap?.Scenery;
         var sceneryData = scenery is null ? null : TerrainSceneryBuilder.Carve(scenery, heights, water, n);
         ushort[] slopes = ComputeSlopes(heights, n);

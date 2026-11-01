@@ -346,6 +346,26 @@ public class SceneryTests
     }
 
     [Fact]
+    public void HeightStrokes_MoveTheWaterWithTheGround()
+    {
+        var plain = TerrainGenerator.Generate(Settings(Scenery()), 0);
+        TerrainStroke Raise(int x, int z, int radius) => new() { Tool = SculptTool.Raise, HeightCm = 1000, RadiusCm = radius, Points = [M(x, z)] };
+
+        var lake = TerrainSculptor.Apply(plain, [Raise(55, 235, 15000)]);
+        int level = lake.Scenery!.Lakes[0].LevelCm;
+        Assert.True(level > plain.Scenery!.Lakes[0].LevelCm);
+        Assert.Equal(level - 150, lake.HeightAtSample(55, 235));
+
+        var brook = TerrainSculptor.Apply(plain, [Raise(150, 150, 4000)]);
+        var stream = brook.Scenery!.Streams[0];
+        var at = stream.Points.First(p => p.Z == 15000);
+        Assert.NotEqual(plain.Scenery.Streams[0].Points.First(p => p.Z == 15000).LevelCm, at.LevelCm);
+        Assert.Equal(at.LevelCm - 30, brook.HeightAtSample(150, 150));
+        for (int i = 1; i < stream.Points.Count; i++)
+            Assert.True(stream.Points[i].LevelCm <= stream.Points[i - 1].LevelCm);
+    }
+
+    [Fact]
     public void ScenarioParking_NeedsNoLift_AndIsWhereGuestsArrive()
     {
         var sim = Sim();

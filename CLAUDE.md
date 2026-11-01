@@ -174,7 +174,7 @@ tools/release/export.sh 0.1.0
     connected to the arrival). Every real road is a tarmac way (`Way.Surface`: looks only, behaves like a gravel path: riders use it, trails start and end on it; the Build menu's Tarmac road makes more); `SceneryStreet` remains only for older saves. Where scenario tracks exist and there is no parking lot, guests arrive at the low end of the first one,
     even after the player adds lifts (`WayNetwork` base: parking → scenario road → valley station → any path). A scenario's parking lot needs no valley station (`LiftId` 0; its ways connect it), a player's does.
 9b. **Scenery** (`Terrain/TerrainScenery.cs`, `TerrainHeightmap.Scenery`; real maps only, generated maps are untouched): what really
-    stands there, static, nothing simulated. `TerrainSceneryBuilder` (in the generator, integer-only) carves lakes (flat at the lowest
+    stands there, static, nothing simulated. `TerrainSceneryBuilder` (in the generator, integer-only, after the scenario's height strokes: `TerrainSculptor.Apply` regenerates, so water follows them) carves lakes (flat at the lowest
     shore) and streams (a never-rising fit to the ground, flow direction from the heights) and fills `WaterDepth`, clears vegetation
     under water, buildings and streets (so `TerrainScatter`/`Forest` need no rule) and fills `TerrainSceneryData.Blocked`
     (`grid.BlockedAt`: lake, building). `WayPlanner` refuses lakes and buildings (not scenario ways), `StructurePlanner.CheckPad` any water
