@@ -182,7 +182,7 @@ tools/release/export.sh 0.1.0
     `WorkCosts.BridgeWood`/`BridgeMinutesPerMeter`; a `BuildWay` job fells first, then needs `Job.Wood` in stock (`JobSystem`). Every real road
     is a way (`Way.Surface` tarmac, looks only); `SceneryStreet` remains only for older saves.
     View: `game/scripts/world/SceneryView.cs` (merged water and street meshes, `shaders/water.gdshader`, houses as instanced unit
-    meshes per chunk), bridges in `WayView.AddBridges`.
+    meshes per chunk), bridges in `WayView.AddBridges`. Stream ribbons drape onto the ground and coarse terrain meshes follow brook beds (`TerrainMeshBuilder.CoarseHeight`), so water never hangs in the air.
 10. **Terrain generation is integer-only** (Q16 fixed point in `FixedMath`/`IntNoise`, heights in cm, slopes as
     grade permille). Changing the generator changes every map: check the 2D maps before and after.
 11. **Ways store only player input** (oriented, snapped control points + joins). Geometry, segments, ratings, the

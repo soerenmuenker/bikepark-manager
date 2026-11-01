@@ -15,7 +15,8 @@ public partial class SceneryView : Node3D
 {
     private const float BuildingDrawDistance = 1500f;
     private const int BuildingChunkMeters = 64;
-    private const int StreamStep = 4; // samples are about 1 m apart
+    private const int StreamStep = 2; // samples are about 1 m apart
+    private const float WaterOverGround = 0.05f;
     private const int StreetStepCm = 400;
     private const float StreetLift = 0.07f;
 
@@ -47,7 +48,7 @@ public partial class SceneryView : Node3D
 
         _content = new Node3D { Name = "Scenery" };
         AddChild(_content);
-        AddWater(Streams(data), "Streams", flowSpeed: 0.9f, rippleScale: 0.8f);
+        AddWater(Streams(data, grid), "Streams", flowSpeed: 0.9f, rippleScale: 0.8f);
         AddWater(Lakes(data), "Lakes", flowSpeed: 0f, rippleScale: 0.28f);
         AddStreets(grid, scenery);
         AddBuildings(grid, scenery);
@@ -62,7 +63,7 @@ public partial class SceneryView : Node3D
         _content!.AddChild(new MeshInstance3D { Name = name, Mesh = mesh, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }
 
-    private static ArrayMesh? Streams(TerrainSceneryData data)
+    private static ArrayMesh? Streams(TerrainSceneryData data, TerrainGrid grid)
     {
         var vertices = new List<Vector3>();
         var uvs = new List<Vector2>();
@@ -81,9 +82,10 @@ public partial class SceneryView : Node3D
                 var dir = new Vector2(b.X - a.X, b.Z - a.Z).Normalized();
                 var side = new Vector2(-dir.Y, dir.X) * half;
                 var center = new Vector2(p.X / 100f, p.Z / 100f);
-                float y = p.LevelCm / 100f;
-                vertices.Add(new Vector3(center.X - side.X, y, center.Y - side.Y));
-                vertices.Add(new Vector3(center.X + side.X, y, center.Y + side.Y));
+                // On a steep bed the level runs ahead of the ground: the ribbon stays on it, it never hangs in the air.
+                float Draped(Vector2 at) => Math.Min(p.LevelCm / 100f, grid.HeightAt((long)(at.X * 100), (long)(at.Y * 100)) / 100f + WaterOverGround);
+                vertices.Add(new Vector3(center.X - side.X, Draped(center - side), center.Y - side.Y));
+                vertices.Add(new Vector3(center.X + side.X, Draped(center + side), center.Y + side.Y));
                 uvs.Add(new Vector2(along, 0));
                 uvs.Add(new Vector2(along, half * 2));
                 along += StreamStep;
