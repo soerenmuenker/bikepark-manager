@@ -36,7 +36,7 @@
 <body>
 <div id="map"><canvas id="cv"></canvas><div id="hint"></div><div id="status"></div></div>
 <div id="side">
-  <div class="row"><b id="title">Scenario</b></div>
+  <div class="row"><a id="back" href="#" style="display:none;color:inherit">← Map maker</a> <b id="title">Scenario</b></div>
   <div class="row tabs"><button id="mLand" class="on">Land &amp; structures</button><button id="mTerrain">Terrain</button></div>
   <div class="row">
     <select id="mode"><option>relief</option><option>slope</option><option>surface</option></select>
@@ -106,7 +106,8 @@ async function load() {
   const r = await (await fetch('/api/scenario')).json();
   if (r.error) return alert(r.error);
   data = { parcels: r.parcels, commands: r.commands, terrainSculpt: r.terrainSculpt };
-  sizeCm = r.sizeMeters * 100; liftTypes = r.liftTypes;
+  sizeCm = r.sizeMeters * 100; liftTypes = r.liftTypes; scenery = r.scenery;
+  if (r.back) { $('back').href = r.back; $('back').style.display = ''; }
   $('title').textContent = r.path;
   hintText('Loading the terrain …');
   const raw = await (await fetch('/api/raw')).arrayBuffer();
@@ -248,7 +249,7 @@ function cmdHandles(ci) {
   return hs;
 }
 const editableCmd = ci => cmdHandles(ci).length > 0;
-const cmdLabel = c => `${c.name || c.type}`;
+const cmdLabel = c => c.name || (c.kind === 'accessPath' ? (c.surface === 'tarmac' ? 'Road' : 'Gravel track') : c.type);
 const liftType = c => liftTypes.find(t => t.id === c.typeId);
 function cmdLength(c) {
   if (c.valley && c.mountain) return Math.hypot(c.mountain.x - c.valley.x, c.mountain.z - c.valley.z);
@@ -258,6 +259,7 @@ function cmdLength(c) {
 
 // ------------------------------------------------------------ coverage (gaps and overlaps, 5 m cells)
 function computeCoverage() {
+  if (!data.parcels.length) { coverage = null; coverageStats = { gapsM2: 0, overlapsM2: 0 }; return; } // no parcels: all land is the park's
   const cell = 500, n = Math.ceil(sizeCm / cell);
   const off = document.createElement('canvas'); off.width = off.height = n;
   const c2 = off.getContext('2d'), im = c2.createImageData(n, n);
@@ -275,6 +277,26 @@ function computeCoverage() {
 }
 
 // ------------------------------------------------------------ drawing
+// What really stands on a real map (read only): water, streets and buildings, to draw parcels around.
+let scenery = null;
+function drawScenery() {
+  if (!scenery) return;
+  const line = (pts, closed) => { ctx.beginPath(); pts.forEach((p, k) => { const s = w2s(p); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); if (closed) ctx.closePath(); };
+  ctx.setLineDash([]); ctx.lineCap = 'round';
+  ctx.strokeStyle = '#3a3e44';
+  for (const s of scenery.streets) { ctx.lineWidth = Math.max(1, s.widthCm * scale); line(s.points); ctx.stroke(); }
+  ctx.fillStyle = '#2f7fb8';
+  for (const l of scenery.lakes) { line(l.outline, true); ctx.fill(); }
+  ctx.strokeStyle = '#2f7fb8';
+  for (const s of scenery.streams) { ctx.lineWidth = Math.max(1, s.widthCm * scale); line(s.points); ctx.stroke(); }
+  ctx.fillStyle = '#7a3b2e';
+  for (const b of scenery.buildings) {
+    const lx = b.halfLengthCm * b.dirX / 1000, lz = b.halfLengthCm * b.dirZ / 1000, wx = -b.halfWidthCm * b.dirZ / 1000, wz = b.halfWidthCm * b.dirX / 1000;
+    line([[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([u, v]) => ({ x: b.centerX + u * lx + v * wx, z: b.centerZ + u * lz + v * wz })), true);
+    ctx.fill();
+  }
+  ctx.lineCap = 'butt';
+}
 function parcelColor(p, i) { return p.ownedAtStart ? '#2ec4b6' : PALETTE[i % PALETTE.length]; }
 function draw() {
   const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
@@ -293,6 +315,7 @@ function draw() {
     const a = w2s({ x: g, z: 0 }), b = w2s({ x: g, z: sizeCm }), c = w2s({ x: 0, z: g }), d = w2s({ x: sizeCm, z: g });
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
   }
+  drawScenery();
   // parcels
   data.parcels.forEach((p, i) => {
     const col = parcelColor(p, i), isSel = sel?.kind === 'parcel' && sel.pi === i;

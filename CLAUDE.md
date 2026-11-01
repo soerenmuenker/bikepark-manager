@@ -94,7 +94,9 @@ dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios
 # (parcel borders are drawn too: owned at start teal, for sale yellow; --bare: terrain only)
 # Map maker (browser, http://localhost:8767): find a place, drag the square, see the real routes / lifts / parking, click where guests
 # arrive, create the map. Real maps build only what OpenStreetMap has (no made-up infrastructure); the game's validators report refusals.
-# Any scenario with a "menu" block is on the start screen (SimHost.CareerMaps). Next: redraw its parcels in the scenario editor.
+# Land: a 3 x 3 grid of parcels to redraw, or don't split (no parcels: the whole map is owned, also --no-parcels on the command line).
+# After creating, its button starts the scenario editor on that map (first free port from 8765; stopped with the map maker, one at a time).
+# Any scenario with a "menu" block is on the start screen (SimHost.CareerMaps).
 python3 tools/terrain-import/server.py
 # The same from the command line (--offset: meters east,south of the peak; --arrival: map meters x,z)
 python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --scenario --title Farrenpoint --arrival 987,1244
@@ -103,7 +105,8 @@ python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --o
 # Scenario map editor (browser, http://localhost:8765): drag/split/draw land parcels and move the tick-0 structures
 # (lift stations, parking lots, way points) on the terrain map; Terrain tab: raise / lower / paint-surface brushes
 # (same integer math as TerrainSculptor, live on the raw grid from `terrain --raw`); Validate runs the scenario commands,
-# Save rewrites only the scenario's "parcels", "commands" and "terrainSculpt" blocks (comments elsewhere are kept)
+# Save rewrites only the scenario's "parcels", "commands" and "terrainSculpt" blocks (comments elsewhere are kept); a real map's
+# water, streets and buildings are drawn for reference; --back <url> adds a link back (the map maker uses it)
 python3 tools/scenario-editor/server.py data/scenarios/starter_valley.json
 # Reputation: the output's "reputation" block (stars overall/per group, demand parts, XP parts, level, influencer posts,
 # a log of influencer visits and level changes); --daily adds reviews, rating, demand, XP and level per day

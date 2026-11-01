@@ -9,11 +9,16 @@ import base64
 import contextlib
 import importlib.util
 import io
+import atexit
 import json
 import os
 import re
+import signal
+import socket
 import subprocess
 import sys
+import time
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -23,6 +28,10 @@ spec = importlib.util.spec_from_file_location("terrain_import", HERE / "import.p
 ti = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ti)
 PORT = 8767
+EDITOR_FIRST_PORT = 8765
+EDITOR_WAIT_SECONDS = 180
+editor = None  # the scenario editor this server started: (process, scenario id, port)
+editor_lock = threading.Lock()
 
 
 def preview(body):
@@ -73,7 +82,10 @@ def create(body):
     arrival = square.xz(*body["arrival"]) if body.get("arrival") else (square.size / 2, square.size / 2)
     log = io.StringIO()
     with contextlib.redirect_stdout(log):
-        stats = ti.make_map(square, 5, map_id, body["title"], body.get("place") or body["title"], arrival)
+        stats = ti.make_map(square, 5, map_id, body["title"], body.get("place") or body["title"], arrival, body.get("land") != "none")
+    # The scenario editor caches its terrain per map id.
+    for cached in (ROOT / "out" / "editor").glob(f"{map_id}_*"):
+        cached.unlink()
     stats["arrival"] = [round(v) for v in stats["arrival"]] if stats["arrival"] else None
 
     # The game's own validators have the last word.
@@ -92,6 +104,45 @@ def create(body):
     return stats
 
 
+def port_free(port):
+    with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
+def stop_editor():
+    global editor
+    if editor:
+        editor[0].terminate()
+        editor[0].wait(timeout=10)
+        editor = None
+
+
+def open_editor(body):
+    """Starts the scenario editor on this map (it edits one scenario at a time) and returns its address once it answers."""
+    global editor
+    map_id = body["id"]
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,40}", map_id) or not (ROOT / "data" / "scenarios" / f"{map_id}.json").exists():
+        raise ValueError("There is no map with that id.")
+    with editor_lock:
+        stop_editor()
+        port = next(p for p in range(EDITOR_FIRST_PORT, EDITOR_FIRST_PORT + 20) if p != PORT and port_free(p))
+        process = subprocess.Popen([sys.executable, str(ROOT / "tools" / "scenario-editor" / "server.py"), f"data/scenarios/{map_id}.json",
+                                    "--port", str(port), "--back", f"http://localhost:{PORT}"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        editor = (process, map_id, port)
+        deadline = time.time() + EDITOR_WAIT_SECONDS
+        while port_free(port):
+            if process.poll() is not None or time.time() > deadline:
+                stop_editor()
+                raise ValueError("The scenario editor did not start.")
+            time.sleep(0.25)
+    return {"url": f"http://localhost:{port}"}
+
+
+atexit.register(stop_editor)
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # atexit alone misses a plain kill
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, payload, kind="application/json"):
         data = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
@@ -108,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
-        routes = {"/api/preview": preview, "/api/create": create}
+        routes = {"/api/preview": preview, "/api/create": create, "/api/open-editor": open_editor}
         if self.path not in routes:
             return self._send(404, {"error": "not found"})
         try:

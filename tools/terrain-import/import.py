@@ -903,7 +903,7 @@ def dense(way):
             yield a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps
 
 
-def make_map(square, cell, map_id, title, place, arrival):
+def make_map(square, cell, map_id, title, place, arrival, split_land=True):
     """Terrain and scenario for this square. Returns what happened, for the command line and the browser tool."""
     elements = fetch_infrastructure(square)
     edges = road_network(elements, square)
@@ -920,7 +920,7 @@ def make_map(square, cell, map_id, title, place, arrival):
     if left_out:
         stats["skipped"].append(f"{left_out} parking lots further from the arrival")
     home = stats["arrival"] or arrival
-    write_scenario(map_id, title, place, square, home, commands, default_parcels(square.size, home), stats,
+    write_scenario(map_id, title, place, square, home, commands, default_parcels(square.size, home) if split_land else [], stats,
                    any(c["type"] == "buildLift" for c in commands))
     stats.update({"terrain": summary, "lifts": sum(c["type"] == "buildLift" for c in commands),
                   "parking": sum(c["type"] == "buildParkingLot" for c in commands)})
@@ -939,6 +939,7 @@ def main():
     ap.add_argument("--id", required=True)
     ap.add_argument("--scenario", action="store_true", help="also write data/scenarios/<id>.json")
     ap.add_argument("--refresh-scenery", action="store_true", help="rewrite only the terrain file of an existing map (parcels and commands stay)")
+    ap.add_argument("--no-parcels", action="store_true", help="don't split the land: the whole map is the park's from the start")
     ap.add_argument("--title", help="the map's name (default: the id)")
     ap.add_argument("--place", help="what the place is, for the texts")
     ap.add_argument("--arrival", default=None, help="map meters x,z near where guests should arrive (default: the centre)")
@@ -966,7 +967,7 @@ def main():
         return
     arrival = tuple(float(v) for v in args.arrival.split(",")) if args.arrival else (args.size / 2, args.size / 2)
     title = args.title or args.id.replace("_", " ").title()
-    print(json.dumps(make_map(square, args.cell, args.id, title, args.place or title, arrival), indent=1))
+    print(json.dumps(make_map(square, args.cell, args.id, title, args.place or title, arrival, not args.no_parcels), indent=1))
 
 
 if __name__ == "__main__":

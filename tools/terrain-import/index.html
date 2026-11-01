@@ -11,6 +11,7 @@
  button{padding:8px 12px;border:0;border-radius:6px;background:#2a7f92;color:#fff;font-weight:600;cursor:pointer;width:100%;margin-top:10px}
  button:disabled{opacity:.45;cursor:default} .dim{color:#a9b7c4;font-size:12px} .row{display:flex;gap:6px} .row button{margin-top:0;width:auto}
  #facts li{margin:2px 0} #facts{padding-left:18px;margin:6px 0} .bad{color:#ff9d8a} img{width:100%;border-radius:6px;margin-top:8px}
+ .choice{display:flex;gap:6px;align-items:flex-start;color:inherit;font-size:13px} .choice input{width:auto;margin-top:3px}
  .key i{display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle}
 </style></head><body><div id="app"><div id="map"></div><div id="side">
 <h1>Bikepark Map Maker</h1><div class="dim">Pick a real place. Only what really stands there gets built.</div>
@@ -29,6 +30,9 @@
 <label>Name</label><input id="title" placeholder="Farrenpoint">
 <label>File id</label><input id="id" placeholder="farrenpoint">
 <label>What it is (for the game's texts)</label><input id="place" placeholder="the Farrenpoint above Bad Feilnbach, Bavaria">
+<label>Land</label>
+<label class="choice"><input type="radio" name="land" value="grid" checked> Parcels to buy: starts as a 3 × 3 grid, redraw it in the editor</label>
+<label class="choice"><input type="radio" name="land" value="none"> Don't split: the whole map is yours from the start</label>
 <button id="make" disabled>Create map</button>
 <div id="result"></div>
 </div></div>
@@ -109,7 +113,7 @@ async function make(overwrite) {
   $('make').disabled = true; $('result').textContent = 'Fetching terrain and building the map…';
   try {
     const d = await post('/api/create', {lat: center.lat, lon: center.lng, size: size(), id: $('id').value, title: $('title').value,
-      place: $('place').value, arrival: arrival && [arrival[0], arrival[1]], overwrite});
+      place: $('place').value, land: document.querySelector('input[name=land]:checked').value, arrival: arrival && [arrival[0], arrival[1]], overwrite});
     if (d.exists) { $('result').textContent = ''; if (confirm('A map with this file id exists. Overwrite it?')) return make(true); return; }
     const box = $('result'); box.innerHTML = '';
     const add = (text, cls) => { const p = document.createElement('div'); p.textContent = text; p.className = cls || 'dim'; box.appendChild(p); };
@@ -117,7 +121,16 @@ async function make(overwrite) {
     if (d.routesStandingAlone) add(d.routesStandingAlone + ' routes don\'t connect to the arrival: players can link them.');
     (d.skipped || []).forEach(t => add('Left out: ' + t, 'bad'));
     (d.rejected || []).forEach(t => add('The game refused: ' + t, 'bad'));
-    add('It is on the start screen now. Next: draw the land parcels in the scenario editor.');
+    const id = $('id').value, split = document.querySelector('input[name=land]:checked').value === 'grid';
+    add(split ? 'It is on the start screen now. Next: draw the land parcels.' : 'It is on the start screen now. The whole map is yours from the start.');
+    const open = document.createElement('button');
+    open.textContent = split ? 'Define land parcels in the editor' : 'Open in the scenario editor';
+    open.onclick = async () => {
+      open.disabled = true; open.textContent = 'Starting the editor…';
+      try { location.href = (await post('/api/open-editor', {id})).url; }
+      catch (e) { open.disabled = false; open.textContent = 'Try again'; add(e.message, 'bad'); }
+    };
+    box.appendChild(open);
     const img = document.createElement('img'); img.src = 'data:image/png;base64,' + d.image; box.appendChild(img);
   } catch (e) { $('result').innerHTML = '<span class="bad"></span>'; $('result').firstChild.textContent = e.message; }
   refresh();
