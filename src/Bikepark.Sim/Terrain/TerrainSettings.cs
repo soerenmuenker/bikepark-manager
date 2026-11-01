@@ -38,17 +38,28 @@ public sealed record TerrainSettings
     /// <summary>Approximate share of the map inside forest patches, in permille, before elevation/slope limits.</summary>
     public int ForestCoveragePermille { get; set; } = 650;
 
+    /// <summary>
+    /// Real terrain instead of the generated peak and ridges (which are then ignored): shape and forest come from here;
+    /// <see cref="RoughnessPermille"/> is the fine detail added on top (90 ≈ ±1.5 m). Null = fully generated.
+    /// </summary>
+    public TerrainHeightmap? Heightmap { get; set; }
+
+    /// <summary>Scenario files only: the heightmap's file, relative to the scenario. <c>ScenarioLoader.LoadFile</c> resolves it.</summary>
+    public string? HeightmapFile { get; set; }
+
     public List<string> Validate()
     {
         var errors = new List<string>();
         if (SizeMeters < 32 || SizeMeters > 4000) errors.Add("terrain.sizeMeters must be within 32..4000");
         if (ReliefCm <= 0) errors.Add("terrain.reliefCm must be > 0");
         if (BaseElevationCm < 0) errors.Add("terrain.baseElevationCm must be >= 0");
-        if (PeakXMeters < 0 || PeakXMeters > SizeMeters || PeakZMeters < 0 || PeakZMeters > SizeMeters)
+        if (Heightmap is null && (PeakXMeters < 0 || PeakXMeters > SizeMeters || PeakZMeters < 0 || PeakZMeters > SizeMeters))
             errors.Add("terrain peak must lie inside the map");
         if (PeakRadiusMeters < 50) errors.Add("terrain.peakRadiusMeters must be >= 50");
         if (RidgeCount is < 0 or > 8) errors.Add("terrain.ridgeCount must be within 0..8");
         if (ForestCoveragePermille is < 0 or > 1000) errors.Add("terrain.forestCoveragePermille must be within 0..1000");
+        if (HeightmapFile is not null) errors.Add("terrain.heightmapFile was not loaded");
+        if (Heightmap is not null) errors.AddRange(Heightmap.Validate(SizeMeters));
         return errors;
     }
 }

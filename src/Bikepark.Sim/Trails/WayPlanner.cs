@@ -49,8 +49,9 @@ public sealed class WayPlan
 public static class WayPlanner
 {
     /// <param name="onOwnLand">The park's land (<see cref="Land.LandMath.OwnedPredicate"/>); null = no land limits.</param>
+    /// <param name="mayStandAlone">A gravel path needn't touch the network (a scenario's real tracks).</param>
     public static WayPlan Plan(TerrainGrid grid, WayNetwork network, TrailRules rules, WayKind kind, IReadOnlyList<PointCm> input,
-        Func<long, long, bool>? onOwnLand = null)
+        Func<long, long, bool>? onOwnLand = null, bool mayStandAlone = false)
     {
         var issues = new List<WayIssue>();
         var points = input.ToList();
@@ -120,7 +121,7 @@ public static class WayPlanner
             issues.Add(Error("tooLong", $"Too long: at most {rules.MaxLengthMeters} m."));
 
         CheckGrades(kind, rules, geometry, issues);
-        CheckConnections(kind, network, startJoin is not null || startHub != 0, endJoin is not null || endHub != 0, issues);
+        if (!mayStandAlone) CheckConnections(kind, network, startJoin is not null || startHub != 0, endJoin is not null || endHub != 0, issues);
         if (kind == WayKind.Trail && geometry.EndHeightCm >= geometry.StartHeightCm)
             issues.Add(Error("noDrop", "A trail must end lower than it starts."));
 

@@ -39,6 +39,24 @@ public partial class SimHost : Node
     public const string CareerScenarioFile = "data/scenarios/starter_valley.json";
 
     /// <summary>
+    /// The maps a new career can start on (the start screen's choice): every scenario file with a <c>menu</c> block, Starter
+    /// Valley first, so a map from <c>tools/terrain-import</c> shows up by itself.
+    /// </summary>
+    public static List<(string File, string Id, ScenarioMenu Menu)> CareerMaps()
+    {
+        string directory = ResolveContentPath("data/scenarios");
+        var files = System.IO.Directory.GetFiles(directory, "*.json").Select(Path.GetFileName).OrderBy(f => f, StringComparer.Ordinal);
+        var maps = new List<(string, string, ScenarioMenu)>();
+        foreach (string? name in files)
+        {
+            string file = "data/scenarios/" + name;
+            var scenario = ScenarioLoader.Parse(System.IO.File.ReadAllText(ResolveContentPath(file)));
+            if (scenario.Menu is { } menu) maps.Add((file, scenario.Id, menu));
+        }
+        return [.. maps.OrderBy(m => m.Item1 == CareerScenarioFile ? 0 : 1)];
+    }
+
+    /// <summary>
     /// True until the player picked a scenario on the start screen (the demo world waits paused behind it). Debug runs
     /// that set up a world (<c>--demo</c>, <c>--scenario=</c>, <c>--script=</c>, <c>--advance=</c>) start right away.
     /// </summary>
@@ -330,11 +348,11 @@ public partial class SimHost : Node
         if (Sim.State.Tick != _savedTick) SaveCareer();
     }
 
-    /// <summary>Starts a new Starter Valley career with this park name and saves it at once (so it is in the list).</summary>
-    public void NewCareer(string parkName)
+    /// <summary>Starts a new career on this map (default Starter Valley) with this park name and saves it at once (so it is in the list).</summary>
+    public void NewCareer(string parkName, string scenarioFile = CareerScenarioFile)
     {
-        ScenarioFile = CareerScenarioFile;
-        var scenario = ScenarioLoader.LoadFile(ResolveContentPath(CareerScenarioFile));
+        ScenarioFile = scenarioFile;
+        var scenario = ScenarioLoader.LoadFile(ResolveContentPath(scenarioFile));
         if (!string.IsNullOrWhiteSpace(parkName))
             scenario.ParkName = parkName.Trim()[..Math.Min(parkName.Trim().Length, RenameParkCommand.MaxLength)];
         ReplaceSimulation(new Simulation(ScenarioLoader.CreateWorld(scenario)));

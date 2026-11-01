@@ -6,7 +6,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 ## Layout
 
 - `src/Bikepark.Sim/` – simulation library (WorldState, Simulation tick loop, SimRandom, commands, events, save/load, scenarios, KPIs)
-  - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks),
+  - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers, generated or from a `TerrainHeightmap`: real land as content), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks),
     `TerrainSculpt` (`TerrainStroke`/`TerrainSculptor`: the scenario's hand-made raise / lower / paint strokes),
     `TerrainEdit`/`TerrainEditor` (stored flattened pads applied on top of the generated grid)
   - `Trails/` – `Way` (player-built access paths and trails), `WayGeometry` (integer spline, segments, rating),
@@ -57,6 +57,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Systems/ParkSchedule.cs` – the daily timetable (opening hours, which guests, lifts and crew keep, then the last rides
     until the last rider is down; quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
+- `tools/terrain-import/` – makes career maps from real places: `server.py` + `index.html` (browser map maker on OpenStreetMap), `import.py` (the work: elevation tiles, OpenStreetMap forest, rock, major routes, lifts and parking → `data/terrain/<id>.json` + `data/scenarios/<id>.json`; Python stdlib + curl)
 - `tools/scenario-editor/` – local browser editor for a scenario's parcels, tick-0 structures and terrain sculpting (Python stdlib server + one HTML page)
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel` (rating, sub-ratings, review browser) and `FinancePanel` (the budget), drawn icons, theme in code,
@@ -66,7 +67,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
-- `data/` – JSON content (`scenarios/`: `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
+- `data/` – JSON content (`terrain/`: imported real terrain; `scenarios/`: `farrenpoint.json` = the second career map, real terrain and only the real gravel tracks, no lifts (Farrenpoint, Bavaria; 75,000 € start, otherwise the Starter's rules); `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
   rented; tests and demo scripts use it) and `starter_valley.json` = the career (25,000 € start, bank loans, bankruptcy after 14 days in the red; old ski hill with
   a derelict T-bar, the unfinished blue Easy Peasy (built, then its bottom quarter renaturalized at tick 0: loose end,
   closed until the player connects it), parcels to buy, company gondola locked; a `welcome` note (`Scenarios/WelcomeNote`,
@@ -91,6 +92,12 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/demo_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json] [--bare] [--raw grid.bin]
 # (parcel borders are drawn too: owned at start teal, for sale yellow; --bare: terrain only)
+# Map maker (browser, http://localhost:8767): find a place, drag the square, see the real routes / lifts / parking, click where guests
+# arrive, create the map. Real maps build only what OpenStreetMap has (no made-up infrastructure); the game's validators report refusals.
+# Any scenario with a "menu" block is on the start screen (SimHost.CareerMaps). Next: redraw its parcels in the scenario editor.
+python3 tools/terrain-import/server.py
+# The same from the command line (--offset: meters east,south of the peak; --arrival: map meters x,z)
+python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --scenario --title Farrenpoint --arrival 987,1244
 # Scenario map editor (browser, http://localhost:8765): drag/split/draw land parcels and move the tick-0 structures
 # (lift stations, parking lots, way points) on the terrain map; Terrain tab: raise / lower / paint-surface brushes
 # (same integer math as TerrainSculptor, live on the raw grid from `terrain --raw`); Validate runs the scenario commands,
@@ -153,6 +160,12 @@ tools/release/export.sh 0.1.0
    `Simulation.Terrain` (lazy, cached in `TerrainCache`). Anything derived must be a pure function of `WorldState`;
    future terrain edits must be stored as changes in `WorldState`, not by mutating the grid. Order: generated →
    `WorldState.TerrainSculpt` (scenario content; = `BaseTerrain`) → `TerrainEdits` (pads) = `Simulation.Terrain`.
+9a. **Real terrain:** `TerrainSettings.Heightmap` (coarse heights + forest and rock masks, deflated base64, loaded from the
+    scenario's `heightmapFile`, so it lives in `WorldState` and every save) replaces the generated shape and forest patches:
+    Catmull-Rom to 1 m (exact at every sample) plus `RoughnessPermille` detail; rock = the usual slope rules + the mask. Peak,
+    ridge, relief and coverage settings are ignored. Scenario tracks may stand alone (`WayPlanner` `mayStandAlone`: real routes not
+    connected to the arrival). Where scenario tracks exist and there is no parking lot, guests arrive at the low end of the first one,
+    even after the player adds lifts (`WayNetwork` base: parking → scenario road → valley station → any path).
 10. **Terrain generation is integer-only** (Q16 fixed point in `FixedMath`/`IntNoise`, heights in cm, slopes as
     grade permille). Changing the generator changes every map: check the 2D maps before and after.
 11. **Ways store only player input** (oriented, snapped control points + joins). Geometry, segments, ratings, the

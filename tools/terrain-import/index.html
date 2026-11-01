@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Bikepark Map Maker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+ html,body{height:100%;margin:0;font:14px/1.45 system-ui,sans-serif;background:#10181f;color:#e6edf3}
+ #app{display:flex;height:100%} #map{flex:1} #side{width:340px;padding:16px;overflow:auto;box-sizing:border-box;background:#17222c}
+ h1{font-size:18px;margin:0 0 4px} h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#7fd4e4;margin:18px 0 6px}
+ label{display:block;margin:8px 0 2px;color:#a9b7c4;font-size:12px}
+ input{width:100%;box-sizing:border-box;padding:7px;border:1px solid #33475a;border-radius:6px;background:#0e151b;color:inherit}
+ button{padding:8px 12px;border:0;border-radius:6px;background:#2a7f92;color:#fff;font-weight:600;cursor:pointer;width:100%;margin-top:10px}
+ button:disabled{opacity:.45;cursor:default} .dim{color:#a9b7c4;font-size:12px} .row{display:flex;gap:6px} .row button{margin-top:0;width:auto}
+ #facts li{margin:2px 0} #facts{padding-left:18px;margin:6px 0} .bad{color:#ff9d8a} img{width:100%;border-radius:6px;margin-top:8px}
+ .key i{display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle}
+</style></head><body><div id="app"><div id="map"></div><div id="side">
+<h1>Bikepark Map Maker</h1><div class="dim">Pick a real place. Only what really stands there gets built.</div>
+<h2>1 · Find the place</h2>
+<div class="row"><input id="q" placeholder="Search, e.g. Wendelstein"><button id="go">Go</button></div>
+<label>Map size: <b id="sizeText"></b></label><input id="size" type="range" min="500" max="3000" step="100" value="1500">
+<div class="dim">Drag the marker, or click the map, to move the square.</div>
+<button id="look">Show what's there</button>
+<h2>2 · What really stands there</h2>
+<div id="facts" class="dim">Nothing loaded yet.</div>
+<div class="key dim"><i style="background:#ffb000"></i>major route &nbsp; <i style="background:#8a97a3"></i>not imported &nbsp; <i style="background:#e0218a"></i>lift</div>
+<h2>3 · Where guests arrive</h2>
+<div class="dim">Click a round junction on the map. A real parking lot wins over this.</div>
+<div id="arrivalText" class="dim"></div>
+<h2>4 · Make the map</h2>
+<label>Name</label><input id="title" placeholder="Farrenpoint">
+<label>File id</label><input id="id" placeholder="farrenpoint">
+<label>What it is (for the game's texts)</label><input id="place" placeholder="the Farrenpoint above Bad Feilnbach, Bavaria">
+<button id="make" disabled>Create map</button>
+<div id="result"></div>
+</div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const M = 111320;
+const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap contributors'});
+const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom: 17, attribution: '© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC-BY-SA)'});
+const map = L.map('map', {layers: [topo]}).setView([47.7433, 12.0282], 14);
+L.control.layers({'Topographic': topo, 'OpenStreetMap': osm}).addTo(map);
+let center = L.latLng(47.7433, 12.0282), arrival = null, loaded = false;
+const rect = L.rectangle([[0,0],[0,0]], {color: '#00bcd4', weight: 2, fillOpacity: .06, interactive: false}).addTo(map);
+const handle = L.marker(center, {draggable: true, title: 'Drag the square'}).addTo(map);
+const info = L.layerGroup().addTo(map);
+let arrivalMark = null;
+const size = () => +$('size').value;
+function box() {
+  const half = size() / 2, dLat = half / M, dLon = half / (M * Math.cos(center.lat * Math.PI / 180));
+  return [[center.lat - dLat, center.lng - dLon], [center.lat + dLat, center.lng + dLon]];
+}
+function moved() {
+  rect.setBounds(box()); handle.setLatLng(center);
+  $('sizeText').textContent = (size() / 1000).toFixed(1) + ' km';
+  if (loaded) { info.clearLayers(); loaded = false; arrival = null; if (arrivalMark) arrivalMark.remove();
+    $('facts').textContent = 'The square moved: load it again.'; $('arrivalText').textContent = ''; }
+  refresh();
+}
+function refresh() { $('make').disabled = !(loaded && $('id').value && $('title').value); }
+handle.on('drag', e => { center = e.target.getLatLng(); moved(); });
+map.on('click', e => { if (!loaded) { center = e.latlng; moved(); } });
+$('size').oninput = moved; $('id').oninput = refresh; $('title').oninput = () => {
+  if (!$('id').dataset.touched) $('id').value = $('title').value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  refresh(); };
+$('id').addEventListener('input', () => $('id').dataset.touched = '1');
+async function search() {
+  if (!$('q').value.trim()) return;
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent($('q').value));
+  const hits = await r.json();
+  if (!hits.length) { $('facts').textContent = 'Nothing found for that search.'; return; }
+  center = L.latLng(+hits[0].lat, +hits[0].lon); map.setView(center, 14); moved();
+}
+$('go').onclick = search; $('q').onkeydown = e => { if (e.key === 'Enter') search(); };
+async function post(path, body) {
+  const r = await fetch(path, {method: 'POST', body: JSON.stringify(body)});
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function setArrival(ll) {
+  arrival = ll; if (arrivalMark) arrivalMark.remove();
+  arrivalMark = L.circleMarker(ll, {radius: 9, color: '#fff', fillColor: '#2ecc71', fillOpacity: 1}).addTo(map);
+  $('arrivalText').textContent = 'Guests arrive at the green dot.';
+}
+$('look').onclick = async () => {
+  $('look').disabled = true; $('facts').textContent = 'Asking OpenStreetMap, this can take a minute when it is busy…';
+  try {
+    const d = await post('/api/preview', {lat: center.lat, lon: center.lng, size: size()});
+    info.clearLayers();
+    d.minor.forEach(l => L.polyline(l, {color: '#8a97a3', weight: 1.5, opacity: .8, interactive: false}).addTo(info));
+    d.routes.forEach(l => L.polyline(l, {color: '#ffb000', weight: 4, interactive: false}).addTo(info));
+    d.lifts.forEach(l => L.polyline(l.line, {color: '#e0218a', weight: 4}).bindTooltip(l.name + ' (' + l.type + ')').addTo(info));
+    d.parking.forEach(p => L.marker(p.at, {title: p.name}).addTo(info));
+    d.junctions.forEach(j => L.circleMarker(j, {radius: 6, color: '#222', fillColor: '#ffb000', fillOpacity: 1})
+      .on('click', e => { L.DomEvent.stopPropagation(e); setArrival(j); }).addTo(info));
+    $('facts').innerHTML = '<ul id="facts"><li>' + d.routes.length + ' major route sections</li><li>' + d.lifts.length + ' lifts</li><li>' + d.parking.length + ' parking lots</li></ul>';
+    if (d.junctions.length) setArrival(d.junctions[0]);
+    loaded = true;
+  } catch (e) { $('facts').innerHTML = '<span class="bad"></span>'; $('facts').firstChild.textContent = e.message; }
+  $('look').disabled = false; refresh();
+};
+async function make(overwrite) {
+  $('make').disabled = true; $('result').textContent = 'Fetching terrain and building the map…';
+  try {
+    const d = await post('/api/create', {lat: center.lat, lon: center.lng, size: size(), id: $('id').value, title: $('title').value,
+      place: $('place').value, arrival: arrival && [arrival[0], arrival[1]], overwrite});
+    if (d.exists) { $('result').textContent = ''; if (confirm('A map with this file id exists. Overwrite it?')) return make(true); return; }
+    const box = $('result'); box.innerHTML = '';
+    const add = (text, cls) => { const p = document.createElement('div'); p.textContent = text; p.className = cls || 'dim'; box.appendChild(p); };
+    add('Done: ' + d.scenario, ''); add(d.waysBuilt + ' routes, ' + (d.meters / 1000).toFixed(1) + ' km, ' + d.lifts + ' lifts, ' + d.parking + ' parking lots.');
+    if (d.routesStandingAlone) add(d.routesStandingAlone + ' routes don\'t connect to the arrival: players can link them.');
+    (d.skipped || []).forEach(t => add('Left out: ' + t, 'bad'));
+    (d.rejected || []).forEach(t => add('The game refused: ' + t, 'bad'));
+    add('It is on the start screen now. Next: draw the land parcels in the scenario editor.');
+    const img = document.createElement('img'); img.src = 'data:image/png;base64,' + d.image; box.appendChild(img);
+  } catch (e) { $('result').innerHTML = '<span class="bad"></span>'; $('result').firstChild.textContent = e.message; }
+  refresh();
+}
+$('make').onclick = () => make(false);
+moved();
+</script></body></html>

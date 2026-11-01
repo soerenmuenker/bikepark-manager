@@ -1,0 +1,489 @@
+{
+  "id": "lermoos",
+  "name": "Lermoos",
+  "description": "Career on a real place: Lermoos.",
+  "menu": {"title": "Lermoos", "blurb": "A real place: Lermoos. Only what really stands there is built: the roads and gravel tracks and the lifts. 75,000 € to start, enough for a first T-bar, and the first trails are yours to draw.", "defaultParkName": "Lermoos Bikepark", "credits": "Elevation: Mapzen/AWS Terrain Tiles; land cover (c) OpenStreetMap contributors (ODbL)"},
+  "seed": 1337,
+  "parkName": "Lermoos Bikepark",
+  "startingMoneyCents": 7500000,
+  "entryFeeCents": 1500,
+  "liftTicketCents": 1000,
+  // Daily rhythm (minutes of the day): open 09:00-18:00.
+  // Arrivals follow the profile (permille of baseArrivalPermille): a morning rush, tapering off in the afternoon.
+  // Guests take one lunch break between 11:00 and 13:00. bankruptcyDays: game over after this many days in a row with the
+  // books closing below zero. dailyUpkeepCents: unused here (staffRules below: the park employs its staff by role).
+  // Parking: a fee per car (Finances menu, shared by its guests and counted with the entry fee); free is the fair price.
+  "rules": {
+    "openMinute": 540,
+    "closeMinute": 1080,
+    "baseArrivalPermille": 700,
+    "arrivalProfile": [
+      { "minute": 540, "permille": 1600 },
+      { "minute": 660, "permille": 1400 },
+      { "minute": 780, "permille": 800 },
+      { "minute": 900, "permille": 400 },
+      { "minute": 990, "permille": 0 }
+    ],
+    "lunchStartMinute": 660,
+    "lunchEndMinute": 780,
+    "lunchMinMinutes": 30,
+    "lunchMaxMinutes": 50,
+    "lunchPriceCents": 1400,
+    "referenceEntryFeeCents": 1500,
+    "maxEntryFeeCents": 10000,
+    "capacity": 150,
+    "dailyUpkeepCents": 300000,
+    "snackPriceCents": 400,
+    "referenceParkingFeeCents": 0,
+    "maxParkingFeeCents": 2000,
+    "bankruptcyDays": 14
+  },
+  // Building rules and rider tuning (TrailRules). Gradients in tenths of the -10..+10 gradient score
+  // (1 point = 9°; 40 = 4.0 = 36°): beyond "max" a way can't be built, beyond "steep" it only warns.
+  // Speeds in cm/s, energy on 0..1000.
+  "trailRules": {
+    "segmentLengthMeters": 10,
+    "snapRadiusMeters": 12,
+    "maxLengthMeters": 4000,
+    "pathGradingMeters": 25,
+    "pathMaxGradient": 40,
+    "pathSteepGradient": 20,
+    "trailMaxDropGradient": 80,
+    "trailSteepDropGradient": 50,
+    "trailMaxClimbGradient": 30,
+    "trailSteepClimbGradient": 15,
+    "pathCorridorCm": 400,
+    "trailCorridorCm": 200,
+    "climbSpeedMinCmPerS": 110,
+    "climbSpeedMaxCmPerS": 300,
+    "descentSpeedMinCmPerS": 300,
+    "descentSpeedMaxCmPerS": 900,
+    "climbEnergyPerMeterGain": 2,
+    "descentEnergyPer100Meters": 3,
+    "tiredEnergy": 150,
+    // Trail traffic: no overtaking on trails (only on gravel paths); riders keep this gap, wait a moment at the trail
+    // entrance (letting faster riders waiting there go first) and lose mood while held up behind a slower rider.
+    "riderGapCm": 500,
+    "entryWaitSeconds": 10,
+    "heldUpMoodPerMinute": 5
+  },
+  // Weather: each day is rolled at midnight from these odds (permille), tomorrow's is the forecast. Rain wets the ground
+  // (wetness 0..1000), which dries afterwards; fewer guests come on bad days and riders in the rain lose mood.
+  "weatherRules": {
+    "sunnyPermille": 400,
+    "cloudyPermille": 300,
+    "showersPermille": 200,
+    "rainPermille": 100,
+    "showerMinHours": 1,
+    "showerMaxHours": 3,
+    "rainMinHours": 4,
+    "rainMaxHours": 10,
+    "wetPerRainMinute": 8,
+    "dryPerMinuteSunny": 2,
+    "dryPerMinuteCloudy": 1,
+    "sunnyArrivalPermille": 1050,
+    "cloudyArrivalPermille": 950,
+    "showersArrivalPermille": 800,
+    "rainArrivalPermille": 450,
+    "rainMoodPerMinute": 1
+  },
+  // Wear: only trail features wear (the trail itself doesn't). Each rider passing a feature takes wearPerPass millionths
+  // off its condition (more on harder features, up to 3x on wet ground). Below 70 % it is slower and less fun; below 20 %
+  // the player gets a warning to send the crew; at 0 % the trail closes until the feature is repaired.
+  "wearRules": {
+    "wearPerPass": 120,
+    "wetWearPermille": 2000,
+    "roughBelowPermille": 700,
+    "wornSpeedLossPermille": 300,
+    "wornFunLoss": 400,
+    "warnBelowPermille": 200
+  },
+  // Real terrain from tools/terrain-import; roughness is the fine detail on top.
+  // The tree line is out of reach: forest and meadows come from OpenStreetMap.
+  "terrain": {
+    "sizeMeters": 3000,
+    "heightmapFile": "../terrain/lermoos.json",
+    "roughnessPermille": 90,
+    "treeLineCm": 900000
+  },
+  "terrainSculpt": [],
+  "reputationRules": {
+    "enabled": true,
+    "intermediateFromSkill": 350,
+    "expertFromSkill": 650,
+    "groups": [
+      { "group": "beginner", "name": "Beginners", "values": "Feeling safe and a smooth day: easy trails, no scary sections, little waiting, a fair price.",
+        "fun": 250, "safety": 300, "smoothness": 200, "challenge": 0, "jumps": 0, "variety": 100, "value": 150, "challengeTarget": 250 },
+      { "group": "intermediate", "name": "Intermediates", "values": "Flow and fun: well-shaped trails, some variety, a bit of challenge and air, good value for the ticket.",
+        "fun": 300, "safety": 100, "smoothness": 150, "challenge": 100, "jumps": 100, "variety": 100, "value": 150, "challengeTarget": 480 },
+      { "group": "expert", "name": "Experts", "values": "Technical difficulty and jump quality: red and black lines with good features.",
+        "fun": 250, "safety": 0, "smoothness": 150, "challenge": 250, "jumps": 200, "variety": 100, "value": 50, "challengeTarget": 700 }
+    ],
+    "reviewChancePermille": 600,
+    "windowSize": 200,
+    "minReviewsForRating": 10,
+    "scaredMargin": 150,
+    "funFloor": 250,
+    "funCeiling": 800,
+    "heldUpWeight": 1,
+    "waitPenaltyPermille": 2000,
+    "varietyFullAt": 3,
+    "fairCentsPerRun": 150,
+    "visibilityCurve": [
+      { "x": 0, "permille": 500 },
+      { "x": 300, "permille": 750 },
+      { "x": 1500, "permille": 1000 },
+      { "x": 6000, "permille": 1200 }
+    ],
+    "ratingCurve": [
+      { "x": 10, "permille": 700 },
+      { "x": 30, "permille": 1000 },
+      { "x": 50, "permille": 1300 }
+    ],
+    "demandMinPermille": 300,
+    "demandMaxPermille": 1500,
+    "influencerChancePermille": 250,
+    "influencerFirstDay": 3,
+    "influencerMinGapDays": 7,
+    "influencerSkill": 750,
+    "influencerStayMinutes": 300,
+    "influencerPeakPermille": 400,
+    "influencerNeutralTenths": 30,
+    "influencerEffectDays": 5,
+    "xpPerKmByRating": { "blue": 100, "red": 175, "black": 250 },
+    "xpPerFeatureByRating": { "blue": 10, "red": 20, "black": 40 },
+    "xpPerVisitor": 1,
+    "visitorDays": 7,
+    "levelXp": [100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500]
+  },
+  // Crashes: every feature ridden and every 10 m of trail is a small chance to crash (parts per million), scaled by
+  // factors in permille: difficulty above the rider's skill (+overSkillPer100Permille per 100 points, lower for easy
+  // stuff), jumps, worn features (below the rough level, up to 1 + wornFactor at 0 %), wet ground and tired riders.
+  // Collisions are no chance: two riders passing a crossing of their ways (or of a way and the T-bar track) who are both
+  // within collisionDistanceCm of it at the same moment crash, if at least one rides collisionMinSpeedCmPerS or faster. A crash is serious with
+  // seriousBase + extras (jumps, collisions, over skill): the rider lies on the trail, blocking it, until the rescue
+  // helicopter (public service) has flown them out; otherwise they ride down slowly and go home. A rider hurt while
+  // being pulled up a T-bar stops the whole lift: for towStopMinutes (minor: they get off the track and go home) or
+  // until the helicopter has flown them out (serious). Crashes cost no money: a crash closes its trail to new riders
+  // (minorCloseMinutes, a serious one until the rescue). Each trail's crashes per 10 000 runs over the last rateDays
+  // (counted over at least rateMinRuns) are compared with expectedCrashesPer10kRunsByRating: a guest who rode a trail
+  // above it rates safety safetyLossPerExtraCrashPer10k permille lower per extra crash (worst trail, at most maxRateSafetyLoss).
+  // bikeOnlyPermille: that share of minor crashes only break the bike (fixed in a bike shop's workshop, else the rider goes home).
+  "crashRules": {
+    "bikeOnlyPermille": 350,
+    "enabled": true,
+    "featureBasePpm": 40,
+    "jumpFactorPermille": 2000,
+    "terrainBasePpm": 2,
+    "overSkillPer100Permille": 1000,
+    "minSkillFactorPermille": 150,
+    "wornFactorPermille": 2000,
+    "wetFactorPermille": 1000,
+    "fatigueBelowEnergy": 350,
+    "fatigueFactorPermille": 1000,
+    "collisionDistanceCm": 100,
+    "collisionMinSpeedCmPerS": 350,
+    "seriousBasePermille": 50,
+    "seriousJumpPermille": 50,
+    "seriousCollisionPermille": 150,
+    "seriousPer100OverSkillPermille": 40,
+    "minorMoodLoss": 250,
+    "seriousMoodLoss": 600,
+    "minorSpeedCmPerS": 150,
+    "towStopMinutes": 5,
+    "helicopterMinMinutes": 25,
+    "helicopterMaxMinutes": 50,
+    "injuredReviewChancePermille": 900,
+    "minorCloseMinutes": 5,
+    "rateDays": 7,
+    "expectedCrashesPer10kRunsByRating": { "blue": 20, "red": 40, "black": 60 },
+    "rateMinRuns": 1000,
+    "safetyLossPerExtraCrashPer10k": 4,
+    "maxRateSafetyLoss": 500
+  },
+  // Lift models come from the shared catalog.
+  "liftTypesFile": "../lift_types.json",
+  "trailFeaturesFile": "../trail_features.json",
+  "toolsFile": "../tools.json",
+  "facilityTypesFile": "../facility_types.json",
+  "productTypesFile": "../products.json",
+  // Brands that sponsor trails and the park (data/sponsors.json) and how they deal (SponsorRules: defaults), photo spots too.
+  "sponsorTypesFile": "../sponsors.json",
+  // Bars and shops (FacilityRules): they need a gravel path or hub within accessReachMeters and serve guests within
+  // serveReachMeters. Après-bike: guests done for the day may stay at a bar serving beer until apresEndMinute (19:30).
+  "facilityRules": {
+    "accessReachMeters": 25,
+    "serveReachMeters": 80,
+    "apresEndMinute": 1170
+  },
+  // Park staff by role (data/staff_roles.json): managers, ticket office, first aid, cleaning, marketing; set in the Crew
+  // menu → Park staff. Too few of a role costs guests, mood or rescue time (StaffMath).
+  "staffFile": "../staff_roles.json",
+  "staffRules": {
+    "enabled": true,
+    "start": [
+      { "roleId": "manager", "count": 1 },
+      { "roleId": "ticket_office", "count": 3 },
+      { "roleId": "first_aid", "count": 2 },
+      { "roleId": "cleaning", "count": 4 }
+    ]
+  },
+  // Crew and building (CrewRules). Planned ways and features are built by crew jobs during opening hours; work is in
+  // crew-minutes at base speed. Trees in a planned way's corridor are felled first (each gives woodPerTree wood).
+  // No crew limit: a way is built in sections of sectionMeters, each by up to workersPerSection workers at once (features,
+  // repairs and signs: one spot). Applicants (a fresh list at every opening) come in grades: speed and wage.
+  "crewRules": {
+    "wagePerDayCents": 18000,
+    "sectionMeters": 20,
+    "workersPerSection": 2,
+    "grades": [
+      { "id": "apprentice", "name": "Apprentice", "speedPermille": 750, "wagePerDayCents": 13000, "weight": 4 },
+      { "id": "skilled", "name": "Skilled", "speedPermille": 1000, "wagePerDayCents": 18000, "weight": 4 },
+      { "id": "expert", "name": "Expert", "speedPermille": 1350, "wagePerDayCents": 27000, "weight": 2 }
+    ],
+    "applicantCount": 4,
+    "trailWorkMinutesPerMeter": 4,
+    "pathWorkMinutesPerMeter": 3,
+    "steepExtraPermille": 500,
+    "fellMinutesPerTree": 8,
+    "repairWorkPermille": 500,
+    "woodPerTree": 2,
+    "woodPriceCents": 2500,
+    "minClearingRadiusMeters": 5,
+    "maxClearingRadiusMeters": 40
+  },
+  "startingWood": 20,
+  // The gondola belongs to a lift company; the park rents bike access in tiers (share of cabins equipped for bikes),
+  // paying the tier's daily fee at the end of each day. A booked tier starts at the next opening.
+  "operators": [
+    {
+      "id": "alpine_lifts",
+      "name": "Alpine Lift Co.",
+      "bikeAccessTiers": [
+        { "name": "No bikes", "bikeCarrierPermille": 0, "dailyFeeCents": 0 },
+        { "name": "Every 4th cabin", "bikeCarrierPermille": 250, "dailyFeeCents": 30000 },
+        { "name": "Every 2nd cabin", "bikeCarrierPermille": 500, "dailyFeeCents": 65000 },
+        { "name": "All cabins", "bikeCarrierPermille": 1000, "dailyFeeCents": 140000 }
+      ]
+    }
+  ],
+  // Structures, queues and lift routing (LiftRules). Routing costs are in cm of flat travel per minute.
+  "liftRules": {
+    "walkSpeedCmPerS": 120,
+    "guestsPerCarPermille": 2000,
+    "parkingSquareMetersPerSpace": 25,
+    "parkingWidthMeters": 40,
+    "stationReachMeters": 80,
+    "maxPadCutFillCm": 1500,
+    "embankmentGradient": 35,
+    "queueGraceMinutes": 5,
+    "queueMoodPenaltyPerMinute": 3,
+    "restEnergyPerMinute": 3,
+    "liftRideCostCmPerMinute": 9000,
+    "liftWaitCostCmPerMinute": 18000
+  },
+  // Bank loans: the amount at once, paid back in equal weekly installments (at the end of every 7th day) with a flat
+  // interest on the whole amount over the term. A missed installment (not enough money) adds lateFeePermille of it to
+  // what is owed. requiredLevel: park level needed to get the loan. One loan of each kind at a time.
+  "loanRules": {
+    "lateFeePermille": 100,
+    // Interest over the whole term: 8 % for a new, unknown park down to 2 % for a top-rated, high-level one (average of the two); 1 % with a bank sponsor.
+    "bestInterestPermille": 20, "worstInterestPermille": 80, "sponsorInterestPermille": 10,
+    "offers": [
+      { "id": "starter", "name": "Starter loan", "principalCents": 1000000, "weeks": 10, "requiredLevel": 0 },
+      { "id": "bank", "name": "Bank loan", "principalCents": 3000000, "weeks": 20, "requiredLevel": 3 },
+      { "id": "investor", "name": "Investor loan", "principalCents": 10000000, "weeks": 52, "requiredLevel": 8 }
+    ]
+  },
+  // Land the park can buy (named parcels; outlines in cm). The old ski hill is yours at the start; the others need the
+  // park level and the price. Everything you build (paths, trails, lift stations, parking, felling) must be on your land;
+  // a lift's cable may cross land you don't own.
+  "parcels": [
+    {"id": "parcel_1", "name": "Parcel 1", "requiredLevel": 3, "priceCents": 4000000, "ownedAtStart": false, "description": "More of the mountain.", "outline": [{"x": 0, "z": 0}, {"x": 150000, "z": 0}, {"x": 150000, "z": 50000}, {"x": 0, "z": 50000}]},
+    {"id": "parcel_2", "name": "Parcel 2", "requiredLevel": 5, "priceCents": 6000000, "ownedAtStart": false, "description": "More of the mountain.", "outline": [{"x": 150000, "z": 0}, {"x": 250000, "z": 0}, {"x": 250000, "z": 50000}, {"x": 150000, "z": 50000}]},
+    {"id": "parcel_3", "name": "Parcel 3", "requiredLevel": 7, "priceCents": 8000000, "ownedAtStart": false, "description": "More of the mountain.", "outline": [{"x": 250000, "z": 0}, {"x": 300000, "z": 0}, {"x": 300000, "z": 50000}, {"x": 250000, "z": 50000}]},
+    {"id": "parcel_4", "name": "Parcel 4", "requiredLevel": 9, "priceCents": 10000000, "ownedAtStart": false, "description": "More of the mountain.", "outline": [{"x": 0, "z": 50000}, {"x": 150000, "z": 50000}, {"x": 150000, "z": 150000}, {"x": 0, "z": 150000}]},
+    {"id": "home", "name": "Home ground", "requiredLevel": 0, "priceCents": 0, "ownedAtStart": true, "description": "Where you start.", "outline": [{"x": 150000, "z": 50000}, {"x": 250000, "z": 50000}, {"x": 250000, "z": 150000}, {"x": 150000, "z": 150000}]},
+    {"id": "parcel_5", "name": "Parcel 5", "requiredLevel": 11, "priceCents": 12000000, "ownedAtStart": false, "description": "More of the mountain.", "outline": [{"x": 250000, "z": 50000}, {"x": 300000, "z": 50000}, {"x": 300000, "z": 150000}, {"x": 250000, "z": 150000}]},
+    {"id": "parcel_6", "name": "Parcel 6", "requiredLevel": 13, "priceCents": 14000000, "ownedAtStart": false, "description": "More of the mountain.", "outline": [{"x": 0, "z": 150000}, {"x": 150000, "z": 150000}, {"x": 150000, "z": 300000}, {"x": 0, "z": 300000}]},
+    {"id": "parcel_7", "name": "Parcel 7", "requiredLevel": 15, "priceCents": 16000000, "ownedAtStart": false, "description": "More of the mountain.", "outline": [{"x": 150000, "z": 150000}, {"x": 250000, "z": 150000}, {"x": 250000, "z": 300000}, {"x": 150000, "z": 300000}]},
+    {"id": "parcel_8", "name": "Parcel 8", "requiredLevel": 17, "priceCents": 18000000, "ownedAtStart": false, "description": "More of the mountain.", "outline": [{"x": 250000, "z": 150000}, {"x": 300000, "z": 150000}, {"x": 300000, "z": 300000}, {"x": 250000, "z": 300000}]}
+  ],
+  "welcome": {
+    "title": "Welcome to {park}!",
+    "paragraphs": [
+      "This is a real place: Lermoos. Nothing has been made up here: what you see standing is what really stands there, and the gravel tracks are the real ones.",
+      "The lifts here are the real ones too. Guests arrive on the track at the edge of your land.",
+      "1. Hire a worker or two in the Crew menu (C). Your crew builds everything you plan.\n2. Press T to draw your first trail: start on a gravel track, wind across the slope and end on a track or lift further down. Press Enter and the crew gets to work.",
+      "Steep real slopes rate trails harder, so use switchbacks. Every trail and feature earns XP. New park levels unlock harder features, more land and bigger lifts. Good luck!"
+    ]
+  },
+  "commands": [
+    { "tick": 0, "command": {"type": "buildLift", "typeId": "chairlift_4", "name": "GamsJet", "origin": "scenario", "valley": {"x": 156378, "z": 222396}, "mountain": {"x": 43566, "z": 238482}, "operatorId": "alpine_lifts", "initialTier": 0} },
+    { "tick": 0, "command": {"type": "buildLift", "typeId": "gondola_8", "name": "Grubigsteinbahn", "origin": "scenario", "valley": {"x": 284318, "z": 25059}, "mountain": {"x": 213294, "z": 129018}, "operatorId": "alpine_lifts", "initialTier": 0} },
+    { "tick": 0, "command": {"type": "buildLift", "typeId": "chairlift_4", "name": "Grubigalmbahn", "origin": "scenario", "valley": {"x": 208392, "z": 132518}, "mountain": {"x": 161836, "z": 215232}, "operatorId": "alpine_lifts", "initialTier": 0} },
+    { "tick": 0, "command": {"type": "buildLift", "typeId": "chairlift_4", "name": "Schih\u00fcttenbahn", "origin": "scenario", "valley": {"x": 143080, "z": 192530}, "mountain": {"x": 67391, "z": 203725}, "operatorId": "alpine_lifts", "initialTier": 0} },
+    { "tick": 0, "command": {"type": "buildLift", "typeId": "tbar", "name": "Plattensteiglift", "origin": "scenario", "valley": {"x": 256590, "z": 140406}, "mountain": {"x": 207342, "z": 135918}, "derelict": true} },
+    { "tick": 0, "command": {"type": "buildLift", "typeId": "gondola_8", "name": "Grubig II", "origin": "scenario", "valley": {"x": 209338, "z": 128242}, "mountain": {"x": 42765, "z": 201651}, "operatorId": "alpine_lifts", "initialTier": 0} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 286965, "z": 3750}, "toward": {"x": 287515, "z": 2112}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Poberschnigg-Parkplatz", "origin": "scenario", "spaces": 30, "center": {"x": 284983, "z": 5790}, "toward": {"x": 285697, "z": 5627}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 286567, "z": 23462}, "toward": {"x": 287678, "z": 23929}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 279961, "z": 25204}, "toward": {"x": 278701, "z": 25355}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 274147, "z": 26155}, "toward": {"x": 275273, "z": 26854}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 276811, "z": 29210}, "toward": {"x": 275538, "z": 30020}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 293002, "z": 20672}, "toward": {"x": 291647, "z": 21039}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 289290, "z": 20806}, "toward": {"x": 289212, "z": 21231}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 295410, "z": 19460}, "toward": {"x": 294150, "z": 18809}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 280966, "z": 18890}, "toward": {"x": 279048, "z": 17999}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 258180, "z": 8067}, "toward": {"x": 258070, "z": 7283}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 276580, "z": 34180}, "toward": {"x": 278255, "z": 33490}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 274949, "z": 35742}, "toward": {"x": 274715, "z": 38004}} },
+    { "tick": 0, "command": {"type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 30, "center": {"x": 272269, "z": 36607}, "toward": {"x": 271814, "z": 34098}} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 287515, "z": 2112}, {"x": 289557, "z": 737}, {"x": 289168, "z": 400}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 287515, "z": 2112}, {"x": 284622, "z": 4426}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 287515, "z": 2112}, {"x": 289168, "z": 400}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284622, "z": 4426}, {"x": 285697, "z": 5627}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 285697, "z": 5627}, {"x": 284596, "z": 6813}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 285697, "z": 5627}, {"x": 287347, "z": 7781}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284596, "z": 6813}, {"x": 287347, "z": 7781}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284596, "z": 6813}, {"x": 282319, "z": 4071}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 287347, "z": 7781}, {"x": 288895, "z": 9178}, {"x": 289668, "z": 8640}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 282319, "z": 4071}, {"x": 284059, "z": 3796}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284059, "z": 3796}, {"x": 281119, "z": 705}, {"x": 279267, "z": 1732}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 279267, "z": 1732}, {"x": 277476, "z": 400}, {"x": 275658, "z": 2962}, {"x": 278227, "z": 5011}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 279267, "z": 1732}, {"x": 279784, "z": 2709}, {"x": 279829, "z": 4356}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278227, "z": 5011}, {"x": 279829, "z": 4356}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278227, "z": 5011}, {"x": 275750, "z": 6891}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 279829, "z": 4356}, {"x": 281721, "z": 4165}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275750, "z": 6891}, {"x": 278012, "z": 9464}, {"x": 279932, "z": 10387}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 281721, "z": 4165}, {"x": 281482, "z": 9043}, {"x": 281810, "z": 9367}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 156440, "z": 216685}, {"x": 155356, "z": 218000}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 156440, "z": 216685}, {"x": 155356, "z": 218000}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 156440, "z": 216685}, {"x": 157048, "z": 213355}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 155356, "z": 218000}, {"x": 152198, "z": 221082}, {"x": 149639, "z": 222689}, {"x": 146918, "z": 226119}, {"x": 140505, "z": 232364}, {"x": 138660, "z": 232833}, {"x": 137851, "z": 232540}, {"x": 135234, "z": 227972}, {"x": 134619, "z": 227600}, {"x": 133378, "z": 227786}, {"x": 132545, "z": 231155}, {"x": 132441, "z": 234558}, {"x": 130887, "z": 237321}, {"x": 129746, "z": 237735}, {"x": 129466, "z": 235868}, {"x": 126719, "z": 231323}, {"x": 121447, "z": 226808}, {"x": 119312, "z": 221912}, {"x": 120418, "z": 219557}, {"x": 120455, "z": 218013}, {"x": 115373, "z": 212769}, {"x": 113977, "z": 207884}, {"x": 113261, "z": 207876}, {"x": 113080, "z": 208799}, {"x": 114777, "z": 216835}, {"x": 113793, "z": 219173}, {"x": 112326, "z": 219743}, {"x": 111856, "z": 218925}, {"x": 112042, "z": 216655}, {"x": 111161, "z": 214644}, {"x": 109174, "z": 212265}, {"x": 107145, "z": 210504}, {"x": 102052, "z": 207896}, {"x": 98502, "z": 204214}, {"x": 97989, "z": 202964}, {"x": 98009, "z": 195261}, {"x": 97665, "z": 194089}, {"x": 93667, "z": 186636}, {"x": 91924, "z": 184264}, {"x": 90792, "z": 180706}, {"x": 89974, "z": 181757}, {"x": 89916, "z": 183870}, {"x": 90996, "z": 193150}, {"x": 90572, "z": 194092}, {"x": 89722, "z": 194322}, {"x": 87922, "z": 190551}, {"x": 81577, "z": 182465}, {"x": 77613, "z": 181282}, {"x": 76048, "z": 179867}, {"x": 74420, "z": 179321}, {"x": 70286, "z": 180474}, {"x": 69113, "z": 181282}, {"x": 69468, "z": 182395}, {"x": 71963, "z": 183293}, {"x": 73034, "z": 184375}, {"x": 73600, "z": 189339}, {"x": 72625, "z": 192685}, {"x": 74136, "z": 198415}, {"x": 72661, "z": 203752}, {"x": 70782, "z": 206679}, {"x": 69145, "z": 207798}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 155356, "z": 218000}, {"x": 158198, "z": 216794}, {"x": 160829, "z": 214257}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 155356, "z": 218000}, {"x": 157730, "z": 218833}, {"x": 157885, "z": 219895}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 157048, "z": 213355}, {"x": 157822, "z": 212378}, {"x": 158762, "z": 209559}, {"x": 159841, "z": 208346}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 157048, "z": 213355}, {"x": 154609, "z": 207532}, {"x": 153286, "z": 201919}, {"x": 152505, "z": 196903}, {"x": 152385, "z": 190968}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 69145, "z": 207798}, {"x": 63726, "z": 210969}, {"x": 61401, "z": 215397}, {"x": 61526, "z": 216883}, {"x": 63817, "z": 220319}, {"x": 63887, "z": 222654}, {"x": 62819, "z": 228121}, {"x": 61098, "z": 230589}, {"x": 61078, "z": 231943}, {"x": 62150, "z": 234683}, {"x": 61270, "z": 237757}, {"x": 61537, "z": 239885}, {"x": 60946, "z": 240636}, {"x": 59618, "z": 240042}, {"x": 56793, "z": 236509}, {"x": 56337, "z": 231822}, {"x": 55240, "z": 230196}, {"x": 50507, "z": 228966}, {"x": 46766, "z": 225545}, {"x": 45590, "z": 220342}, {"x": 46649, "z": 215303}, {"x": 45350, "z": 211871}, {"x": 44239, "z": 210410}, {"x": 44112, "z": 214854}, {"x": 43330, "z": 216094}, {"x": 41215, "z": 217652}, {"x": 40277, "z": 220727}, {"x": 41385, "z": 225683}, {"x": 41103, "z": 228753}, {"x": 39603, "z": 230965}, {"x": 39415, "z": 232915}, {"x": 39617, "z": 236279}, {"x": 41147, "z": 238196}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 69145, "z": 207798}, {"x": 66698, "z": 206865}, {"x": 65363, "z": 205450}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 157885, "z": 219895}, {"x": 161518, "z": 218987}, {"x": 161988, "z": 217954}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 157885, "z": 219895}, {"x": 158142, "z": 222426}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 152385, "z": 190968}, {"x": 152680, "z": 189494}, {"x": 152334, "z": 187235}, {"x": 153466, "z": 181140}, {"x": 157439, "z": 180059}, {"x": 159137, "z": 180352}, {"x": 167753, "z": 188935}, {"x": 170881, "z": 190763}, {"x": 174307, "z": 191805}, {"x": 180281, "z": 195915}, {"x": 181524, "z": 197798}, {"x": 185920, "z": 202276}, {"x": 187760, "z": 202701}, {"x": 189160, "z": 202459}, {"x": 192067, "z": 200998}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 152385, "z": 190968}, {"x": 151971, "z": 191006}, {"x": 151343, "z": 192701}, {"x": 150875, "z": 197163}, {"x": 150050, "z": 199045}, {"x": 149338, "z": 199569}, {"x": 145427, "z": 194965}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 192067, "z": 200998}, {"x": 192743, "z": 199921}, {"x": 197827, "z": 199800}, {"x": 199303, "z": 199284}, {"x": 199909, "z": 198152}, {"x": 197170, "z": 197748}, {"x": 191661, "z": 195787}, {"x": 188973, "z": 193512}, {"x": 185031, "z": 187832}, {"x": 184293, "z": 185840}, {"x": 181605, "z": 182849}, {"x": 179381, "z": 176966}, {"x": 178987, "z": 173772}, {"x": 178421, "z": 172954}, {"x": 174419, "z": 168487}, {"x": 171932, "z": 163857}, {"x": 168061, "z": 162987}, {"x": 166131, "z": 160976}, {"x": 166201, "z": 160036}, {"x": 167000, "z": 159996}, {"x": 169456, "z": 161573}, {"x": 172539, "z": 161603}, {"x": 174419, "z": 162502}, {"x": 176319, "z": 164786}, {"x": 182513, "z": 166501}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 192067, "z": 200998}, {"x": 198416, "z": 203676}, {"x": 200939, "z": 203608}, {"x": 208777, "z": 210231}, {"x": 209520, "z": 213541}, {"x": 211209, "z": 214893}, {"x": 211457, "z": 218227}, {"x": 209587, "z": 222866}, {"x": 207786, "z": 225164}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 145427, "z": 194965}, {"x": 144712, "z": 191645}, {"x": 143350, "z": 189180}, {"x": 142098, "z": 183795}, {"x": 140529, "z": 180181}, {"x": 139033, "z": 174412}, {"x": 138011, "z": 173322}, {"x": 133358, "z": 171058}, {"x": 130691, "z": 167279}, {"x": 128428, "z": 166266}, {"x": 124652, "z": 162179}, {"x": 117041, "z": 158566}, {"x": 107543, "z": 155103}, {"x": 100847, "z": 151870}, {"x": 95250, "z": 150819}, {"x": 88702, "z": 152061}, {"x": 82330, "z": 153928}, {"x": 74900, "z": 156946}, {"x": 69435, "z": 161463}, {"x": 67882, "z": 161864}, {"x": 66345, "z": 161441}, {"x": 64385, "z": 159048}, {"x": 62274, "z": 158457}, {"x": 60399, "z": 156376}, {"x": 57712, "z": 148467}, {"x": 58678, "z": 143872}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 145427, "z": 194965}, {"x": 143279, "z": 197464}, {"x": 140904, "z": 198091}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 182513, "z": 166501}, {"x": 186284, "z": 166859}, {"x": 188660, "z": 168123}, {"x": 191092, "z": 170656}, {"x": 196593, "z": 170628}, {"x": 200909, "z": 171326}, {"x": 203881, "z": 172580}, {"x": 207206, "z": 172771}, {"x": 209945, "z": 174076}, {"x": 212856, "z": 175834}, {"x": 215574, "z": 178725}, {"x": 220931, "z": 180949}, {"x": 226663, "z": 182575}, {"x": 229608, "z": 185161}, {"x": 236358, "z": 195055}, {"x": 239285, "z": 197782}, {"x": 247324, "z": 199117}, {"x": 253206, "z": 202510}, {"x": 259996, "z": 204394}, {"x": 263708, "z": 206413}, {"x": 268352, "z": 211011}, {"x": 268921, "z": 211260}, {"x": 269604, "z": 210724}, {"x": 264321, "z": 203529}, {"x": 254416, "z": 196171}, {"x": 252072, "z": 193301}, {"x": 251816, "z": 192046}, {"x": 252097, "z": 191415}, {"x": 252611, "z": 191578}, {"x": 255397, "z": 193684}, {"x": 262065, "z": 195248}, {"x": 265817, "z": 196969}, {"x": 272452, "z": 202552}, {"x": 272672, "z": 202163}, {"x": 270842, "z": 198258}, {"x": 269964, "z": 194215}, {"x": 268447, "z": 191717}, {"x": 263105, "z": 186999}, {"x": 260802, "z": 186103}, {"x": 254265, "z": 181919}, {"x": 252261, "z": 179640}, {"x": 250120, "z": 172903}, {"x": 243773, "z": 164878}, {"x": 239893, "z": 160921}, {"x": 221215, "z": 149818}, {"x": 209915, "z": 140974}, {"x": 207014, "z": 137215}, {"x": 200973, "z": 134729}, {"x": 200432, "z": 133827}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 182513, "z": 166501}, {"x": 178487, "z": 164225}, {"x": 175461, "z": 159767}, {"x": 169365, "z": 154353}, {"x": 164384, "z": 152056}, {"x": 157924, "z": 152809}, {"x": 156105, "z": 151759}, {"x": 155008, "z": 145869}, {"x": 154331, "z": 144882}, {"x": 146035, "z": 136855}, {"x": 143313, "z": 135658}, {"x": 135840, "z": 126511}, {"x": 133903, "z": 122680}, {"x": 129731, "z": 119297}, {"x": 130332, "z": 115354}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 200432, "z": 133827}, {"x": 198068, "z": 134144}, {"x": 193376, "z": 133633}, {"x": 175904, "z": 129605}, {"x": 170336, "z": 129283}, {"x": 166721, "z": 126122}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 200432, "z": 133827}, {"x": 201344, "z": 132767}, {"x": 205740, "z": 132124}, {"x": 206293, "z": 131013}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 206293, "z": 131013}, {"x": 210329, "z": 129241}, {"x": 211570, "z": 129401}, {"x": 214119, "z": 130817}, {"x": 215394, "z": 130924}, {"x": 217483, "z": 130039}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 206293, "z": 131013}, {"x": 203214, "z": 129826}, {"x": 201210, "z": 130707}, {"x": 197816, "z": 129221}, {"x": 194724, "z": 126204}, {"x": 188765, "z": 121625}, {"x": 185400, "z": 117947}, {"x": 180521, "z": 117209}, {"x": 177440, "z": 117245}, {"x": 177042, "z": 115945}, {"x": 177224, "z": 112309}, {"x": 177779, "z": 111445}, {"x": 178356, "z": 111375}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 178356, "z": 111375}, {"x": 178274, "z": 109043}, {"x": 175114, "z": 107006}, {"x": 174377, "z": 105356}, {"x": 174341, "z": 103074}, {"x": 182282, "z": 97385}, {"x": 183400, "z": 94087}, {"x": 184243, "z": 87521}, {"x": 185296, "z": 85205}, {"x": 185296, "z": 83554}, {"x": 180276, "z": 77130}, {"x": 169145, "z": 68810}, {"x": 164897, "z": 68669}, {"x": 161765, "z": 69109}, {"x": 152784, "z": 73584}, {"x": 151414, "z": 73865}, {"x": 147384, "z": 73377}, {"x": 144007, "z": 74121}, {"x": 140954, "z": 73060}, {"x": 135654, "z": 73336}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 178356, "z": 111375}, {"x": 179068, "z": 114191}, {"x": 180314, "z": 114855}, {"x": 187528, "z": 112918}, {"x": 193580, "z": 112451}, {"x": 197078, "z": 113569}, {"x": 200788, "z": 115789}, {"x": 202549, "z": 116151}, {"x": 213643, "z": 111087}, {"x": 217505, "z": 111747}, {"x": 220510, "z": 110874}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 220510, "z": 110874}, {"x": 226057, "z": 107941}, {"x": 229651, "z": 103020}, {"x": 229750, "z": 101464}, {"x": 228794, "z": 99222}, {"x": 226871, "z": 97601}, {"x": 224775, "z": 96694}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 220510, "z": 110874}, {"x": 225115, "z": 111587}, {"x": 232040, "z": 116128}, {"x": 236328, "z": 117846}, {"x": 240702, "z": 118699}, {"x": 252286, "z": 122456}, {"x": 256161, "z": 124572}, {"x": 256969, "z": 126044}, {"x": 256829, "z": 128267}, {"x": 256018, "z": 129584}, {"x": 255107, "z": 133126}, {"x": 253425, "z": 135108}, {"x": 251608, "z": 140725}, {"x": 251763, "z": 142586}, {"x": 252406, "z": 144698}, {"x": 253681, "z": 146193}, {"x": 261204, "z": 147642}, {"x": 262535, "z": 148796}, {"x": 263216, "z": 150791}, {"x": 263752, "z": 150874}, {"x": 264370, "z": 150595}, {"x": 264883, "z": 149366}, {"x": 265348, "z": 145974}, {"x": 264623, "z": 142294}, {"x": 267026, "z": 141139}, {"x": 270476, "z": 135858}, {"x": 272767, "z": 134704}, {"x": 276916, "z": 134432}, {"x": 281922, "z": 133266}, {"x": 284822, "z": 131663}, {"x": 286174, "z": 130136}, {"x": 286444, "z": 128615}, {"x": 285811, "z": 125514}, {"x": 283174, "z": 120621}, {"x": 278944, "z": 114642}, {"x": 280659, "z": 112429}, {"x": 281326, "z": 107649}, {"x": 283388, "z": 104079}, {"x": 284975, "z": 103037}, {"x": 287505, "z": 104128}, {"x": 289109, "z": 103476}, {"x": 289489, "z": 101198}, {"x": 288224, "z": 97898}, {"x": 288484, "z": 97017}, {"x": 290647, "z": 97377}, {"x": 296828, "z": 110625}, {"x": 299600, "z": 114564}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 296994, "z": 17984}, {"x": 294150, "z": 18809}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 294150, "z": 18809}, {"x": 291647, "z": 21039}, {"x": 289212, "z": 21231}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 289212, "z": 21231}, {"x": 291524, "z": 19040}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 289212, "z": 21231}, {"x": 287813, "z": 19956}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 291524, "z": 19040}, {"x": 287813, "z": 19956}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 291524, "z": 19040}, {"x": 293412, "z": 18660}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 287813, "z": 19956}, {"x": 286496, "z": 20420}, {"x": 284208, "z": 22748}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 293412, "z": 18660}, {"x": 283409, "z": 16944}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284208, "z": 22748}, {"x": 285153, "z": 21851}, {"x": 283489, "z": 21667}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284208, "z": 22748}, {"x": 285058, "z": 22457}, {"x": 283489, "z": 21667}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284208, "z": 22748}, {"x": 286911, "z": 24752}, {"x": 287462, "z": 24778}, {"x": 287678, "z": 23929}, {"x": 283489, "z": 21667}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 283409, "z": 16944}, {"x": 279048, "z": 17999}, {"x": 277105, "z": 19858}, {"x": 274468, "z": 23555}, {"x": 278091, "z": 24607}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 283489, "z": 21667}, {"x": 282037, "z": 22226}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278091, "z": 24607}, {"x": 278701, "z": 25355}, {"x": 282258, "z": 25193}, {"x": 279875, "z": 23738}, {"x": 279702, "z": 23138}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278091, "z": 24607}, {"x": 275507, "z": 26440}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278091, "z": 24607}, {"x": 276620, "z": 24737}, {"x": 279252, "z": 23313}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278091, "z": 24607}, {"x": 279146, "z": 24019}, {"x": 279252, "z": 23313}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278091, "z": 24607}, {"x": 275273, "z": 26854}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 282037, "z": 22226}, {"x": 279702, "z": 23138}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 282037, "z": 22226}, {"x": 283275, "z": 23558}, {"x": 287144, "z": 26014}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275507, "z": 26440}, {"x": 272395, "z": 26316}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275273, "z": 26854}, {"x": 280237, "z": 28507}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275273, "z": 26854}, {"x": 280237, "z": 28507}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275273, "z": 26854}, {"x": 278255, "z": 33490}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275273, "z": 26854}, {"x": 273721, "z": 29669}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275273, "z": 26854}, {"x": 273721, "z": 29669}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275273, "z": 26854}, {"x": 273721, "z": 29669}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 287144, "z": 26014}, {"x": 286181, "z": 25958}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 287144, "z": 26014}, {"x": 286181, "z": 25958}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 272395, "z": 26316}, {"x": 273721, "z": 29669}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278255, "z": 33490}, {"x": 274097, "z": 30494}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278255, "z": 33490}, {"x": 279958, "z": 35512}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 278255, "z": 33490}, {"x": 275538, "z": 30020}, {"x": 274097, "z": 30494}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 279958, "z": 35512}, {"x": 282575, "z": 35385}, {"x": 284118, "z": 34052}, {"x": 287053, "z": 33334}, {"x": 295306, "z": 34300}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 279958, "z": 35512}, {"x": 278913, "z": 35618}, {"x": 273538, "z": 32507}, {"x": 271541, "z": 32799}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 279958, "z": 35512}, {"x": 280246, "z": 36619}, {"x": 279499, "z": 37726}, {"x": 278851, "z": 37855}, {"x": 271814, "z": 34098}, {"x": 271541, "z": 32799}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 295306, "z": 34300}, {"x": 299600, "z": 34890}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 295306, "z": 34300}, {"x": 295106, "z": 36385}, {"x": 290145, "z": 41708}, {"x": 296125, "z": 48130}, {"x": 299600, "z": 51139}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 169674, "z": 400}, {"x": 169927, "z": 2110}, {"x": 169171, "z": 2473}, {"x": 168131, "z": 400}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 164167, "z": 400}, {"x": 164120, "z": 2471}, {"x": 162375, "z": 5032}, {"x": 162117, "z": 6313}, {"x": 162928, "z": 8371}, {"x": 163741, "z": 13783}, {"x": 163199, "z": 14161}, {"x": 162170, "z": 14000}, {"x": 161467, "z": 12429}, {"x": 154916, "z": 6097}, {"x": 153454, "z": 3715}, {"x": 148911, "z": 2190}, {"x": 147659, "z": 400}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 127073, "z": 400}, {"x": 131961, "z": 6665}, {"x": 136671, "z": 18736}, {"x": 144738, "z": 34595}, {"x": 145376, "z": 38916}, {"x": 144243, "z": 43296}, {"x": 143276, "z": 43350}, {"x": 143438, "z": 39521}, {"x": 142355, "z": 36653}, {"x": 140027, "z": 32701}, {"x": 129253, "z": 19819}, {"x": 126438, "z": 14189}, {"x": 122161, "z": 10347}, {"x": 121187, "z": 10184}, {"x": 120807, "z": 10996}, {"x": 123298, "z": 15218}, {"x": 123298, "z": 20901}, {"x": 124814, "z": 27884}, {"x": 124677, "z": 28594}, {"x": 124075, "z": 28918}, {"x": 123345, "z": 28749}, {"x": 119617, "z": 21442}, {"x": 117289, "z": 19386}, {"x": 112849, "z": 11266}, {"x": 109547, "z": 8993}, {"x": 104782, "z": 5880}, {"x": 100235, "z": 4365}, {"x": 95518, "z": 4498}, {"x": 90206, "z": 6331}, {"x": 85141, "z": 9607}, {"x": 76986, "z": 17119}, {"x": 73575, "z": 21963}, {"x": 69588, "z": 30648}, {"x": 56247, "z": 47280}, {"x": 48807, "z": 57417}, {"x": 46989, "z": 59650}, {"x": 44437, "z": 61545}, {"x": 33421, "z": 80332}, {"x": 27124, "z": 88970}, {"x": 26266, "z": 88874}, {"x": 25337, "z": 86052}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 25337, "z": 86052}, {"x": 23825, "z": 84194}, {"x": 18622, "z": 83759}, {"x": 17793, "z": 84639}, {"x": 15190, "z": 93571}, {"x": 15046, "z": 98911}, {"x": 13421, "z": 104377}, {"x": 12944, "z": 108816}, {"x": 11471, "z": 111671}, {"x": 11271, "z": 113357}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 25337, "z": 86052}, {"x": 23991, "z": 80660}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 295932, "z": 400}, {"x": 295872, "z": 4900}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 295872, "z": 4900}, {"x": 296223, "z": 8384}, {"x": 296022, "z": 15616}, {"x": 294593, "z": 14894}, {"x": 286218, "z": 13471}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 272893, "z": 8992}, {"x": 270766, "z": 10186}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 272893, "z": 8992}, {"x": 275285, "z": 7266}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 270766, "z": 10186}, {"x": 269611, "z": 10477}, {"x": 264409, "z": 8958}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 275285, "z": 7266}, {"x": 272988, "z": 8382}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 264409, "z": 8958}, {"x": 258070, "z": 7283}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 264409, "z": 8958}, {"x": 265059, "z": 5587}, {"x": 266959, "z": 5748}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 258070, "z": 7283}, {"x": 254913, "z": 4745}, {"x": 252808, "z": 1811}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 258070, "z": 7283}, {"x": 256384, "z": 8510}, {"x": 254639, "z": 11179}, {"x": 257303, "z": 13219}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 252808, "z": 1811}, {"x": 250419, "z": 400}, {"x": 244126, "z": 8215}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 252808, "z": 1811}, {"x": 250949, "z": 4576}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 234882, "z": 36093}, {"x": 234219, "z": 35398}, {"x": 233370, "z": 32537}, {"x": 232515, "z": 31837}, {"x": 230346, "z": 31799}, {"x": 228569, "z": 29464}, {"x": 227249, "z": 28685}, {"x": 225501, "z": 28177}, {"x": 223805, "z": 29507}, {"x": 222817, "z": 31583}, {"x": 220966, "z": 31596}, {"x": 220154, "z": 31127}, {"x": 218401, "z": 28295}, {"x": 217367, "z": 25046}, {"x": 216255, "z": 24225}, {"x": 213596, "z": 25528}, {"x": 203414, "z": 20491}, {"x": 202306, "z": 19074}, {"x": 199285, "z": 18070}, {"x": 197614, "z": 16998}, {"x": 197034, "z": 15079}, {"x": 197208, "z": 12799}, {"x": 197684, "z": 12193}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 234882, "z": 36093}, {"x": 231139, "z": 38477}, {"x": 227774, "z": 44552}, {"x": 227138, "z": 48301}, {"x": 227400, "z": 51282}, {"x": 224661, "z": 58649}, {"x": 220316, "z": 67769}, {"x": 218451, "z": 73812}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 197684, "z": 12193}, {"x": 198335, "z": 12147}, {"x": 200466, "z": 13685}, {"x": 203276, "z": 13933}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 197684, "z": 12193}, {"x": 195522, "z": 11964}, {"x": 191096, "z": 10286}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 203276, "z": 13933}, {"x": 209649, "z": 13081}, {"x": 217139, "z": 10175}, {"x": 221354, "z": 10387}, {"x": 227407, "z": 8834}, {"x": 229083, "z": 6273}, {"x": 233237, "z": 2298}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 203276, "z": 13933}, {"x": 200485, "z": 10882}, {"x": 195017, "z": 6710}, {"x": 193956, "z": 1424}, {"x": 193643, "z": 899}, {"x": 191760, "z": 708}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 191096, "z": 10286}, {"x": 190014, "z": 10094}, {"x": 188912, "z": 8477}, {"x": 190014, "z": 6184}, {"x": 191215, "z": 5164}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 191096, "z": 10286}, {"x": 191215, "z": 5164}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 233237, "z": 2298}, {"x": 234477, "z": 452}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 233237, "z": 2298}, {"x": 235004, "z": 3949}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 234477, "z": 452}, {"x": 223717, "z": 2363}, {"x": 222323, "z": 2030}, {"x": 221679, "z": 400}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 259063, "z": 150771}, {"x": 268389, "z": 160076}, {"x": 275402, "z": 164336}, {"x": 278637, "z": 165713}, {"x": 282448, "z": 168884}, {"x": 286291, "z": 169780}, {"x": 290197, "z": 171510}, {"x": 291446, "z": 172662}, {"x": 292343, "z": 174488}, {"x": 299600, "z": 179401}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 295914, "z": 5318}, {"x": 299600, "z": 4356}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 295914, "z": 5318}, {"x": 295300, "z": 4616}, {"x": 295097, "z": 3201}, {"x": 293318, "z": 2191}, {"x": 293197, "z": 1666}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 242864, "z": 4940}, {"x": 245888, "z": 400}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 268080, "z": 33213}, {"x": 269268, "z": 33990}, {"x": 271323, "z": 32973}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 271323, "z": 32973}, {"x": 269665, "z": 34574}, {"x": 269591, "z": 35164}, {"x": 274715, "z": 38004}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 241642, "z": 400}, {"x": 240205, "z": 5647}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 248554, "z": 7708}, {"x": 250635, "z": 4987}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 293460, "z": 8867}, {"x": 291308, "z": 10723}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 268909, "z": 13128}, {"x": 268083, "z": 13556}, {"x": 267756, "z": 13235}, {"x": 268361, "z": 12651}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 268909, "z": 13128}, {"x": 264864, "z": 14361}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 268909, "z": 13128}, {"x": 270228, "z": 11404}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 268909, "z": 13128}, {"x": 267167, "z": 15889}, {"x": 264864, "z": 14361}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 268361, "z": 12651}, {"x": 270228, "z": 11404}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 156378, "z": 222396}, {"x": 158142, "z": 222426}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284318, "z": 25059}, {"x": 283275, "z": 23558}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 208392, "z": 132518}, {"x": 206293, "z": 131013}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 143080, "z": 192530}, {"x": 144712, "z": 191645}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 256590, "z": 140406}, {"x": 251608, "z": 140725}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 209338, "z": 128242}, {"x": 210329, "z": 129241}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 286965, "z": 3750}, {"x": 287515, "z": 2112}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 284983, "z": 5790}, {"x": 285697, "z": 5627}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 286567, "z": 23462}, {"x": 287678, "z": 23929}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 279961, "z": 25204}, {"x": 278701, "z": 25355}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 274147, "z": 26155}, {"x": 275273, "z": 26854}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 276811, "z": 29210}, {"x": 275538, "z": 30020}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 293002, "z": 20672}, {"x": 291647, "z": 21039}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 289290, "z": 20806}, {"x": 289212, "z": 21231}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 295410, "z": 19460}, {"x": 294150, "z": 18809}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 280966, "z": 18890}, {"x": 279048, "z": 17999}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 258180, "z": 8067}, {"x": 258070, "z": 7283}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 276580, "z": 34180}, {"x": 278255, "z": 33490}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 274949, "z": 35742}, {"x": 274715, "z": 38004}]} },
+    { "tick": 0, "command": {"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [{"x": 272269, "z": 36607}, {"x": 271814, "z": 34098}]} }
+  ]
+}

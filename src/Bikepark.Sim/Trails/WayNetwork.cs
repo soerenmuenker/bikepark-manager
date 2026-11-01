@@ -94,9 +94,11 @@ public sealed class WayNetwork
         FindCrossings();
         FindTowCrossings();
 
-        var baseHub = hubs.FirstOrDefault(h => h.Kind == HubKind.Parking) ?? hubs.FirstOrDefault(h => h.Kind == HubKind.ValleyStation);
+        // Guests arrive at a parking lot; else on a scenario's real road, however many lifts the player adds; else at a lift.
+        bool onRoad = ways.Any(w => w.Kind == WayKind.AccessPath && w.Built && w.Origin == WayOrigin.Scenario);
+        var baseHub = hubs.FirstOrDefault(h => h.Kind == HubKind.Parking) ?? (onRoad ? null : hubs.FirstOrDefault(h => h.Kind == HubKind.ValleyStation));
         BaseHub = baseHub;
-        BaseWay = baseHub is null ? ways.FirstOrDefault(w => w.Kind == WayKind.AccessPath && w.Built) : null;
+        BaseWay = baseHub is null ? ways.FirstOrDefault(w => w.Kind == WayKind.AccessPath && w.Built && (!onRoad || w.Origin == WayOrigin.Scenario)) : null;
         BaseNode = baseHub is not null ? HubNode(baseHub.Id) : BaseWay is null ? -1 : NodeAt(BaseWay.Id, 0);
     }
 

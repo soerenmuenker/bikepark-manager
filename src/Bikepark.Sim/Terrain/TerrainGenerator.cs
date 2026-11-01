@@ -8,6 +8,7 @@ namespace Bikepark.Sim.Terrain;
 /// settings and seed give a bit-identical terrain everywhere. Passes:
 /// <list type="number">
 ///   <item>shape: main peak + radiating ridges + noise, rescaled to exactly the configured relief;</item>
+///   <item>or, with a <see cref="TerrainHeightmap"/>: its real heights, upsampled to 1 m, plus fine detail;</item>
 ///   <item>layers: slope, rock, tree density (below the tree line), roots. The water layer is reserved for
 ///         later features (ponds, streams) and is generated empty.</item>
 /// </list>
@@ -27,7 +28,7 @@ public static class TerrainGenerator
         var rng = SimRandom.FromSeed(seed, stream: 0x7E44A1);
         var seeds = new NoiseSeeds(rng);
 
-        int[] heights = Shape(settings, n, rng, seeds);
+        int[] heights = settings.Heightmap is { } map ? FromHeightmap(map, settings.RoughnessPermille, n, seeds) : Shape(settings, n, rng, seeds);
         ushort[] slopes = ComputeSlopes(heights, n);
         var (trees, rock, roots) = Layers(settings, heights, slopes, n, seeds);
         var water = new byte[n * n];
@@ -126,6 +127,49 @@ public static class TerrainGenerator
         return heights;
     }
 
+    /// <summary>Catmull-Rom through the samples (so the real heights are kept at every sample), then the detail noise.</summary>
+    private static int[] FromHeightmap(TerrainHeightmap map, int roughnessPermille, int n, NoiseSeeds seeds)
+    {
+        int[] source = map.DecodeHeights();
+        int m = map.Samples, cell = map.CellMeters;
+        var heights = new int[n * n];
+        var row = new long[m];
+        for (int z = 0; z < n; z++)
+        {
+            int zi = Math.Min(z / cell, m - 2);
+            long zt = (z - zi * cell) * One / cell;
+            int z0 = Math.Max(zi - 1, 0), z2 = zi + 1, z3 = Math.Min(zi + 2, m - 1);
+            for (int c = 0; c < m; c++)
+                row[c] = CatmullRom(source[z0 * m + c], source[zi * m + c], source[z2 * m + c], source[z3 * m + c], zt);
+            for (int x = 0; x < n; x++)
+            {
+                int xi = Math.Min(x / cell, m - 2);
+                long xt = (x - xi * cell) * One / cell;
+                long h = CatmullRom(row[Math.Max(xi - 1, 0)], row[xi], row[xi + 1], row[Math.Min(xi + 2, m - 1)], xt);
+                long detail = (IntNoise.Fbm(x, z, 60, 4, seeds.Detail) - OneHalf) * roughnessPermille * 10 / 3 >> Shift;
+                heights[z * n + x] = (int)Math.Max(0, h + detail);
+            }
+        }
+        return heights;
+    }
+
+    private static long CatmullRom(long p0, long p1, long p2, long p3, long t)
+    {
+        long t2 = Mul(t, t), t3 = Mul(t2, t);
+        return p1 + ((p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3 >> (Shift + 1));
+    }
+
+    /// <summary>A land cover mask at one 1 m sample, 0..One.</summary>
+    private static long MaskAt(byte[] mask, TerrainHeightmap map, int x, int z)
+    {
+        int m = map.Samples, cell = map.CellMeters;
+        int xi = Math.Min(x / cell, m - 2), zi = Math.Min(z / cell, m - 2);
+        long xt = (x - xi * cell) * One / cell, zt = (z - zi * cell) * One / cell;
+        long top = Lerp(mask[zi * m + xi], mask[zi * m + xi + 1], xt);
+        long bottom = Lerp(mask[(zi + 1) * m + xi], mask[(zi + 1) * m + xi + 1], xt);
+        return Lerp(top * One / 255, bottom * One / 255, zt);
+    }
+
     private static (long Ux, long Uz) RandomDirection(SimRandom rng)
     {
         while (true)
@@ -167,17 +211,23 @@ public static class TerrainGenerator
         var rock = new byte[count];
         var roots = new byte[count];
 
+        var map = s.Heightmap;
+        byte[]? forestMask = map?.DecodeForest(), rockMask = map?.DecodeRock();
+
         // Forest patches: pick the noise threshold so that ForestCoverage of the map lies inside a patch.
+        // Real terrain: the mask is the forest, the noise only frays its edge.
         var patch = new long[count];
         var histogram = new int[1 << 10];
         for (int z = 0; z < n; z++)
             for (int x = 0; x < n; x++)
             {
-                long v = IntNoise.Fbm(x, z, 160, 4, seeds.Forest);
+                long v = forestMask is null
+                    ? IntNoise.Fbm(x, z, 160, 4, seeds.Forest)
+                    : Clamp01(MaskAt(forestMask, map!, x, z) + (IntNoise.Fbm(x, z, 30, 3, seeds.Forest) - OneHalf) / 2);
                 patch[z * n + x] = v;
-                histogram[(int)(v >> (Shift - 10))]++;
+                if (forestMask is null) histogram[(int)(v >> (Shift - 10))]++;
             }
-        long threshold = Quantile(histogram, count, 1000 - s.ForestCoveragePermille) << (Shift - 10);
+        long threshold = forestMask is null ? Quantile(histogram, count, 1000 - s.ForestCoveragePermille) << (Shift - 10) : OneHalf;
         long patchEdge = One / 20;
 
         for (int z = 0; z < n; z++)
@@ -198,6 +248,7 @@ public static class TerrainGenerator
                     outcrop = Math.Clamp((o - One * 68 / 100) * 255 / (One * 12 / 100), 0, 255);
                 }
                 long r = Math.Max(steepRock, Math.Max(summitRock, outcrop));
+                if (rockMask is not null) r = Math.Max(r, MaskAt(rockMask, map!, x, z) * 255 >> Shift);
                 rock[i] = (byte)r;
 
                 // Trees: inside forest patches, below a jittered tree line, not too steep.
