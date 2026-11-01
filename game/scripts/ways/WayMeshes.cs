@@ -52,6 +52,7 @@ internal static class WayMeshes
 
     // Ways use an unshaded material (lit ribbons rendered dark), so colors are given in sRGB and converted to linear.
     public static readonly Color Gravel = new Color(0.78f, 0.78f, 0.79f).SrgbToLinear(); // light rock grey
+    public static readonly Color Tarmac = new Color(0.27f, 0.28f, 0.30f).SrgbToLinear();
     public static readonly Color Dirt = new Color(0.45f, 0.31f, 0.19f).SrgbToLinear(); // wood earth tone
 
     /// <param name="followGround">Edges sit on the terrain (trails); otherwise on the way's own graded height (paths).</param>

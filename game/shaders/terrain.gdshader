@@ -73,13 +73,13 @@ void fragment() {
 		vec3 forest_floor = vec3(0.24, 0.30, 0.14);
 		vec3 roots = vec3(0.40, 0.29, 0.17);
 		vec3 rock = vec3(0.56, 0.55, 0.52);
-		vec3 water = vec3(0.18, 0.32, 0.42);
+		vec3 water = vec3(0.20, 0.17, 0.12); // the bed and wet bank: SceneryView draws the water surface on top
 
 		c = mix(grass, meadow, smoothstep(tree_line_m - 30.0, tree_line_m + 20.0, world_pos.y));
 		c = mix(c, forest_floor, layers.r);
 		c = mix(c, roots, layers.b * 0.8);
 		c = mix(c, rock, smoothstep(0.25, 0.6, layers.g + (n - 0.5) * 0.25));
-		c = mix(c, water, step(0.04, layers.a));
+		c = mix(c, water, smoothstep(0.02, 0.2, layers.a));
 		c *= 0.85 + 0.3 * n;
 	}
 

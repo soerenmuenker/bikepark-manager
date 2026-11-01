@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Turns a square of the real world into a map: terrain content (data/terrain/<id>.json) and, with --scenario, a career
-scenario (data/scenarios/<id>.json) whose only infrastructure is what really exists: major gravel routes, lifts, parking.
+scenario (data/scenarios/<id>.json) whose only infrastructure is what really exists: major gravel routes, road links, lifts, parking, water, buildings, streets.
 
 Elevation: AWS open terrain tiles (Terrarium PNG, no key). Everything else: OpenStreetMap via Overpass.
 Python stdlib + curl. Downloads are cached in out/terrain-import/, so re-runs are cheap. The browser tool (server.py) uses this too.
@@ -14,8 +14,10 @@ junction nearest to it (a real parking lot wins). The map's +X is east, +Z is so
 import argparse
 import base64
 import hashlib
+import heapq
 import json
 import math
+import re
 import struct
 import subprocess
 import sys
@@ -33,6 +35,8 @@ ZOOM = 14
 SMOOTH_METERS = 10  # blur radius per pass
 MAX_WAY_METERS = 3500  # TrailRules.MaxLengthMeters is 4000
 GAP_METERS = 20  # track ends this close to another track join it
+MIN_LAKE_M2 = 100
+MAX_PARKING = 3  # a village has dozens; each would pull its road into the riders' network
 LINK_METERS = 60  # a real lift or parking lot further from any route stays out: it couldn't be reached
 START_MONEY_CENTS = 7_500_000
 M_PER_DEG_LAT = 111_320.0
@@ -264,7 +268,7 @@ class Square:
         return f"{s},{w},{n},{e}"
 
 
-def write_terrain(square, cell, map_id):
+def write_terrain(square, cell, map_id, scenery=None):
     """Fetches heights and land cover, writes data/terrain/<id>.json. Returns a one-line summary."""
     size, n = square.size, square.size // cell + 1
     print(f"Elevation for {n}x{n} samples around {square.lat:.5f}, {square.lon:.5f}")
@@ -303,11 +307,14 @@ def write_terrain(square, cell, map_id):
         "origin": f"{square.lat:.6f},{square.lon:.6f}",
         "attribution": ATTRIBUTION,
     }
+    if scenery:
+        out["scenery"] = scenery
     path = ROOT / "data" / "terrain" / f"{map_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, indent=1) + "\n")
+    counts = "" if not scenery else ", " + ", ".join(f"{len(v)} {k}" for k, v in scenery.items())
     summary = (f"{path.relative_to(ROOT)}: {path.stat().st_size // 1024} KB, {low} .. {max(meters):.0f} m, "
-               f"forest {sum(1 for v in forest if v) * 100 // (n * n)} %, rock {sum(1 for v in rock if v) * 100 // (n * n)} %")
+               f"forest {sum(1 for v in forest if v) * 100 // (n * n)} %, rock {sum(1 for v in rock if v) * 100 // (n * n)} %{counts}")
     print(summary)
     return elevation, summary
 
@@ -315,23 +322,37 @@ def write_terrain(square, cell, map_id):
 # ---------------------------------------------------------------- real infrastructure
 
 
-def is_major(tags):
-    """Roads and tracks a car or tractor can use; hiking paths and overgrown grade 4-5 tracks are not major routes."""
-    highway = tags.get("highway")
-    if highway in ("tertiary", "unclassified", "residential", "service"):
-        return True
+ROAD_WIDTH_CM = {"motorway": 1100, "trunk": 900, "primary": 750, "secondary": 650, "tertiary": 550, "unclassified": 450,
+                 "residential": 450, "living_street": 400, "service": 300}
+PAVED = ("paved", "asphalt", "concrete", "concrete:plates", "paving_stones", "sett", "cobblestone")
+UNPAVED = ("gravel", "fine_gravel", "compacted", "unpaved", "dirt", "ground", "pebblestone")
+
+
+def road_kind(tags):
+    """"gravel", "tarmac" or None: gravel tracks a tractor can use and roads; hiking paths and overgrown tracks are neither."""
+    highway = tags.get("highway", "").replace("_link", "")
+    surface = tags.get("surface", "")
+    if highway in ROAD_WIDTH_CM:
+        return "gravel" if surface in UNPAVED else "tarmac"
     if highway != "track":
-        return False
+        return None
+    if surface in PAVED or tags.get("tracktype") == "grade1":
+        return "tarmac"
     grade = tags.get("tracktype")
     if grade:
-        return grade in ("grade1", "grade2", "grade3")
-    return tags.get("surface") in ("gravel", "fine_gravel", "compacted", "paved", "asphalt", "concrete", "unpaved")
+        return "gravel" if grade in ("grade2", "grade3") else None
+    return "gravel" if surface in UNPAVED and surface not in ("dirt", "ground") else None
+
+
+def is_major(tags):
+    return road_kind(tags) is not None
 
 
 def fetch_infrastructure(square):
     box = square.box()
     return overpass(f'(way["highway"]({box});way["aerialway"]({box});way["amenity"="parking"]({box});'
-                    f'node["amenity"="parking"]({box}););out body geom;')["elements"]
+                    f'node["amenity"="parking"]({box});way["waterway"~"^(river|stream|canal)$"]({box});'
+                    f'way["natural"="water"]({box});relation["natural"="water"]({box});way["building"]({box}););out body geom;')["elements"]
 
 
 def clip_runs(nodes, pts, size):
@@ -383,17 +404,19 @@ def road_network(elements, square):
     for el in elements:
         if el["type"] == "way" and is_major(el.get("tags", {})) and el.get("geometry"):
             pts = [square.xz(p["lat"], p["lon"]) for p in el["geometry"]]
-            runs += clip_runs(el["nodes"], pts, square.size)
+            tags = el["tags"]
+            width = ROAD_WIDTH_CM.get(tags.get("highway", "").replace("_link", ""), 350)
+            runs += [(r, road_kind(tags), width) for r in clip_runs(el["nodes"], pts, square.size)]
 
     uses = {}
-    for run in runs:
+    for run, _, _ in runs:
         for i, (node, _) in enumerate(run):
             if node is not None:
                 uses[node] = uses.get(node, 0) + (2 if 0 < i < len(run) - 1 else 1)
 
     # Split at every junction, so ways only ever meet at their ends.
     edges, border = [], -1
-    for run in runs:
+    for run, kind, width in runs:
         piece = [run[0]]
         for item in run[1:]:
             piece.append(item)
@@ -403,7 +426,7 @@ def road_network(elements, square):
                     if node is None:
                         node, border = border, border - 1
                     ends.append(node)
-                edges.append([ends[0], ends[1], [p for _, p in piece]])
+                edges.append([ends[0], ends[1], [p for _, p in piece], kind, width])
                 piece = [item]
 
     # Mappers often stop a track a few meters short of another one: such an end joins it.
@@ -443,7 +466,7 @@ def road_network(elements, square):
                 joined = other[1]
             else:
                 joined, border = border, border - 1
-                edges.append([joined, other[1], [q] + pts[i + 1:]])
+                edges.append([joined, other[1], [q] + pts[i + 1:], other[3], other[4]])
                 other[1], other[2] = joined, pts[:i + 1] + [q]
             e[end_index] = joined
             if end_index == 0:
@@ -483,7 +506,7 @@ def road_network(elements, square):
             at.setdefault(e[0], []).append(e)
             at.setdefault(e[1], []).append(e)
         for node, here in at.items():
-            if len(here) != 2 or here[0] is here[1]:
+            if len(here) != 2 or here[0] is here[1] or here[0][3] != here[1][3]:
                 continue
             a, b = here
             if a[1] != node:
@@ -497,49 +520,95 @@ def road_network(elements, square):
 
     # Rings can't attach both ends at one spot, and way length is limited: cut them in the middle.
     out = []
-    for a, b, pts in edges:
+    for a, b, pts, kind, width in edges:
         length = sum(math.dist(p, q) for p, q in zip(pts, pts[1:]))
         if length < 15:
             continue
         if a == b or length > MAX_WAY_METERS:
             mid = len(pts) // 2
-            out += [[a, border, pts[:mid + 1]], [border, b, pts[mid:]]]
+            out += [[a, border, pts[:mid + 1], kind, width], [border, b, pts[mid:], kind, width]]
             border -= 1
         else:
-            out.append([a, b, pts])
+            out.append([a, b, pts, kind, width])
     return out
+
+
+def nearest_node(edges, arrival):
+    ends = {}
+    for e in edges:
+        ends.setdefault(e[0], e[2][0])
+        ends.setdefault(e[1], e[2][-1])
+    if not ends:
+        return None, None
+    start = min(ends, key=lambda n: math.dist(ends[n], arrival))
+    return start, ends[start]
+
+
+def split_roads(edges, arrival, hubs=()):
+    """Gravel stays. Of the roads, only those on the shortest link from the arrival to some gravel, or to a real lift or parking
+    lot (hubs), become rideable ways; the rest are scenery streets. Returns (way edges, street edges)."""
+    start, _ = nearest_node(edges, arrival)
+    if start is None:
+        return [], []
+    links = {}
+    for i, e in enumerate(edges):
+        length = sum(math.dist(p, q) for p, q in zip(e[2], e[2][1:]))
+        links.setdefault(e[0], []).append((length, e[1], i))
+        links.setdefault(e[1], []).append((length, e[0], i))
+    dist, came, heap = {start: 0.0}, {}, [(0.0, 0, start)]
+    tie = 0
+    while heap:
+        d, _, node = heapq.heappop(heap)
+        if d > dist.get(node, 1e18):
+            continue
+        for length, other, i in links[node]:
+            if d + length < dist.get(other, 1e18):
+                dist[other] = d + length
+                came[other] = (node, i)
+                tie += 1
+                heapq.heappush(heap, (d + length, tie, other))
+    keep = {i for i, e in enumerate(edges) if e[3] == "gravel"}
+    wanted = [n for e in edges if e[3] == "gravel" for n in (e[0], e[1])]
+    for hub in hubs:
+        close = [(min(math.dist(hub, p) for p in dense(e[2])), i) for i, e in enumerate(edges)]
+        if close and min(close)[0] <= LINK_METERS:
+            i = min(close)[1]
+            keep.add(i)
+            wanted += [edges[i][0], edges[i][1]]
+    for node in wanted:
+        while node in came:
+            node, i = came[node]
+            keep.add(i)
+    return [e for i, e in enumerate(edges) if i in keep], [e for i, e in enumerate(edges) if i not in keep]
 
 
 def order_from(edges, arrival):
     """All edges, breadth first from the junction nearest to arrival; routes not connected to it come last (they stand alone
-    until the player links them). Returns (start point, ordered edges, how many stand alone)."""
-    ends = {}
-    for a, b, pts in edges:
-        ends.setdefault(a, pts[0])
-        ends.setdefault(b, pts[-1])
-    if not ends:
+    until the player links them). Returns (start point, ordered (points, kind), how many stand alone)."""
+    start, start_point = nearest_node(edges, arrival)
+    if start is None:
         return None, [], 0
-    start = min(ends, key=lambda n: math.dist(ends[n], arrival))
+    roots = [start] + [n for e in edges for n in (e[0], e[1])]
     ordered, seen, used, connected = [], set(), set(), 0
-    for root in [start] + list(ends):
+    for root in roots:
         if root in seen:
             continue
         seen.add(root)
         queue = [root]
         while queue:
             node = queue.pop(0)
-            for i, (a, b, pts) in enumerate(edges):
-                if i in used or node not in (a, b):
+            for i, e in enumerate(edges):
+                if i in used or node not in (e[0], e[1]):
                     continue
                 used.add(i)
-                ordered.append(pts if a == node else pts[::-1])
-                other = b if a == node else a
+                ordered.append((e[2] if e[0] == node else e[2][::-1], e[3]))
+                other = e[1] if e[0] == node else e[0]
                 if other not in seen:
                     seen.add(other)
                     queue.append(other)
         if root == start:
             connected = len(ordered)
-    return ends[start], ordered, len(ordered) - connected
+    return start_point, ordered, len(ordered) - connected
 
 
 LIFT_TYPES = {"t-bar": "tbar", "j-bar": "tbar", "platter": "tbar", "drag_lift": "tbar", "rope_tow": "tbar", "magic_carpet": "tbar",
@@ -560,14 +629,121 @@ def real_structures(elements, square, elevation):
             if on_map(valley) and on_map(mountain):
                 lifts.append({"typeId": LIFT_TYPES[tags["aerialway"]], "name": tags.get("name") or "Old lift",
                               "valley": valley, "mountain": mountain})
-        elif tags.get("amenity") == "parking":
+        elif tags.get("amenity") == "parking" and tags.get("parking") not in ("underground", "multi-storey", "rooftop"):
             pts = [square.xz(p["lat"], p["lon"]) for p in el["geometry"]] if el.get("geometry") else [square.xz(el["lat"], el["lon"])]
             center = (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
             if on_map(center):
                 capacity = tags.get("capacity", "")
-                spaces = int(capacity) if capacity.isdigit() else 30
+                spaces = int(capacity) if capacity.isdigit() else (int(area(pts) / 25) if len(pts) >= 3 else 20)
                 parking.append({"name": tags.get("name") or "Parking", "center": center, "spaces": max(10, min(200, spaces))})
     return lifts, parking
+
+
+def clip_polygon(pts, size):
+    """Sutherland-Hodgman against the map."""
+    for axis, edge, keep_low in ((0, 0.0, False), (0, float(size), True), (1, 0.0, False), (1, float(size), True)):
+        out = []
+        for a, b in zip(pts, pts[1:] + pts[:1]):
+            a_in = a[axis] <= edge if keep_low else a[axis] >= edge
+            b_in = b[axis] <= edge if keep_low else b[axis] >= edge
+            if a_in:
+                out.append(a)
+            if a_in != b_in:
+                t = (edge - a[axis]) / (b[axis] - a[axis])
+                out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+        pts = out
+        if not pts:
+            break
+    return pts
+
+
+def area(pts):
+    return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(pts, pts[1:] + pts[:1]))) / 2
+
+
+def building_box(pts):
+    """Smallest rectangle along one of the outline's own edges: centre, half length, half width, axis."""
+    best = None
+    for a, b in zip(pts, pts[1:] + pts[:1]):
+        run = math.dist(a, b)
+        if run < 0.5:
+            continue
+        ux, uz = (b[0] - a[0]) / run, (b[1] - a[1]) / run
+        us = [p[0] * ux + p[1] * uz for p in pts]
+        vs = [p[1] * ux - p[0] * uz for p in pts]
+        size = (max(us) - min(us)) * (max(vs) - min(vs))
+        if best is None or size < best[0]:
+            mu, mv = (max(us) + min(us)) / 2, (max(vs) + min(vs)) / 2
+            best = (size, mu * ux - mv * uz, mu * uz + mv * ux, (max(us) - min(us)) / 2, (max(vs) - min(vs)) / 2, ux, uz)
+    return best
+
+
+def number(text):
+    match = re.match(r"\s*([0-9.]+)", text or "")
+    try:
+        return float(match.group(1)) if match else None
+    except ValueError:
+        return None
+
+
+def scenery_from(elements, square, street_edges):
+    """The scenery block of the terrain file: what stands here, nothing made up."""
+    size = square.size
+    xz = lambda ring: [square.xz(*p) for p in ring]
+    streams, lakes, buildings = [], [], []
+    for el in elements:
+        tags = el.get("tags", {})
+        if el["type"] == "way" and tags.get("waterway") in ("river", "stream", "canal") and el.get("geometry"):
+            if tags.get("tunnel") or tags.get("culvert") or tags.get("location") == "underground":
+                continue
+            pts = [square.xz(p["lat"], p["lon"]) for p in el["geometry"]]
+            width = number(tags.get("width"))
+            width_cm = round(width * 100) if width else (150 if tags["waterway"] == "stream" else 800)
+            for run in clip_runs(el["nodes"], pts, size):
+                line = simplify([p for _, p in run], 2.0)
+                streams.append({"points": [cm(p) for p in line], "widthCm": max(60, min(4000, width_cm))})
+        elif tags.get("natural") == "water" and tags.get("water") not in ("river", "stream", "canal"):
+            outer, inner = rings_of(el)
+            for ring in outer:
+                ring = ring[:-1] if ring and ring[0] == ring[-1] else ring
+                clipped = clip_polygon(xz(ring), size)
+                if len(clipped) < 3 or area(clipped) < MIN_LAKE_M2:
+                    continue
+                lake = {"outline": [cm(p) for p in simplify_ring(clipped)]}
+                holes = [clip_polygon(xz(h[:-1]), size) for h in inner if len(h) > 3]
+                if holes:
+                    lake["holes"] = [[cm(p) for p in simplify_ring(h)] for h in holes if len(h) >= 3]
+                lakes.append(lake)
+        elif el["type"] == "way" and tags.get("building") and el.get("geometry"):
+            pts = [square.xz(p["lat"], p["lon"]) for p in el["geometry"]][:-1]
+            if len(pts) < 3 or not all(4 <= v <= size - 4 for p in pts for v in p):
+                continue
+            box = building_box(pts)
+            if box is None:
+                continue
+            _, cx, cz, half_len, half_wid, ux, uz = box
+            if half_wid > half_len:  # the roof ridge runs along the long side
+                half_len, half_wid, ux, uz = half_wid, half_len, -uz, ux
+            levels = number(tags.get("building:levels"))
+            height = number(tags.get("height")) or (levels * 3 + 1.5 if levels else 7.5)
+            small = area(pts) < 40 or tags["building"] in ("garage", "garages", "shed", "carport", "roof")
+            if small and not (levels or tags.get("height")):
+                height = 3.0
+            building = {"centerX": round(cx * 100), "centerZ": round(cz * 100), "halfLengthCm": max(100, round(half_len * 100)),
+                        "halfWidthCm": max(100, round(half_wid * 100)), "dirX": round(ux * 1000), "dirZ": round(uz * 1000),
+                        "heightCm": round(height * 100)}
+            if small or tags.get("roof:shape") == "flat":
+                building["flatRoof"] = True
+            buildings.append(building)
+    streets = [{"points": [cm(p) for p in simplify(e[2])], "widthCm": e[4]} for e in street_edges]
+    return {"streams": streams, "lakes": lakes, "buildings": buildings, "streets": streets}
+
+
+def simplify_ring(pts):
+    half = len(pts) // 2
+    if half < 2:
+        return pts
+    return simplify(pts[:half + 1], 1.5)[:-1] + simplify(pts[half:] + pts[:1], 1.5)[:-1]
 
 
 def cm(p):
@@ -591,12 +767,15 @@ def scenario_commands(edges, lifts, parking, arrival, operator, height):
         arrival = parking[0]["center"]
     start, ordered, left_out = order_from(edges, arrival)
     # Guests arrive at the low end of the first path: start with a route that climbs away from the arrival.
-    for i, pts in enumerate(ordered):
+    for i, (pts, _) in enumerate(ordered):
         if pts[0] == start and height(pts[-1]) > height(start):
             ordered.insert(0, ordered.pop(i))
             break
-    ways = [simplify(pts) for pts in ordered]
+    ways = [simplify(pts) for pts, _ in ordered]
     routes = [{"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [cm(p) for p in pts]} for pts in ways]
+    for route, (_, kind) in zip(routes, ordered):
+        if kind == "tarmac":
+            route["surface"] = "tarmac"
     commands, skipped = [], []
 
     def linked(what, name, hub):
@@ -671,7 +850,7 @@ def write_scenario(map_id, title, place, square, arrival, commands, parcels, sta
         b = text.index(end, a) if end else len(text)
         text = text[:a] + new + text[b:]
 
-    menu = {"title": title, "blurb": f"A real place: {place}. Only what really stands there is built: the roads and gravel tracks"
+    menu = {"title": title, "blurb": f"A real place: {place}. Only what really stands there is built: the roads and gravel tracks, houses and water"
             + (" and the lifts" if has_lifts else ", no lifts") + f". 75,000 € to start, enough for a first T-bar, and the first trails are yours to draw.",
             "defaultParkName": f"{title} Bikepark", "credits": ATTRIBUTION}
     between('  "id": "starter_valley"', '  "seed":',
@@ -691,7 +870,7 @@ def write_scenario(map_id, title, place, square, arrival, commands, parcels, sta
         ("The lifts here are the real ones too. " if has_lifts else "There is no lift, so your guests pedal up the tracks and tire quickly. A T-bar (Build menu) is the first thing to save for: you have just enough money to order one on your own land. Link its valley station to a track with a gravel path (P), or nobody can reach it. ")
         + "Guests arrive on the track at the edge of your land.",
         "1. Hire a worker or two in the Crew menu (C). Your crew builds everything you plan.\n2. Press T to draw your first trail: start on a gravel track, wind across the slope and end on a track or lift further down. Press Enter and the crew gets to work.",
-        "Steep real slopes rate trails harder, so use switchbacks. Every trail and feature earns XP. New park levels unlock harder features, more land and bigger lifts. Good luck!"]}
+        "Steep real slopes rate trails harder, so use switchbacks. Trails and paths may cross brooks and rivers: the crew builds a little bridge, which takes wood. Lakes and houses are in the way. Every trail and feature earns XP. New park levels unlock harder features, more land and bigger lifts. Good luck!"]}
     between('  "welcome": {', '  "commands": [', '  "welcome": ' + json.dumps(welcome, ensure_ascii=False, indent=2).replace("\n", "\n  ") + ",\n")
     between('  "commands": [', None,
             '  "commands": [\n' + ",\n".join('    { "tick": 0, "command": ' + json.dumps(c) + " }" for c in commands) + "\n  ]\n}\n")
@@ -700,13 +879,46 @@ def write_scenario(map_id, title, place, square, arrival, commands, parcels, sta
     return path
 
 
+def refresh_scenery(square, cell, map_id):
+    """Rewrites only the terrain file: hand-drawn parcels and commands stay. Roads the scenario already builds are no streets."""
+    text = (ROOT / "data" / "scenarios" / f"{map_id}.json").read_text()
+    built = [[(p["x"] / 100, p["z"] / 100) for p in json.loads(m)] for m in re.findall(r'"points": (\[\{.*?\}\])', text[text.index('"commands": ['):])]
+    near_built = lambda p: any(math.dist(p, q) < 8 for way in built for q in dense(way))
+    elements = fetch_infrastructure(square)
+    streets = []
+    for e in road_network(elements, square):
+        if e[3] == "tarmac" and not all(near_built(p) for p in simplify(e[2])):
+            streets.append(e)
+    return write_terrain(square, cell, map_id, scenery_from(elements, square, streets))[1]
+
+
+def nearest_edge(edges, p):
+    return min((math.dist(p, q) for e in edges for q in dense(e[2])), default=1e18)
+
+
+def dense(way):
+    for a, b in zip(way, way[1:]):
+        steps = max(1, int(math.dist(a, b) / 4))
+        for i in range(steps + 1):
+            yield a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps
+
+
 def make_map(square, cell, map_id, title, place, arrival):
     """Terrain and scenario for this square. Returns what happened, for the command line and the browser tool."""
-    elevation, summary = write_terrain(square, cell, map_id)
     elements = fetch_infrastructure(square)
-    lifts, parking = real_structures(elements, square, elevation)
-    commands, stats = scenario_commands(road_network(elements, square), lifts, parking, arrival, "alpine_lifts",
+    edges = road_network(elements, square)
+    lifts, parking = real_structures(elements, square, Elevation())
+    # A real parking lot is where guests arrive: scenario_commands starts there, so the road links must too.
+    near = [lot["center"] for lot in parking if nearest_edge(edges, lot["center"]) <= LINK_METERS]
+    near = sorted(near, key=lambda p: math.dist(p, arrival))[:MAX_PARKING]
+    left_out = len(parking) - len(near)
+    parking = [lot for p in near for lot in parking if lot["center"] == p]
+    way_edges, street_edges = split_roads(edges, near[0] if near else arrival, [l["valley"] for l in lifts] + near)
+    elevation, summary = write_terrain(square, cell, map_id, scenery_from(elements, square, street_edges))
+    commands, stats = scenario_commands(way_edges, lifts, parking, arrival, "alpine_lifts",
                                         lambda p: elevation.at(*square.latlon(*p)))
+    if left_out:
+        stats["skipped"].append(f"{left_out} parking lots further from the arrival")
     home = stats["arrival"] or arrival
     write_scenario(map_id, title, place, square, home, commands, default_parcels(square.size, home), stats,
                    any(c["type"] == "buildLift" for c in commands))
@@ -726,6 +938,7 @@ def main():
     ap.add_argument("--cell", type=int, default=5)
     ap.add_argument("--id", required=True)
     ap.add_argument("--scenario", action="store_true", help="also write data/scenarios/<id>.json")
+    ap.add_argument("--refresh-scenery", action="store_true", help="rewrite only the terrain file of an existing map (parcels and commands stay)")
     ap.add_argument("--title", help="the map's name (default: the id)")
     ap.add_argument("--place", help="what the place is, for the texts")
     ap.add_argument("--arrival", default=None, help="map meters x,z near where guests should arrive (default: the centre)")
@@ -745,6 +958,9 @@ def main():
 
     east, south = (float(v) for v in args.offset.split(","))
     square = Square(lat - south / M_PER_DEG_LAT, lon + east / (M_PER_DEG_LAT * math.cos(math.radians(lat))), args.size)
+    if args.refresh_scenery:
+        print(refresh_scenery(square, args.cell, args.id))
+        return
     if not args.scenario:
         write_terrain(square, args.cell, args.id)
         return

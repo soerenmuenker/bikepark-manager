@@ -34,6 +34,9 @@ public sealed record TerrainHeightmap
     /// <summary>Credit line the data's licences ask for.</summary>
     public string Attribution { get; set; } = "";
 
+    /// <summary>Water, buildings and streets that really stand here, or null.</summary>
+    public TerrainScenery? Scenery { get; set; }
+
     public List<string> Validate(int sizeMeters)
     {
         var errors = new List<string>();
@@ -41,6 +44,7 @@ public sealed record TerrainHeightmap
         if (Samples is < 2 or > 801) errors.Add("terrain.heightmap.samples must be within 2..801");
         if ((Samples - 1) * CellMeters != sizeMeters) errors.Add("terrain.sizeMeters must equal (heightmap.samples - 1) * cellMeters");
         if (MinElevationCm < 0) errors.Add("terrain.heightmap.minElevationCm must be >= 0");
+        if (Scenery is not null) errors.AddRange(Scenery.Validate());
         return errors;
     }
 

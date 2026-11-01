@@ -213,6 +213,18 @@ public static class StructurePlanner
         if (worst > rules.MaxPadCutFillCm)
             issues.Add(Error("tooUneven", $"{what}: ground too uneven ({worst / 100} m cut or fill, limit {rules.MaxPadCutFillCm / 100} m)."));
 
+        if (grid.Scenery is not null)
+        {
+            bool wet = false, built = false;
+            ForEachSampleInside(grid, pad, (x, z) =>
+            {
+                wet |= grid.SampleAt(x, z).WaterDepthCm > 0;
+                built |= grid.BlockedAt(x * 100L, z * 100L) == TerrainSceneryData.Building;
+            });
+            if (wet) issues.Add(Error("onWater", $"{what} can't stand on water."));
+            if (built) issues.Add(Error("onBuilding", $"{what}: a building stands here."));
+        }
+
         if (state.TerrainEdits.Any(e => PadsOverlap(e.Pad, pad)))
             issues.Add(Error("overlapsStructure", $"{what} overlaps another structure."));
 

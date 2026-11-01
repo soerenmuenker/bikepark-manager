@@ -18,6 +18,13 @@ public enum WayOrigin : byte
 /// <summary>A horizontal position in centimeters (X east, Z south).</summary>
 public readonly record struct PointCm(int X, int Z);
 
+/// <summary>What a gravel path is made of: it only changes how it looks (real maps' road links are tarmac).</summary>
+public enum WaySurface : byte
+{
+    Gravel = 0,
+    Tarmac = 1,
+}
+
 /// <summary>Where a way's endpoint attaches to another way: that way's id and the distance along it.</summary>
 public sealed record WayJoin(int WayId, long DistanceCm);
 
@@ -48,6 +55,8 @@ public sealed class Way
     public int EndHubId { get; set; }
 
     public WayOrigin Origin { get; set; }
+
+    public WaySurface Surface { get; set; }
 
     /// <summary>Features placed on a trail (berms, jumps, wood features), sorted by distance. Empty on access paths.</summary>
     public List<TrailFeature> Features { get; set; } = [];

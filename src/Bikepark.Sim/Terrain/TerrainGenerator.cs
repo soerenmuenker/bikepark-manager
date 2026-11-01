@@ -9,6 +9,7 @@ namespace Bikepark.Sim.Terrain;
 /// <list type="number">
 ///   <item>shape: main peak + radiating ridges + noise, rescaled to exactly the configured relief;</item>
 ///   <item>or, with a <see cref="TerrainHeightmap"/>: its real heights, upsampled to 1 m, plus fine detail;</item>
+///   <item>with scenery on it: lakes and streams carved in (<see cref="TerrainSceneryBuilder"/>);</item>
 ///   <item>layers: slope, rock, tree density (below the tree line), roots. The water layer is reserved for
 ///         later features (ponds, streams) and is generated empty.</item>
 /// </list>
@@ -29,11 +30,14 @@ public static class TerrainGenerator
         var seeds = new NoiseSeeds(rng);
 
         int[] heights = settings.Heightmap is { } map ? FromHeightmap(map, settings.RoughnessPermille, n, seeds) : Shape(settings, n, rng, seeds);
+        var water = new byte[n * n];
+        var scenery = settings.Heightmap?.Scenery;
+        var sceneryData = scenery is null ? null : TerrainSceneryBuilder.Carve(scenery, heights, water, n);
         ushort[] slopes = ComputeSlopes(heights, n);
         var (trees, rock, roots) = Layers(settings, heights, slopes, n, seeds);
-        var water = new byte[n * n];
+        if (scenery is not null) TerrainSceneryBuilder.Clear(scenery, sceneryData!, water, trees, rock, roots, n);
 
-        return new TerrainGrid(settings with { Seed = seed }, seed, heights, slopes, trees, rock, roots, water);
+        return new TerrainGrid(settings with { Seed = seed }, seed, heights, slopes, trees, rock, roots, water, sceneryData);
     }
 
     private sealed class NoiseSeeds(SimRandom rng)

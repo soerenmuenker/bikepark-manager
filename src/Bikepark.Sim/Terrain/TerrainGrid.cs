@@ -45,7 +45,7 @@ public sealed class TerrainGrid
 
     internal TerrainGrid(
         TerrainSettings settings, ulong seed, int[] heights, ushort[] slopes,
-        byte[] trees, byte[] rock, byte[] roots, byte[] water)
+        byte[] trees, byte[] rock, byte[] roots, byte[] water, TerrainSceneryData? scenery = null)
     {
         Settings = settings with { };
         Seed = seed;
@@ -62,6 +62,7 @@ public sealed class TerrainGrid
         _rock = rock;
         _roots = roots;
         _water = water;
+        Scenery = scenery;
 
         int min = int.MaxValue, max = int.MinValue, peak = 0;
         for (int i = 0; i < count; i++)
@@ -92,8 +93,14 @@ public sealed class TerrainGrid
     public ReadOnlySpan<byte> TreeDensity => _trees;
     public ReadOnlySpan<byte> Rock => _rock;
     public ReadOnlySpan<byte> Roots => _roots;
-    /// <summary>Water depth in cm. Reserved for later features (ponds, streams); the generator leaves it empty.</summary>
+    /// <summary>Water depth in cm: from the scenery of a real map (<see cref="TerrainScenery"/>), empty on generated maps.</summary>
     public ReadOnlySpan<byte> WaterDepth => _water;
+
+    /// <summary>What the map's scenery left on this grid (null: none).</summary>
+    public TerrainSceneryData? Scenery { get; }
+
+    /// <summary>A lake or a building stands here (<see cref="TerrainSceneryData"/>), 0 = free.</summary>
+    public byte BlockedAt(long xCm, long zCm) => Scenery?.Blocked[NearestIndex(xCm, zCm)] ?? 0;
 
     public int Index(int x, int z) => z * Samples + x;
 
@@ -143,6 +150,7 @@ public sealed class TerrainGrid
         hash.AppendData(_rock);
         hash.AppendData(_roots);
         hash.AppendData(_water);
+        if (Scenery is not null) hash.AppendData(Scenery.Blocked);
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 

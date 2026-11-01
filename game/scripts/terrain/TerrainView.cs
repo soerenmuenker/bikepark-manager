@@ -127,6 +127,7 @@ public partial class TerrainView : Node3D
             if (!a.Heights.Slice(start, length).SequenceEqual(b.Heights.Slice(start, length))) return true;
             if (!a.TreeDensity.Slice(start, length).SequenceEqual(b.TreeDensity.Slice(start, length))) return true;
             if (!a.Rock.Slice(start, length).SequenceEqual(b.Rock.Slice(start, length))) return true;
+            if (!a.WaterDepth.Slice(start, length).SequenceEqual(b.WaterDepth.Slice(start, length))) return true;
         }
         return false;
     }

@@ -38,12 +38,14 @@ public partial class WayView : Node3D
     // Trees: a full refresh when built ways change, otherwise only the chunks around newly felled trees.
     private int _scatterRevision = -1;
     private Rect2? _felledArea;
+    private StandardMaterial3D _bridgeMaterial = null!;
 
     public override void _Ready()
     {
         _host = GetNode<SimHost>(SimHostPath);
         _terrain = GetNode<TerrainView>(TerrainPath);
         _material = WayMeshes.CreateMaterial();
+        _bridgeMaterial = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.9f };
         _blueprintMaterial = WayMeshes.CreateBlueprintMaterial();
         _featureMaterial = FeatureMeshes.CreateMaterial();
         _plannedFeatureMaterial = FeatureMeshes.CreatePlannedMaterial();
@@ -182,13 +184,16 @@ public partial class WayView : Node3D
             }
             if (way.Kind == WayKind.AccessPath)
             {
-                AddRibbon(WayMeshes.Ribbon(grid, g, 3.0f, 0.10f, followGround: false, _ => WayMeshes.Gravel), $"Path {way.Id}");
+                bool tarmac = way.Surface == WaySurface.Tarmac;
+                AddRibbon(WayMeshes.Ribbon(grid, g, tarmac ? 4.5f : 3.0f, 0.10f, followGround: false, i => Planked(g, i, tarmac ? WayMeshes.Tarmac : WayMeshes.Gravel)), $"Path {way.Id}");
+                AddBridges(g, tarmac ? 5.2f : 3.6f);
                 continue;
             }
 
-            AddRibbon(WayMeshes.Ribbon(grid, g, 1.4f, 0.06f, followGround: true, i => DirtAt(state, way, g, i)), way.Name);
+            AddRibbon(WayMeshes.Ribbon(grid, g, 1.4f, 0.06f, followGround: true, i => Planked(g, i, DirtAt(state, way, g, i))), way.Name);
             var stripe = way.IsRideable ? WayMeshes.RatingColor(g.Rating) : ClosedStripe;
             AddRibbon(WayMeshes.Ribbon(grid, g, 0.35f, 0.09f, followGround: true, _ => stripe), way.Name + " stripe");
+            AddBridges(g, 2.0f);
             string status = way.WornOut ? "\nCLOSED · worn out" : way.Repairing ? "\nCLOSED · crew at work" : way.Closed ? "\nCLOSED" : "";
             AddLabel($"{way.Name}\n{g.Rating} · {g.LengthCm / 100} m{status}", WayMeshes.ToWorld(g.PositionAt(0)) + Vector3.Up * 4f,
                 way.IsRideable ? stripe : new Color(0.95f, 0.35f, 0.25f));
@@ -210,6 +215,51 @@ public partial class WayView : Node3D
             _content.AddChild(pole);
             AddLabel("Base", b + Vector3.Up * 9.5f, new Color(0.95f, 0.55f, 0.1f));
         }
+    }
+
+    /// <summary>The ribbon runs over a bridge's deck, so there it shows the boards.</summary>
+    private static Color Planked(WayGeometry g, int i, Color color)
+    {
+        foreach (var bridge in g.Bridges)
+            if (i >= bridge.From - WayGeometry.BridgeBankSamples && i <= bridge.To + WayGeometry.BridgeBankSamples)
+                return i % 2 == 0 ? PlankLight : PlankDark;
+        return color;
+    }
+
+    private static readonly Color PlankLight = new Color(0.56f, 0.40f, 0.25f).SrgbToLinear();
+    private static readonly Color PlankDark = new Color(0.44f, 0.30f, 0.18f).SrgbToLinear();
+
+    /// <summary>Plank decks with rails where the way crosses water, following its (levelled) height from bank to bank.</summary>
+    private void AddBridges(WayGeometry g, float width)
+    {
+        if (g.Bridges.Count == 0) return;
+        var mesh = new FlatMeshBuilder();
+        var wood = new Color(0.46f, 0.32f, 0.20f).SrgbToLinear();
+        var rail = new Color(0.36f, 0.25f, 0.16f).SrgbToLinear();
+        foreach (var bridge in g.Bridges)
+        {
+            int a = Math.Max(0, bridge.From - WayGeometry.BridgeBankSamples), b = Math.Min(g.SampleCount - 1, bridge.To + WayGeometry.BridgeBankSamples);
+            var from = new Vector3(g.Xs[a], g.Ys[a], g.Zs[a]) / 100f;
+            var to = new Vector3(g.Xs[b], g.Ys[b], g.Zs[b]) / 100f;
+            var flat = new Vector3(to.X - from.X, 0, to.Z - from.Z).Normalized();
+            var side = new Vector3(-flat.Z, 0, flat.X);
+            void Bar(float offset, float halfWidth, float y0, float y1, Color color)
+            {
+                Vector3 P(Vector3 end, float s, float y) => end + side * (offset + s * halfWidth) + Vector3.Up * y;
+                var inside = (from + to) / 2 + side * offset + Vector3.Up * (y0 + y1) / 2;
+                var (a0, a1, b0, b1) = (P(from, -1, y0), P(from, 1, y0), P(to, -1, y0), P(to, 1, y0));
+                var (c0, c1, d0, d1) = (P(from, -1, y1), P(from, 1, y1), P(to, -1, y1), P(to, 1, y1));
+                foreach (var (q, r, s, t) in new[] { (c0, c1, d0, d1), (a0, b0, c0, d0), (a1, b1, c1, d1), (a0, a1, c0, c1), (b0, b1, d0, d1) })
+                {
+                    mesh.Triangle(q, r, s, color, inside);
+                    mesh.Triangle(r, t, s, color, inside);
+                }
+            }
+            Bar(0, width / 2, 0.05f, 0.25f, wood);
+            foreach (float edge in new[] { -width / 2, width / 2 })
+                Bar(edge, 0.06f, 0.25f, 1.05f, rail);
+        }
+        _content!.AddChild(new MeshInstance3D { Name = "Bridges", Mesh = mesh.ToMesh(), MaterialOverride = _bridgeMaterial });
     }
 
     /// <summary>A planned way: dashed blueprint; while it is dug, the finished part (from the start) is solid.</summary>

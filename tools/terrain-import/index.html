@@ -21,7 +21,7 @@
 <button id="look">Show what's there</button>
 <h2>2 · What really stands there</h2>
 <div id="facts" class="dim">Nothing loaded yet.</div>
-<div class="key dim"><i style="background:#ffb000"></i>major route &nbsp; <i style="background:#8a97a3"></i>not imported &nbsp; <i style="background:#e0218a"></i>lift</div>
+<div class="key dim"><i style="background:#ffb000"></i>gravel &nbsp; <i style="background:#30343a"></i>road &nbsp; <i style="background:#1e88e5"></i>water &nbsp; <i style="background:#6d4c41"></i>house &nbsp; <i style="background:#e0218a"></i>lift &nbsp; <i style="background:#8a97a3"></i>not imported</div>
 <h2>3 · Where guests arrive</h2>
 <div class="dim">Click a round junction on the map. A real parking lot wins over this.</div>
 <div id="arrivalText" class="dim"></div>
@@ -89,12 +89,17 @@ $('look').onclick = async () => {
     const d = await post('/api/preview', {lat: center.lat, lon: center.lng, size: size()});
     info.clearLayers();
     d.minor.forEach(l => L.polyline(l, {color: '#8a97a3', weight: 1.5, opacity: .8, interactive: false}).addTo(info));
+    d.roads.forEach(l => L.polyline(l, {color: '#30343a', weight: 4, interactive: false}).addTo(info));
     d.routes.forEach(l => L.polyline(l, {color: '#ffb000', weight: 4, interactive: false}).addTo(info));
+    d.lakes.forEach(l => L.polygon(l, {color: '#1e88e5', weight: 1, fillOpacity: .55, interactive: false}).addTo(info));
+    d.streams.forEach(s => L.polyline(s.line, {color: '#1e88e5', weight: s.width > 300 ? 4 : 2, interactive: false}).addTo(info));
+    d.buildings.forEach(b => L.polygon(b, {color: '#6d4c41', weight: 1, fillOpacity: .8, interactive: false}).addTo(info));
     d.lifts.forEach(l => L.polyline(l.line, {color: '#e0218a', weight: 4}).bindTooltip(l.name + ' (' + l.type + ')').addTo(info));
     d.parking.forEach(p => L.marker(p.at, {title: p.name}).addTo(info));
     d.junctions.forEach(j => L.circleMarker(j, {radius: 6, color: '#222', fillColor: '#ffb000', fillOpacity: 1})
       .on('click', e => { L.DomEvent.stopPropagation(e); setArrival(j); }).addTo(info));
-    $('facts').innerHTML = '<ul id="facts"><li>' + d.routes.length + ' major route sections</li><li>' + d.lifts.length + ' lifts</li><li>' + d.parking.length + ' parking lots</li></ul>';
+    $('facts').innerHTML = '<ul id="facts"><li>' + d.routes.length + ' gravel sections</li><li>' + d.lifts.length + ' lifts</li><li>' + d.parking.length + ' parking lots</li><li>' + d.roads.length + ' road sections</li><li>' + d.streams.length + ' streams, ' + d.lakes.length + ' lakes</li><li>' + d.buildings.length + ' buildings</li></ul>'
+      + (d.buildings.length > 1500 ? '<div class="bad">That is a lot of buildings: check the frame rate, or pick a smaller square.</div>' : '');
     if (d.junctions.length) setArrival(d.junctions[0]);
     loaded = true;
   } catch (e) { $('facts').innerHTML = '<span class="bad"></span>'; $('facts').firstChild.textContent = e.message; }

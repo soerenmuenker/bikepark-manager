@@ -11,7 +11,8 @@ namespace Bikepark.Sim.Commands;
 /// and validates.
 /// </summary>
 public sealed record BuildWayCommand(
-    WayKind Kind, string Name, List<PointCm> Points, WayOrigin Origin = WayOrigin.Player, bool Instant = false) : ICommand
+    WayKind Kind, string Name, List<PointCm> Points, WayOrigin Origin = WayOrigin.Player, bool Instant = false,
+    WaySurface Surface = WaySurface.Gravel) : ICommand
 {
     public const int MaxNameLength = 40;
 
@@ -39,6 +40,7 @@ public sealed record BuildWayCommand(
             StartHubId = plan.StartHubId,
             EndHubId = plan.EndHubId,
             Origin = Origin,
+            Surface = Surface,
             Built = Instant || Origin == WayOrigin.Scenario,
         };
         if (!way.Built)
@@ -62,7 +64,7 @@ public sealed record BuildWayCommand(
 
     // Value equality over the points, so identical commands compare equal (records compare lists by reference).
     public bool Equals(BuildWayCommand? other) =>
-        other is not null && Kind == other.Kind && Name == other.Name && Origin == other.Origin && Instant == other.Instant
+        other is not null && Kind == other.Kind && Name == other.Name && Origin == other.Origin && Instant == other.Instant && Surface == other.Surface
         && (ReferenceEquals(Points, other.Points) || (Points is not null && other.Points is not null && Points.SequenceEqual(other.Points)));
 
     public override int GetHashCode() => HashCode.Combine(Kind, Name, Points?.Count ?? -1);

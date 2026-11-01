@@ -86,6 +86,8 @@ internal static class TerrainMapRenderer
             }
         }
 
+        if (grid.Settings.Heightmap?.Scenery is { } scenery)
+            DrawScenery(rgb, n, scenery);
         if (state is not null)
             DrawParcels(rgb, n, state);
         if (network is not null)
@@ -93,6 +95,30 @@ internal static class TerrainMapRenderer
 
         DrawMarker(rgb, n, grid.Peak.X, grid.Peak.Z, new Rgb(0.9, 0.1, 0.1));
         return rgb;
+    }
+
+    private static void DrawScenery(byte[] rgb, int n, TerrainScenery scenery)
+    {
+        foreach (var street in scenery.Streets)
+            for (int i = 1; i < street.Points.Count; i++)
+            {
+                var (a, b) = (street.Points[i - 1], street.Points[i]);
+                long steps = Math.Max(1, Math.Max(Math.Abs(b.X - a.X), Math.Abs(b.Z - a.Z)) / 50);
+                for (long k = 0; k <= steps; k++)
+                    Disc(rgb, n, (int)((a.X + (b.X - a.X) * k / steps) / 100), (int)((a.Z + (b.Z - a.Z) * k / steps) / 100), street.WidthCm / 200, new Rgb(0.25, 0.26, 0.28));
+            }
+        foreach (var b in scenery.Buildings)
+        {
+            int reach = Math.Max(b.HalfLengthCm, b.HalfWidthCm) * 1415 / 100000 + 1;
+            for (int z = b.CenterZ / 100 - reach; z <= b.CenterZ / 100 + reach; z++)
+                for (int x = b.CenterX / 100 - reach; x <= b.CenterX / 100 + reach; x++)
+                {
+                    long dx = x * 100L - b.CenterX, dz = z * 100L - b.CenterZ;
+                    if (x >= 0 && z >= 0 && x < n && z < n
+                        && Math.Abs(dx * b.DirX + dz * b.DirZ) / 1000 <= b.HalfLengthCm && Math.Abs(dz * b.DirX - dx * b.DirZ) / 1000 <= b.HalfWidthCm)
+                        Put(rgb, z * n + x, new Rgb(0.55, 0.22, 0.18));
+                }
+        }
     }
 
     private static void DrawNetwork(byte[] rgb, int n, WayNetwork network)

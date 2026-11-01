@@ -22,7 +22,7 @@ public static class TerrainEditor
             ApplyPad(edit.Pad, n, heights, trees, rock, roots, water);
 
         ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, n);
-        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water);
+        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery);
     }
 
     /// <summary>

@@ -52,6 +52,9 @@ public readonly record struct WaySegment(
 /// <summary>A point on a way: position in cm and the (unnormalized) horizontal direction of travel.</summary>
 public readonly record struct WayPoint(int X, int Y, int Z, int DirX, int DirZ);
 
+/// <summary>A stretch of a way over water: first and last sample.</summary>
+public readonly record struct WayBridge(int From, int To);
+
 /// <summary>
 /// The derived shape of a way: an integer Catmull-Rom spline through the control points, sampled about every
 /// meter and laid onto the terrain, with cumulative 3D distance and ~10 m segments. Fully deterministic.
@@ -104,6 +107,12 @@ public sealed class WayGeometry
         < RedMaxDifficulty => TrailRating.Red,
         _ => TrailRating.Black,
     };
+
+    /// <summary>Where the way crosses water (a real map's streams): sample ranges, each gets a bridge.</summary>
+    public IReadOnlyList<WayBridge> Bridges { get; private init; } = [];
+
+    /// <summary>Length of all <see cref="Bridges"/>, whole meters, at least 1 each.</summary>
+    public int BridgeMeters => Bridges.Sum(b => (int)Math.Max(1, (_distance[b.To] - _distance[b.From] + 99) / 100));
 
     public WayKind Kind { get; }
     public int SampleCount => _x.Length;
@@ -185,6 +194,8 @@ public sealed class WayGeometry
         var ground = new int[n];
         for (int i = 0; i < n; i++)
             ground[i] = grid.HeightAt(xs[i], zs[i]);
+        var bridges = FindBridges(grid, xs, zs);
+        LevelBridges(ground, bridges);
         var y = kind == WayKind.AccessPath ? Grade(ground, gradingMeters) : ground;
 
         // Accumulate in 1/16 cm: rounding each ~1 m step to whole cm would lose the height component.
@@ -202,7 +213,7 @@ public sealed class WayGeometry
         var segments = BuildSegments(grid, kind, x, y, z, distance, segmentLengthCm);
         if (features is { Count: > 0 })
             ApplyFeatures(segments, features);
-        return new WayGeometry(kind, x, y, z, distance, segments);
+        return new WayGeometry(kind, x, y, z, distance, segments) { Bridges = bridges };
     }
 
     /// <summary>Symmetric moving average that shrinks towards the ends, so the end heights stay unchanged.</summary>
@@ -222,6 +233,39 @@ public sealed class WayGeometry
         return graded;
     }
 
+    /// <summary>A way spans the water from bank to bank: the channel is no part of its gradient.</summary>
+    private static void LevelBridges(int[] ground, List<WayBridge> bridges)
+    {
+        foreach (var bridge in bridges)
+        {
+            int a = Math.Max(0, bridge.From - BridgeBankSamples), b = Math.Min(ground.Length - 1, bridge.To + BridgeBankSamples);
+            for (int i = a + 1; i < b; i++)
+                ground[i] = ground[a] + (int)((long)(ground[b] - ground[a]) * (i - a) / (b - a));
+        }
+    }
+
+    private static List<WayBridge> FindBridges(TerrainGrid grid, List<int> x, List<int> z)
+    {
+        var bridges = new List<WayBridge>();
+        if (grid.Scenery is null) return bridges;
+        int from = -1, last = -1;
+        for (int i = 0; i < x.Count; i++)
+        {
+            if (grid.Sample(x[i], z[i]).WaterDepthCm == 0) continue;
+            if (from >= 0 && i - last > BridgeGapSamples)
+            {
+                bridges.Add(new WayBridge(from, last));
+                from = -1;
+            }
+            if (from < 0) from = i;
+            last = i;
+        }
+        if (from >= 0) bridges.Add(new WayBridge(from, last));
+        return bridges;
+    }
+
+    private const int BridgeGapSamples = 3;
+    public const int BridgeBankSamples = 3;
     private const int SampleSpacingCm = 100;
     private const int DenseSpacingCm = 20;
 

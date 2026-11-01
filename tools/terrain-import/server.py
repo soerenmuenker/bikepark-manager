@@ -36,16 +36,28 @@ def preview(body):
         if el["type"] == "way" and tags.get("highway") and not ti.is_major(tags) and el.get("geometry"):
             minor.append([[p["lat"], p["lon"]] for p in el["geometry"]])
     junctions = {}
-    for a, b, pts in edges:
-        junctions.setdefault(a, pts[0])
-        junctions.setdefault(b, pts[-1])
+    for e in edges:
+        junctions.setdefault(e[0], e[2][0])
+        junctions.setdefault(e[1], e[2][-1])
     lifts, parking = ti.real_structures(elements, square, ti.Elevation())
+    scenery = ti.scenery_from(elements, square, [])
+    ll = lambda p: list(square.latlon(p["x"] / 100, p["z"] / 100))
+    corners = []
+    for b in scenery["buildings"]:
+        lx, lz = b["halfLengthCm"] / 100 * b["dirX"] / 1000, b["halfLengthCm"] / 100 * b["dirZ"] / 1000
+        wx, wz = -b["halfWidthCm"] / 100 * b["dirZ"] / 1000, b["halfWidthCm"] / 100 * b["dirX"] / 1000
+        cx, cz = b["centerX"] / 100, b["centerZ"] / 100
+        corners.append([list(square.latlon(cx + sl * lx + sw * wx, cz + sl * lz + sw * wz)) for sl, sw in ((1, 1), (1, -1), (-1, -1), (-1, 1))])
     return {
-        "routes": [[list(square.latlon(*p)) for p in pts] for _, _, pts in edges],
+        "routes": [[list(square.latlon(*p)) for p in e[2]] for e in edges if e[3] == "gravel"],
+        "roads": [[list(square.latlon(*p)) for p in e[2]] for e in edges if e[3] == "tarmac"],
         "minor": minor,
         "junctions": [list(square.latlon(*p)) for p in junctions.values()],
         "lifts": [{"name": l["name"], "type": l["typeId"], "line": [list(square.latlon(*l["valley"])), list(square.latlon(*l["mountain"]))]} for l in lifts],
         "parking": [{"name": p["name"], "at": list(square.latlon(*p["center"]))} for p in parking],
+        "streams": [{"line": [ll(p) for p in s["points"]], "width": s["widthCm"]} for s in scenery["streams"]],
+        "lakes": [[ll(p) for p in l["outline"]] for l in scenery["lakes"]],
+        "buildings": corners,
     }
 
 

@@ -270,6 +270,7 @@ public static class WayEditing
             Name = name,
             Points = points,
             Origin = original.Origin,
+            Surface = original.Surface,
             Built = true,
             Closed = original.Closed,
         };

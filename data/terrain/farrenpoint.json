@@ -6,5 +6,536 @@
  "forest": "7Z1pmeQgEIZbSBSMghhBSBSsghiJkCgYBTEyy5WDuyBAig782menL958VRRFAX9/vfXWW2+99dZbb7311ltvvfXWW2+99dZbb7311ltvvfXWW2+ttm1dlmXdOggIqHkihEzLG2ltW0Svt4WCGofP5zOQ+W3iokKZlxX++nVioHgbxreJa50J7TP89Qv5nO1t4mJKGectDdbbxLXN42eY1piXKy3ivV/QmFTIEiNEtcXI8ivs0AXLHCdVK3ydtJhh2dTB46lZ90gmrAhZfocdDkSDwgIKFk+NmmwMl/U2WMwOr7RkiM4DT52E6bJe5rS4WqTn2ecy42AlYRPWy8ZDLhdKZbe9wUnCJqyX2aGQFpkP23MamcW9vw2WEMwwGqSGYVCkZbXCl5mhFcIwEjJNRInBrFZojKSvkJaGYF6WdV3IcNqhXVivGgxFkooMVrnQP5yhll1Y7zJCUzSXXMK2TPPqixvIC/OlV9UoWapt3f9tE9YrWV1k40xR2eKG1zksRTcUlSv5aRkFxnl9Iyvp4315YjPv974ViwuLQJJYs8N3+qsDFo0SNnA09gZWrkVCZoaBSZ5ih69gtczWTnKXFZoRX+zwHazIaOumcO8hWGyNcXgTq8E6QbkmAD1vX2UK9TWsrJEk/wskwhS83rCyugeeFl0A/PuF1wvCq2M0s9OaXhqOh/IwVre1otZL3eo5JWfV3gSYVc/N1YAp8Xd7w9me6a7zuxufrNT93VrquDValVMdOq22kue16+c0Wm05+epGodJqyxDrZ9LUZGdT0iK87fP4Ki6k3cLshbd5EriqPOfDED0LE6hnIetMhtpuq921BulJ6tFqunrdkzopQWuaWl7C2gepOk4eeXoBPEi9dDUcs7Rab11aXVpdWl1aXVpdWr11aaUlBLq0YgyxSwvdfPprDPG9ha0ptMapiwtAS+aYu7ggtGSO+RRX1Kk6bzVFIS4Kb+mRBKXyG6I1TvM8jaR4JIFcvHyT+7+Q4xI7cYtHEq5qbyyk+Cb3n6DjqlLB4ar2RkNKKAfguCrsbudnYCCcYl1JeWEptMr2REyyEJ42cO5QCMG60io6V5Tfgw+WvmEP+OKiHZHzUXyw9K2gwFeXVNb+SPDB0jcZA3VYcOqzl4ng275rbJuFCrFcX/hIOBKEtQ/Ghmw43EJWwg9onWaMW3GMrf5wuqVgoT0i2TxwA/6OUrDQTgrNYxHgb3nXCVVpsA5pvQ7WmUwAwzrXEieXb2m9Ms2TTLjgoiM23M/x/VDaqMW9M51r4hzNcuJiib0lznZ5PMQFtmMSVfTi/7+RF8c1wsNAbQOJENiO6WNy/D5cc4QQzNNyRsuRj3ZD/QpcUdGN/WhQa/teg4yc63ZeiZF/55XFEE9eGfMUTYVysdLKm7dnA9Ly3bBuZlcPMbFQp6mTZ+LN8PZkcmN3DOybIZsqrrMflV3UCreZjPs226bKNh+wwusD8lcPYHP+CVZ4Xwznl3q5s72LqBxaghXe9zLn0pKHO6/JyFC3ki9hm2KFGXKF8hH5UMgE3V1aOWOTR6zwgOXR6KXqLr2vvPrDuLCmLSvcn5Eb+7UsKpXWWSeTKTpJsMIsY734Xmcn1Bx5Ci2loij4Aa4yydtWmOcxMUW7sd88jEurvQr4Rl+Z5F0rzLMUtM6jpyBQT3fHRFsGKSetM3/uLpO8BytTxO0fpJQq4Zh8kJWU/rMFpEXJn5dxWdmmct7wR/ywuBNtlEvIHOfwc04CEgFX/qWkSatu7lynMcr+bHdrWc7hp4Os/UUlWFXbgMcTE1BUTuMzTqdyup0SrOrlCMCTlAAptVovGVZKIgtZ8snnpqyHniXDEm8cRtPbIRAWcESdQj9cKwJ1CgQEi1/atTiGCNR3Bqm1HRBZ+Yb/uBmHGnzYqaUbIfv0rHk8CCpbbbHLDgEuy1J7u0OzSC3dCEV1aT5ZglBZH24iLH4LryeQMaWWuttOphCyGTEQVUZYrvudndCW1H2cmTcbg1FZTSENlu/m8JzpWSUzdXsnu8jmDemT/iRY3L1XqCXVqjfvmSKPFcbhTliYBKvSNkDLnZmpphgpKocdpsDiwioejmt7Zu+YYrSoHNJKgAW7YSmzCd6IQCKceiCMjodVZcukTVapse06J6Gy0IqGte9sK+uy3B2M/+KE7LeDViwscaPXWLrUx9PBWGmlrAQ7aEXCkkdFFy919MCKlVZKMslBKw4WZ1Xj3B6f6cRJ65awNFoxsITXrZHC8/YwSlopGV3L5fGiTcAUjUgrjkOdXWB+04E/LvegGlcyTPzpOndasQYs/wAGlFZK1J7WnAFijeRwyM9Anldi1H4XlqrlGi5Lq1YYBpCyzosgT5/xqQzregoUtdu5srBooDKpfseefBCF3vORcqyH6oQlyg2Fi+M/pXzYoAxgLFBZlf+wzqXl/G8Y4YtN+WHx/Pf+wOoU/2qsGJnrvZq2KC95qpwVFj/sq/LOJNvFTt6yx6dRSVjsN9ZeRr44rIuKjsIYg9XzqDisegG73QgVFfHkrGmCGFAxWMxdjUPlI1xPVpqK2K8xZIUD1efzy05qG3ktecXzgS+s9GdkuU7bkUyt3/6xVeCJVD6q+zxpKvyVWeZ9edoP23A6k8o1HfveibCYsViggMX4HPPZWtVCspAp6CZRoaJmyB7tOfmvNCbKQiavrGpP/CAOfvuD7+zLCStoggzWNH4wNSOYrkKLDoYAE0SnLGP6X4UWDaZA37KtqLRlJpZq0KKi2aLGTUywlMxSBScPL0xCCOsirUcv+tAhojRD7SKGp1Ct+rlvGB38X+WrkV0B6Hx5UPXWbBJy8NwQn2PFVXQW79Zcs0mAxaT1GCthcPtkC6OozgheSuupayT2VQjx9ThFdc4NpY9/5til3Y1zVmhFJbIOZ57hkVOOD1QsYkEsqqp5hkAKRlwdtUyYST0eLEhUUlYEN6oHaV2O4m1DVs/Bukbn1BM0IasPeeTyCGUiQ8OrNmT1qVTZoIy02tHhZFmXBmT1AR2CkWfat2yO6TE1wnuFxt8FixnZKLMZZiaBLLiSVs/CEukfXlVvy6pTZXVYxlI9r0Az/Tj17x2WrWbNPiAvHZZZs9Zh3V1xYAchdFgwWHyq00MHCCy58ezuJqU3wGKl7/PEDvttxA6fc/D8LpWJpd7JMndY5mK3imoPuwaqrz43dEprGOj85wxQydyG00pdOoZvxTCjUopqEEW/jcXwSZT2M41g912ZB4JQWMOnwbxDpEnNygYj4H1XOi1trxxbW20jeLgdB0DuI/LOD8V64ffBco9sofpQD4tmMvCRsNyeJVQT7vFJVFhtZOAjYXnGrMB2Zo8h0hlPGxn4OFg+Ywrt/XbTGsaxEVafPFYI2CjfymQ5Fyxf5Bg+VaCVPEx5WIBNP9tChvfACoz/f99Pq5bL+gq3Vc1lfYPbqgqrdUPM47KgRyI1TivTAiD0/Ki2aWVKpoOP+Wma1k0zlBmtiCKvlmmlhw58ySEOVOu0knspzhNMKRtsl1Zy1uFG/XyztJKTf3fOT2yVVnS94wCeOX8frdSS7Lt3tTdJK7WC/e4ppk3SSi34v33ka4u0UvdH3D+Zs0FaqbsActyN01x66+/B1kop6R6G/3RYYFbkX4cFbeP8+yCrxnxWjSPfvyYj/6yyWvPvj/qsxmA9Oho2uIrYYbUBq5USNhQRvL4DWOwjwAzwydjhPDb5WPxYFsxlgH/PNnEdxPXWDLzJiGfnhuc2hHVDnrrh66P//vA1bLSOheTfP4y0MAUV4oiFdfvD2jDF9uOEGBQ2WM8mG9qCVes6ga/wWY+e8tdaoqtbYYf1TjPEFWYhd/C4cvPI7RBXuhm5HeKChdwOkS1koJYWttw8ammhW3vFLC10y4lP3oHS3torS2khxYVxofrRy4jaW3vlG0ow+nd5EBmuRUT2o/DBmveL0hecV/ahMsPrHVjITvRBnq3BtS72h58WHlPMajWF7BKNKd5/7mRe32KKGR56+fQYFlO8h4rfhwaflSdfsIXEFG9FRPxxR0zK1yW5bACFuO5P4uBWuM1kTNqwj0VcNWGJTNWQCux5P18T1uXW+NF2k1RoY97jpng/pQmGpeUT2H0MSry2BLd8Pm2Kv+kRJe181DE0Rr74wMzvy2Q5huBg8awpLuud4TDK9+hZvSPmYJGtvLwvGIYUpkWfvsfSyY1sfNzmXyOrt8vo2v9wHFKQljgm2nMn+k+1hR6XFSq9h5xKWSaVuh+o7f34ags9DivUlAL4OSXWyuQ1LaFPr7WG6LJC/aCpBw485aKSHiWg20rSclmhLjhAJBKkpZ3ODzI/mGwr3cl6gSIWJGTIocJSgy81b3YOvIHHP5AJrr1xUsbz4G1dNQzx2j/6+86eX3+dfTWTc+LXZhyLd77nz9b4Iu4tVZUcHj1qGOKle+rDkbkL1XPo+cX9gp59Id13YDr/ELBf05QSHjwqSOvyxDSzl1e4n8ORz0EdK8MuBew4wbBUoUDCkvLSujwx48v4ZMdVTWDcrCJR2yUg/so/EDjlVq0QEpWUl9Yl4WD7LtdcwDJzlrRs0pG3wi/zBF/KVmGB6ixKS+uUd9TYa83JSEuzXBTF/0DxxuRxFFiwyUFpaR3yjmRldTzScek9kx8dGd8rsIDvLSgttkpxyDviezzJK8FF7dr+GDyu3YxVtZwacNZZTlrbQke5/VfErAR50qLSj1+wXAqo3LRobKJ8pB7WgUVZaPGPyWM8AuoYI3Q/5qOP+0u0CM35TurTZoWvNgKDy+jKwBLy2OV/37lrYJgULHeVuRRC+3h8qmWyAM/9lICle504x2jzWVroyoJ7SyzrMkTWR7EybJ1XwYeGArB0bUT7RWO8M7roKEtx0BIPi+GyTkHhScXssAxhRGc3tlXJ8MbUDNs7vj8tewgcEXPkhmW6HFg5+VkOoX5CZHn1MT0HdzImW50dlvHdwhMHzpCngYYlseBKSHh1bRkffJ2MCWbzK8viNkTWz4OMvmvkEroasTMhEYvL5zRjhJU/KPXFSQKZpf/88TI4Z0fTtzfI5A/MacYI6+df9oNWAiHeD1l+Xe/5IeTH+zpg+13+nR/k7yMoIP0P",
  "rock": "7d3RcaMwEAbgFEIhNEIhKoRGKIRCaMQBy45jxzG7TDKXG33f000e/9ldSwJxb28AAAAAAAAAAAAAAAAAAAAAwP9jGIa+E0PMNE1jEVjM6XRa5jWwQVqhsDbLJK1wWGtaRStGw1qbUSuGw9KKqbCkFVg6rOalpjX2Enm9KF2VscY1F6W1q+vLtGjEcFxlNrbC+nGRVrK0DPlMaRnySktpKS2lpbSUltJSWkrrH5fWMC1KK9uISst++rca0dOeTFqe9oTSupwxK65IWpcz5ltxdZ3QdluxFtca3mAlEUlrHksZ58lKIjK41rjWf1hJxAbXyW4x04pn0yCRaFoqK5GWvWJ4W60LE9tqlZUqLVufTGktczHiw1PL2EqUlrD8IP5SaQkrUVrCSpTWPH53H6rrLSseSut8H6rc59X19V3nx78rrRrY5cLdNab6Fn39u7wez2ouBXaN6fQ1R414Zw3mU0yPOTae16dG3KMh7xtRXslGlNfPNOItr1bPKbKl1fS5/ZGwmj1dzbdhw5vJYdKFuvBvdGG7j2UPdGGzhXWkC5sd77pQF/6VLmy3sA50YbvvRhzownYfBeXDarcLD4ysdsd76pi08W1hPqtmC+tIVs0W1pGDrGYnVv0l3J4IPjxUVVjfhLVM5foFt/3Q2r26UpcNH31V33C4hfYstXYX79vIevLu7TW0J6XW8F2MtQtfvtX9tdTavW23dWGorW6l1u49zq0Lc3vidm8In8e7d0kT493luXhhueKU2BbqwsQWWljxrIysaFbbC3y+URDKavsAhle1g1m5vBqK6vwBDGuG0Cav/r8Dfgb3a2q8nrcIa29UjR8HU9YMgVHlwDNXVufHE75MsHPEcHmIs12Fs8B6HVapKckptmiQEgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwGvv",
  "origin": "47.743353,12.028237",
- "attribution": "Elevation: Mapzen/AWS Terrain Tiles; land cover (c) OpenStreetMap contributors (ODbL)"
+ "attribution": "Elevation: Mapzen/AWS Terrain Tiles; land cover (c) OpenStreetMap contributors (ODbL)",
+ "scenery": {
+  "streams": [
+   {
+    "points": [
+     {
+      "x": 100933,
+      "z": 3938
+     },
+     {
+      "x": 98898,
+      "z": 3343
+     },
+     {
+      "x": 97754,
+      "z": 2280
+     },
+     {
+      "x": 94430,
+      "z": 400
+     }
+    ],
+    "widthCm": 150
+   },
+   {
+    "points": [
+     {
+      "x": 99580,
+      "z": 40435
+     },
+     {
+      "x": 98225,
+      "z": 39614
+     },
+     {
+      "x": 94767,
+      "z": 35449
+     },
+     {
+      "x": 92115,
+      "z": 31212
+     },
+     {
+      "x": 89420,
+      "z": 25622
+     },
+     {
+      "x": 88295,
+      "z": 22076
+     },
+     {
+      "x": 87979,
+      "z": 13805
+     },
+     {
+      "x": 87093,
+      "z": 8526
+     },
+     {
+      "x": 87652,
+      "z": 3932
+     },
+     {
+      "x": 86786,
+      "z": 400
+     }
+    ],
+    "widthCm": 150
+   },
+   {
+    "points": [
+     {
+      "x": 68359,
+      "z": 24530
+     },
+     {
+      "x": 63723,
+      "z": 22345
+     },
+     {
+      "x": 56072,
+      "z": 16531
+     },
+     {
+      "x": 53058,
+      "z": 12872
+     },
+     {
+      "x": 50060,
+      "z": 10141
+     },
+     {
+      "x": 47505,
+      "z": 5879
+     }
+    ],
+    "widthCm": 150
+   },
+   {
+    "points": [
+     {
+      "x": 47505,
+      "z": 5879
+     },
+     {
+      "x": 46931,
+      "z": 4179
+     },
+     {
+      "x": 44049,
+      "z": 1216
+     },
+     {
+      "x": 43802,
+      "z": 400
+     }
+    ],
+    "widthCm": 150
+   },
+   {
+    "points": [
+     {
+      "x": 10800,
+      "z": 149600
+     },
+     {
+      "x": 12768,
+      "z": 146068
+     },
+     {
+      "x": 12951,
+      "z": 143487
+     },
+     {
+      "x": 12177,
+      "z": 142260
+     },
+     {
+      "x": 8890,
+      "z": 140493
+     },
+     {
+      "x": 7623,
+      "z": 138874
+     },
+     {
+      "x": 7926,
+      "z": 134744
+     },
+     {
+      "x": 6217,
+      "z": 131572
+     },
+     {
+      "x": 6115,
+      "z": 129559
+     },
+     {
+      "x": 5735,
+      "z": 128702
+     },
+     {
+      "x": 6697,
+      "z": 123974
+     },
+     {
+      "x": 6452,
+      "z": 123429
+     },
+     {
+      "x": 5371,
+      "z": 122791
+     },
+     {
+      "x": 3098,
+      "z": 122582
+     },
+     {
+      "x": 1247,
+      "z": 123157
+     },
+     {
+      "x": 400,
+      "z": 122771
+     }
+    ],
+    "widthCm": 700
+   },
+   {
+    "points": [
+     {
+      "x": 400,
+      "z": 80809
+     },
+     {
+      "x": 6572,
+      "z": 76091
+     },
+     {
+      "x": 8422,
+      "z": 75361
+     },
+     {
+      "x": 11431,
+      "z": 74782
+     },
+     {
+      "x": 15569,
+      "z": 71049
+     },
+     {
+      "x": 16003,
+      "z": 68763
+     },
+     {
+      "x": 17016,
+      "z": 66078
+     },
+     {
+      "x": 20799,
+      "z": 58290
+     },
+     {
+      "x": 20777,
+      "z": 56205
+     },
+     {
+      "x": 19707,
+      "z": 52733
+     },
+     {
+      "x": 19967,
+      "z": 51200
+     },
+     {
+      "x": 19649,
+      "z": 50274
+     },
+     {
+      "x": 17859,
+      "z": 47746
+     },
+     {
+      "x": 16119,
+      "z": 47120
+     },
+     {
+      "x": 14770,
+      "z": 45010
+     },
+     {
+      "x": 11346,
+      "z": 42174
+     },
+     {
+      "x": 8182,
+      "z": 37433
+     },
+     {
+      "x": 5213,
+      "z": 32072
+     },
+     {
+      "x": 3821,
+      "z": 31119
+     },
+     {
+      "x": 400,
+      "z": 30345
+     }
+    ],
+    "widthCm": 700
+   },
+   {
+    "points": [
+     {
+      "x": 42095,
+      "z": 133268
+     },
+     {
+      "x": 39686,
+      "z": 133982
+     },
+     {
+      "x": 39168,
+      "z": 134416
+     },
+     {
+      "x": 38744,
+      "z": 135614
+     },
+     {
+      "x": 36934,
+      "z": 138124
+     },
+     {
+      "x": 35556,
+      "z": 139156
+     },
+     {
+      "x": 33699,
+      "z": 141682
+     },
+     {
+      "x": 32354,
+      "z": 142851
+     },
+     {
+      "x": 30818,
+      "z": 143157
+     }
+    ],
+    "widthCm": 150
+   },
+   {
+    "points": [
+     {
+      "x": 30803,
+      "z": 132771
+     },
+     {
+      "x": 26415,
+      "z": 133850
+     },
+     {
+      "x": 21792,
+      "z": 133906
+     },
+     {
+      "x": 19445,
+      "z": 134349
+     },
+     {
+      "x": 17564,
+      "z": 135129
+     },
+     {
+      "x": 14201,
+      "z": 138400
+     },
+     {
+      "x": 12177,
+      "z": 142260
+     }
+    ],
+    "widthCm": 150
+   },
+   {
+    "points": [
+     {
+      "x": 30322,
+      "z": 143169
+     },
+     {
+      "x": 29624,
+      "z": 143402
+     },
+     {
+      "x": 28706,
+      "z": 146062
+     },
+     {
+      "x": 27028,
+      "z": 146759
+     },
+     {
+      "x": 25951,
+      "z": 146790
+     },
+     {
+      "x": 24051,
+      "z": 147868
+     },
+     {
+      "x": 18603,
+      "z": 148723
+     },
+     {
+      "x": 13853,
+      "z": 148184
+     },
+     {
+      "x": 12141,
+      "z": 147192
+     }
+    ],
+    "widthCm": 150
+   },
+   {
+    "points": [
+     {
+      "x": 40685,
+      "z": 131858
+     },
+     {
+      "x": 38747,
+      "z": 132232
+     },
+     {
+      "x": 36853,
+      "z": 132118
+     }
+    ],
+    "widthCm": 150
+   }
+  ],
+  "lakes": [
+   {
+    "outline": [
+     {
+      "x": 139169,
+      "z": 84916
+     },
+     {
+      "x": 138627,
+      "z": 83929
+     },
+     {
+      "x": 138570,
+      "z": 83351
+     },
+     {
+      "x": 138880,
+      "z": 82759
+     },
+     {
+      "x": 139845,
+      "z": 81866
+     },
+     {
+      "x": 140336,
+      "z": 81866
+     },
+     {
+      "x": 140667,
+      "z": 82458
+     },
+     {
+      "x": 140876,
+      "z": 83687
+     },
+     {
+      "x": 140136,
+      "z": 85560
+     },
+     {
+      "x": 139904,
+      "z": 85621
+     }
+    ]
+   }
+  ],
+  "buildings": [
+   {
+    "centerX": 142788,
+    "centerZ": 84680,
+    "halfLengthCm": 939,
+    "halfWidthCm": 672,
+    "dirX": 841,
+    "dirZ": 541,
+    "heightCm": 750
+   },
+   {
+    "centerX": 31603,
+    "centerZ": 135210,
+    "halfLengthCm": 904,
+    "halfWidthCm": 430,
+    "dirX": 2,
+    "dirZ": 1000,
+    "heightCm": 750
+   },
+   {
+    "centerX": 95447,
+    "centerZ": 125530,
+    "halfLengthCm": 1023,
+    "halfWidthCm": 599,
+    "dirX": -877,
+    "dirZ": -481,
+    "heightCm": 750
+   },
+   {
+    "centerX": 32822,
+    "centerZ": 133555,
+    "halfLengthCm": 323,
+    "halfWidthCm": 293,
+    "dirX": -61,
+    "dirZ": 998,
+    "heightCm": 300,
+    "flatRoof": true
+   },
+   {
+    "centerX": 114812,
+    "centerZ": 121897,
+    "halfLengthCm": 1108,
+    "halfWidthCm": 557,
+    "dirX": 907,
+    "dirZ": 421,
+    "heightCm": 750
+   },
+   {
+    "centerX": 115087,
+    "centerZ": 123921,
+    "halfLengthCm": 111,
+    "halfWidthCm": 100,
+    "dirX": 987,
+    "dirZ": -161,
+    "heightCm": 300,
+    "flatRoof": true
+   },
+   {
+    "centerX": 93491,
+    "centerZ": 9661,
+    "halfLengthCm": 240,
+    "halfWidthCm": 184,
+    "dirX": 352,
+    "dirZ": -936,
+    "heightCm": 300,
+    "flatRoof": true
+   },
+   {
+    "centerX": 8449,
+    "centerZ": 59189,
+    "halfLengthCm": 249,
+    "halfWidthCm": 176,
+    "dirX": 997,
+    "dirZ": 83,
+    "heightCm": 300,
+    "flatRoof": true
+   }
+  ],
+  "streets": []
+ }
 }

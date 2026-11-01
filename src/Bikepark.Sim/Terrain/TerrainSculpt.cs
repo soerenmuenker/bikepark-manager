@@ -88,7 +88,7 @@ public static class TerrainSculptor
         }
 
         ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, n);
-        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water);
+        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery);
     }
 
     private static byte Blend(byte value, int target, long weight) => (byte)(value + (target - value) * weight / 1000);

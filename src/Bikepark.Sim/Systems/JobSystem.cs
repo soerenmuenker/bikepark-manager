@@ -75,6 +75,7 @@ public sealed class JobSystem : ISimSystem
     public static bool IsWorkable(WorldState state, Job job) => job.Kind switch
     {
         JobKind.FellTrees => job.IsFelling,
+        JobKind.BuildWay => job.IsFelling || job.WoodTaken || state.WoodStock >= job.Wood, // felling first: it may give the bridge's wood
         JobKind.RepairFeature => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Features.Any(f => f.Id == job.FeatureId && f.Built) == true,
         JobKind.BuildFeature => state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Built == true
                                 && (job.WoodTaken || state.WoodStock >= job.Wood),
@@ -119,6 +120,12 @@ public sealed class JobSystem : ISimSystem
                     member.JobId = 0;
         }
 
+        // Felling is over for a way with a bridge: the crew on it takes the wood now.
+        foreach (var job in state.Jobs)
+            if (job.Kind == JobKind.BuildWay && job is { IsFelling: false, WoodTaken: false, Wood: > 0 } && state.WoodStock >= job.Wood
+                && state.Crew.Any(m => m.JobId == job.Id))
+                TakeWood(state, job);
+
         foreach (var member in state.Crew)
         {
             if (member.JobId != 0) continue;
@@ -126,16 +133,22 @@ public sealed class JobSystem : ISimSystem
             {
                 if (!IsWorkable(state, job)) continue;
                 if (state.Crew.Count(m => m.JobId == job.Id) >= WorkerLimit(state, job)) continue;
-                if (!job.WoodTaken && job.Wood > 0)
-                {
-                    state.WoodStock -= job.Wood;
-                    state.CrewStats.WoodUsed += job.Wood;
-                }
-                job.WoodTaken = true;
+                if (!(job.Kind == JobKind.BuildWay && job.IsFelling && job.Wood > 0))
+                    TakeWood(state, job);
                 member.JobId = job.Id;
                 break;
             }
         }
+    }
+
+    private static void TakeWood(WorldState state, Job job)
+    {
+        if (!job.WoodTaken && job.Wood > 0)
+        {
+            state.WoodStock -= job.Wood;
+            state.CrewStats.WoodUsed += job.Wood;
+        }
+        job.WoodTaken = true;
     }
 
     private static void Advance(SimContext ctx, Job job)

@@ -116,6 +116,16 @@ public static class WayPlanner
                     break;
                 }
 
+        if (!mayStandAlone && grid.Scenery is not null)
+            for (int i = 0; i < geometry.SampleCount; i++)
+                if (grid.BlockedAt(geometry.Xs[i], geometry.Zs[i]) is var blocked and not 0)
+                {
+                    issues.Add(blocked == TerrainSceneryData.Lake
+                        ? Error("lake", "Can't build across a lake.", geometry.Distances[i], geometry.Distances[i])
+                        : Error("building", "A building stands in the way.", geometry.Distances[i], geometry.Distances[i]));
+                    break;
+                }
+
         long length = geometry.LengthCm;
         if (length > rules.MaxLengthMeters * 100L)
             issues.Add(Error("tooLong", $"Too long: at most {rules.MaxLengthMeters} m."));

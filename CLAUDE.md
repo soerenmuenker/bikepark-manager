@@ -98,6 +98,8 @@ dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios
 python3 tools/terrain-import/server.py
 # The same from the command line (--offset: meters east,south of the peak; --arrival: map meters x,z)
 python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --scenario --title Farrenpoint --arrival 987,1244
+# Refresh only the terrain file (water, buildings, streets) of an existing map; its parcels and commands stay
+python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --refresh-scenery
 # Scenario map editor (browser, http://localhost:8765): drag/split/draw land parcels and move the tick-0 structures
 # (lift stations, parking lots, way points) on the terrain map; Terrain tab: raise / lower / paint-surface brushes
 # (same integer math as TerrainSculptor, live on the raw grid from `terrain --raw`); Validate runs the scenario commands,
@@ -166,6 +168,16 @@ tools/release/export.sh 0.1.0
     ridge, relief and coverage settings are ignored. Scenario tracks may stand alone (`WayPlanner` `mayStandAlone`: real routes not
     connected to the arrival). Where scenario tracks exist and there is no parking lot, guests arrive at the low end of the first one,
     even after the player adds lifts (`WayNetwork` base: parking → scenario road → valley station → any path).
+9b. **Scenery** (`Terrain/TerrainScenery.cs`, `TerrainHeightmap.Scenery`; real maps only, generated maps are untouched): what really
+    stands there, static, nothing simulated. `TerrainSceneryBuilder` (in the generator, integer-only) carves lakes (flat at the lowest
+    shore) and streams (a never-rising fit to the ground, flow direction from the heights) and fills `WaterDepth`, clears vegetation
+    under water, buildings and streets (so `TerrainScatter`/`Forest` need no rule) and fills `TerrainSceneryData.Blocked`
+    (`grid.BlockedAt`: lake, building). `WayPlanner` refuses lakes and buildings (not scenario ways), `StructurePlanner.CheckPad` any water
+    or building (scenario too). Ways may cross streams: `WayGeometry.Bridges` (derived; the way's height is levelled from bank to bank),
+    `WorkCosts.BridgeWood`/`BridgeMinutesPerMeter`; a `BuildWay` job fells first, then needs `Job.Wood` in stock (`JobSystem`). Streets
+    are scenery; only road links to gravel, lifts and the nearest 3 parking lots become ways (`Way.Surface` tarmac, looks only).
+    View: `game/scripts/world/SceneryView.cs` (merged water and street meshes, `shaders/water.gdshader`, houses as instanced unit
+    meshes per chunk), bridges in `WayView.AddBridges`.
 10. **Terrain generation is integer-only** (Q16 fixed point in `FixedMath`/`IntNoise`, heights in cm, slopes as
     grade permille). Changing the generator changes every map: check the 2D maps before and after.
 11. **Ways store only player input** (oriented, snapped control points + joins). Geometry, segments, ratings, the
