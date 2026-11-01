@@ -106,7 +106,7 @@ public static class WayPlanner
         if (kind == WayKind.Trail)
             AlignWithTrailEnds(network, points, ref startJoin, ref endJoin);
 
-        var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
+        var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, ignoreRocks: mayStandAlone);
 
         if (onOwnLand is not null)
             for (int i = 0; i < geometry.SampleCount; i++)
@@ -131,6 +131,7 @@ public static class WayPlanner
             issues.Add(Error("tooLong", $"Too long: at most {rules.MaxLengthMeters} m."));
 
         CheckGrades(kind, rules, geometry, issues);
+        CheckRocks(kind, geometry, issues);
         if (!mayStandAlone) CheckConnections(kind, network, startJoin is not null || startHub != 0, endJoin is not null || endHub != 0, issues);
         if (kind == WayKind.Trail && geometry.EndHeightCm >= geometry.StartHeightCm)
             issues.Add(Error("noDrop", "A trail must end lower than it starts."));
@@ -256,6 +257,27 @@ public static class WayPlanner
         Flush();
     }
 
+    private static void CheckRocks(WayKind kind, WayGeometry geometry, List<WayIssue> issues)
+    {
+        foreach (var rock in geometry.Rocks)
+        {
+            long from = geometry.Distances[rock.From], to = geometry.Distances[rock.To];
+            if (rock.Kind == RockFormation.RockFace)
+                issues.Add(Error("rockFace", "A rock face is in the way: build around it.", from, to));
+            else if (rock.Kind == RockFormation.MediumRock && kind == WayKind.AccessPath)
+                issues.Add(Error("mediumRock", "A big rock is in the way: a gravel path has to go around it.", from, to));
+        }
+        if (kind == WayKind.Trail)
+        {
+            if (geometry.RockMeters(RockFormation.DenseStones) > 0)
+                issues.Add(Warning("stoneField", $"Runs through a dense stone field ({geometry.RockMeters(RockFormation.DenseStones)} m): this trail will be black."));
+            if (geometry.RampMeters > 0)
+                issues.Add(Warning("woodRamp", $"Needs a wooden ramp over rocks ({geometry.RampMeters} m): takes wood, and the trail is at least red."));
+        }
+        if (geometry.StoneMeters > 0)
+            issues.Add(Warning("clearStones", $"The crew clears stones along {geometry.StoneMeters} m: extra work."));
+    }
+
     private static string GradeMessage(string code, int worst, TrailRules rules) => code switch
     {
         "pathTooSteep" => $"Too steep for a gravel path: {Gradient.Format(worst)} (limit {Gradient.Format(rules.PathMaxGradient)}). Try a switchback.",
@@ -306,7 +328,7 @@ public static class WayPlanner
         foreach (var item in scatter)
         {
             if (!corridor.Contains(item.XCm, item.ZCm) || network.IsInCorridor(item.XCm, item.ZCm)) continue;
-            if (item.Kind == ScatterKind.Tree) trees++; else rocks++;
+            if (item.Kind == ScatterKind.Tree) trees++; else if (item.Kind == ScatterKind.Rock) rocks++;
         }
         return (trees, rocks);
     }

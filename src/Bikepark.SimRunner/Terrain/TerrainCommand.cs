@@ -104,6 +104,11 @@ internal static class TerrainCommand
             steepPercent = Math.Round(100.0 * steep / count, 1),
             trees = scatter.Count(s => s.Kind == ScatterKind.Tree),
             rocks = scatter.Count(s => s.Kind == ScatterKind.Rock),
+            rockFormationsPercent = Enum.GetValues<RockFormation>().ToDictionary(
+                f => f.ToString(), f => Math.Round(100.0 * grid.Formations.ToArray().Count(b => b == (byte)f) / count, 1)),
+            stones = scatter.Count(s => s.Kind == ScatterKind.Stone),
+            boulders = scatter.Count(s => s.Kind == ScatterKind.Boulder),
+            faceRocks = scatter.Count(s => s.Kind == ScatterKind.Face),
             ways = network.Ways.Select(w => new
             {
                 w.Name,

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Bikepark.Sim;
 using Bikepark.Sim.Land;
 using Bikepark.Sim.Terrain;
+using Bikepark.Sim.Trails;
 using Godot;
 
 namespace Bikepark.Game.Terrain;
@@ -33,6 +34,7 @@ public partial class TerrainView : Node3D
     private ShaderMaterial _terrainMaterial = null!;
     private ArrayMesh _treeMesh = null!;
     private ArrayMesh _rockMesh = null!;
+    private ArrayMesh[] _faceMeshes = [];
     private StandardMaterial3D _scatterMaterial = null!;
     private Node3D? _chunks;
     private readonly List<(Node3D Node, int X0, int Z0, int SizeX, int SizeZ)> _chunkInfo = [];
@@ -76,6 +78,7 @@ public partial class TerrainView : Node3D
         _terrainMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/terrain.gdshader") };
         _treeMesh = ScatterMeshes.CreateTree();
         _rockMesh = ScatterMeshes.CreateRock();
+        _faceMeshes = [ScatterMeshes.CreateFace(0), ScatterMeshes.CreateFace(1), ScatterMeshes.CreateFace(2)];
         _scatterMaterial = ScatterMeshes.CreateMaterial();
 
         _host = GetNode<SimHost>(SimHostPath);
@@ -287,13 +290,27 @@ public partial class TerrainView : Node3D
         scatter.Clear();
         TerrainScatter.Collect(grid, x0, z0, maxX, maxZ, scatter);
         if (_cleared is { } cleared)
-            scatter.RemoveAll(s => cleared(s.XCm, s.ZCm));
+            scatter.RemoveAll(s => cleared(s.XCm, s.ZCm) && !DenseFieldOnTrail(grid, s));
         var treeItems = scatter.Where(s => s.Kind == ScatterKind.Tree).ToList();
-        var rockItems = scatter.Where(s => s.Kind == ScatterKind.Rock).ToList();
+        var rockItems = scatter.Where(s => s.Kind is ScatterKind.Rock or ScatterKind.Stone or ScatterKind.Boulder).ToList();
+        var faceItems = scatter.Where(s => s.Kind == ScatterKind.Face).ToList();
         if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
         if (rockItems.Count > 0) chunk.AddChild(BuildInstances("Rocks", _rockMesh, rockItems, center, RockDrawDistance, RockTint));
+        for (int m = 0; m < _faceMeshes.Length; m++)
+        {
+            var items = faceItems.Where(s => s.Variant % _faceMeshes.Length == m).ToList();
+            if (items.Count > 0) chunk.AddChild(BuildInstances($"Faces{m}", _faceMeshes[m], items, center, TreeDrawDistance, RockTint));
+        }
         _treeCount += treeItems.Count;
         _rockCount += rockItems.Count;
+    }
+
+    /// <summary>A dense stone field stays on a trail: it is what makes the trail black. A gravel path clears it.</summary>
+    private bool DenseFieldOnTrail(TerrainGrid grid, ScatterInstance item)
+    {
+        if (item.Kind != ScatterKind.Stone || grid.RockFormationAt(item.XCm, item.ZCm) != RockFormation.DenseStones) return false;
+        var network = _host.Sim.Network;
+        return network.Nearest(item.XCm, item.ZCm, 300) is { } near && network.FindWay(near.WayId) is { Kind: WayKind.Trail };
     }
 
     private MultiMeshInstance3D BuildInstances(

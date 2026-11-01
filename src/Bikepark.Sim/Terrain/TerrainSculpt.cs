@@ -95,7 +95,8 @@ public static class TerrainSculptor
         }
 
         ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, n);
-        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery);
+        var formations = RockFormations.Build(baseGrid.Settings, baseGrid.Seed, rock, slopes, water, baseGrid.Scenery, n);
+        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery, formations);
     }
 
     /// <summary>Raises and lowers the heights by the height strokes, in list order.</summary>

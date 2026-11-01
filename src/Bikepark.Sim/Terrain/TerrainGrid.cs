@@ -42,10 +42,11 @@ public sealed class TerrainGrid
     private readonly byte[] _rock;
     private readonly byte[] _roots;
     private readonly byte[] _water;
+    private readonly byte[]? _formations;
 
     internal TerrainGrid(
         TerrainSettings settings, ulong seed, int[] heights, ushort[] slopes,
-        byte[] trees, byte[] rock, byte[] roots, byte[] water, TerrainSceneryData? scenery = null)
+        byte[] trees, byte[] rock, byte[] roots, byte[] water, TerrainSceneryData? scenery = null, byte[]? formations = null)
     {
         Settings = settings with { };
         Seed = seed;
@@ -63,6 +64,7 @@ public sealed class TerrainGrid
         _roots = roots;
         _water = water;
         Scenery = scenery;
+        _formations = formations;
 
         int min = int.MaxValue, max = int.MinValue, peak = 0;
         for (int i = 0; i < count; i++)
@@ -98,6 +100,15 @@ public sealed class TerrainGrid
 
     /// <summary>What the map's scenery left on this grid (null: none).</summary>
     public TerrainSceneryData? Scenery { get; }
+
+    /// <summary>False on maps without <see cref="TerrainSettings.RockFormations"/>.</summary>
+    public bool HasRockFormations => _formations is not null;
+
+    /// <summary>The layer behind <see cref="RockFormationAt"/>, empty without formations.</summary>
+    public ReadOnlySpan<byte> Formations => _formations;
+
+    /// <summary>The rock formation at the nearest sample.</summary>
+    public RockFormation RockFormationAt(long xCm, long zCm) => _formations is null ? RockFormation.None : (RockFormation)_formations[NearestIndex(xCm, zCm)];
 
     /// <summary>A lake or a building stands here (<see cref="TerrainSceneryData"/>), 0 = free.</summary>
     public byte BlockedAt(long xCm, long zCm) => Scenery?.Blocked[NearestIndex(xCm, zCm)] ?? 0;
@@ -151,6 +162,7 @@ public sealed class TerrainGrid
         hash.AppendData(_roots);
         hash.AppendData(_water);
         if (Scenery is not null) hash.AppendData(Scenery.Blocked);
+        if (_formations is not null) hash.AppendData(_formations);
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 

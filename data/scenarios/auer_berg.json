@@ -101,6 +101,7 @@
   // Real terrain from tools/terrain-import; roughness is the fine detail on top.
   // The tree line is out of reach: forest and meadows come from OpenStreetMap.
   "terrain": {
+    "rockFormations": true,
     "sizeMeters": 1900,
     "heightmapFile": "../terrain/auer_berg.json",
     "reliefScalePermille": 1950,

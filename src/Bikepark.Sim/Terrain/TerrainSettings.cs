@@ -50,6 +50,9 @@ public sealed record TerrainSettings
     /// </summary>
     public int ReliefScalePermille { get; set; } = 1000;
 
+    /// <summary>Stone fields, medium rocks and rock faces that ways must deal with (<see cref="RockFormation"/>). Off: only the old decorative rocks.</summary>
+    public bool RockFormations { get; set; }
+
     /// <summary>Scenario files only: the heightmap's file, relative to the scenario. <c>ScenarioLoader.LoadFile</c> resolves it.</summary>
     public string? HeightmapFile { get; set; }
 

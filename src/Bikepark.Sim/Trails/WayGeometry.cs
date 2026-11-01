@@ -22,6 +22,9 @@ public enum RatingCause : byte
 
     /// <summary>Its hardest feature (a feature on the line is mandatory).</summary>
     Feature = 2,
+
+    /// <summary>Rock on its line: a dense stone field or a ramp over a medium rock.</summary>
+    Rock = 3,
 }
 
 /// <summary>
@@ -43,7 +46,8 @@ public readonly record struct WaySegment(
     TerrainSurface Surface,
     int Difficulty,
     int FeatureDifficulty = 0,
-    int TerrainDifficulty = 0)
+    int TerrainDifficulty = 0,
+    int RockDifficulty = 0)
 {
     /// <summary>Gradient score in tenths (-100..100) along the way's direction; see <see cref="Trails.Gradient"/>.</summary>
     public int GradientTenths => Trails.Gradient.FromPermille(GradePermille);
@@ -54,6 +58,9 @@ public readonly record struct WayPoint(int X, int Y, int Z, int DirX, int DirZ);
 
 /// <summary>A stretch of a way over water: first and last sample.</summary>
 public readonly record struct WayBridge(int From, int To);
+
+/// <summary>A stretch of a way through a rock formation: first and last sample.</summary>
+public readonly record struct WayRock(RockFormation Kind, int From, int To);
 
 /// <summary>
 /// The derived shape of a way: an integer Catmull-Rom spline through the control points, sampled about every
@@ -85,7 +92,7 @@ public sealed class WayGeometry
 
         // The hardest of: the trail overall (median gradient), its hardest stretches (90th-percentile segment, terrain
         // only) and its hardest feature (a feature on the line is mandatory, so it is a floor for the rating).
-        int overall = 0, sections = 0, feature = 0;
+        int overall = 0, sections = 0, feature = 0, rock = 0;
         if (segments.Length > 0)
         {
             var down = segments.Select(s => Math.Max(0, -s.GradientTenths)).Order().ToArray();
@@ -93,9 +100,11 @@ public sealed class WayGeometry
             var terrain = segments.Select(s => s.TerrainDifficulty).Order().ToArray();
             sections = terrain[Math.Min(terrain.Length - 1, terrain.Length * 9 / 10)];
             feature = segments.Max(s => s.FeatureDifficulty);
+            rock = segments.Max(s => s.RockDifficulty);
         }
-        DifficultyScore = Math.Max(overall, Math.Max(sections, feature));
-        RatingCause = feature >= DifficultyScore ? RatingCause.Feature
+        DifficultyScore = Math.Max(rock, Math.Max(overall, Math.Max(sections, feature)));
+        RatingCause = rock >= DifficultyScore ? RatingCause.Rock
+            : feature >= DifficultyScore ? RatingCause.Feature
             : overall >= sections ? RatingCause.OverallSteepness
             : RatingCause.SteepSections;
         Rating = RatingFor(DifficultyScore);
@@ -113,6 +122,23 @@ public sealed class WayGeometry
 
     /// <summary>Length of all <see cref="Bridges"/>, whole meters, at least 1 each.</summary>
     public int BridgeMeters => Bridges.Sum(b => (int)Math.Max(1, (_distance[b.To] - _distance[b.From] + 99) / 100));
+
+    /// <summary>Where the way runs through rock formations (none for scenario ways: they already exist).</summary>
+    public IReadOnlyList<WayRock> Rocks { get; private init; } = [];
+
+    /// <summary>A dense stone field on a trail: difficulty of the stretch, as hard as a Rock garden, so the trail is black.</summary>
+    public const int StoneFieldDifficulty = 740;
+
+    /// <summary>A wooden ramp over a medium rock: difficulty of the stretch, so the trail is at least red.</summary>
+    public const int RampDifficulty = 500;
+
+    /// <summary>Meters of a trail's wooden ramps over medium rocks.</summary>
+    public int RampMeters => Kind == WayKind.Trail ? RockMeters(RockFormation.MediumRock) : 0;
+
+    /// <summary>Meters of stones the crew moves away: a trail leaves a dense field as it is, a gravel path clears it.</summary>
+    public int StoneMeters => RockMeters(RockFormation.SparseStones) + (Kind == WayKind.Trail ? 0 : RockMeters(RockFormation.DenseStones));
+
+    public int RockMeters(RockFormation kind) => Rocks.Where(r => r.Kind == kind).Sum(r => (int)Math.Max(1, (_distance[r.To] - _distance[r.From] + 99) / 100));
 
     public WayKind Kind { get; }
     public int SampleCount => _x.Length;
@@ -185,7 +211,7 @@ public sealed class WayGeometry
     /// </summary>
     public static WayGeometry Build(
         TerrainGrid grid, WayKind kind, IReadOnlyList<PointCm> points, int segmentLengthCm, int gradingMeters = DefaultGradingMeters,
-        IReadOnlyList<PlacedFeature>? features = null)
+        IReadOnlyList<PlacedFeature>? features = null, bool ignoreRocks = false)
     {
         if (points.Count < 2) throw new ArgumentException("A way needs at least two points.", nameof(points));
 
@@ -211,9 +237,11 @@ public sealed class WayGeometry
         var x = xs.ToArray();
         var z = zs.ToArray();
         var segments = BuildSegments(grid, kind, x, y, z, distance, segmentLengthCm);
+        var rocks = ignoreRocks ? [] : FindRocks(grid, x, z);
+        if (kind == WayKind.Trail) ApplyRocks(segments, rocks, distance);
         if (features is { Count: > 0 })
             ApplyFeatures(segments, features);
-        return new WayGeometry(kind, x, y, z, distance, segments) { Bridges = bridges };
+        return new WayGeometry(kind, x, y, z, distance, segments) { Bridges = bridges, Rocks = rocks };
     }
 
     /// <summary>Symmetric moving average that shrinks towards the ends, so the end heights stay unchanged.</summary>
@@ -262,6 +290,54 @@ public sealed class WayGeometry
         }
         if (from >= 0) bridges.Add(new WayBridge(from, last));
         return bridges;
+    }
+
+    private static List<WayRock> FindRocks(TerrainGrid grid, int[] x, int[] z)
+    {
+        var rocks = new List<WayRock>();
+        if (!grid.HasRockFormations) return rocks;
+        int from = 0;
+        for (int i = 1; i <= x.Length; i++)
+        {
+            var kind = grid.RockFormationAt(x[from], z[from]);
+            if (i < x.Length && grid.RockFormationAt(x[i], z[i]) == kind) continue;
+            // Clipping a corner of a field or rock is no crossing; a rock face is never clipped.
+            int needed = kind switch { RockFormation.None => int.MaxValue, RockFormation.RockFace => 1, RockFormation.DenseStones => MinDenseSamples, _ => MinRockSamples };
+            if (i - from >= needed)
+                rocks.Add(new WayRock(kind, from, i - 1));
+            from = i;
+        }
+        return rocks;
+    }
+
+    private const int MinRockSamples = 2;
+    private const int MinDenseSamples = 5;
+
+    private static void ApplyRocks(WaySegment[] segments, List<WayRock> rocks, long[] distance)
+    {
+        for (int i = 0; i < segments.Length; i++)
+        {
+            var s = segments[i];
+            int hardest = 0, rough = s.Rock;
+            foreach (var rock in rocks)
+            {
+                if (distance[rock.From] >= s.EndCm || distance[rock.To] <= s.StartCm) continue;
+                if (rock.Kind == RockFormation.DenseStones)
+                {
+                    hardest = Math.Max(hardest, StoneFieldDifficulty);
+                    rough = 255;
+                }
+                else if (rock.Kind == RockFormation.MediumRock) hardest = Math.Max(hardest, RampDifficulty);
+            }
+            if (hardest > 0)
+                segments[i] = s with
+                {
+                    Rock = rough,
+                    RockDifficulty = hardest,
+                    Difficulty = Math.Max(s.Difficulty, hardest),
+                    TerrainDifficulty = Math.Max(s.TerrainDifficulty, hardest),
+                };
+        }
     }
 
     private const int BridgeGapSamples = 3;

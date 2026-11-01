@@ -183,6 +183,11 @@ tools/release/export.sh 0.1.0
     is a way (`Way.Surface` tarmac, looks only); `SceneryStreet` remains only for older saves.
     View: `game/scripts/world/SceneryView.cs` (merged water and street meshes, `shaders/water.gdshader`, houses as instanced unit
     meshes per chunk), bridges in `WayView.AddBridges`. Stream ribbons drape onto the ground and coarse terrain meshes follow brook beds (`TerrainMeshBuilder.CoarseHeight`), so water never hangs in the air.
+9c. **Rock formations** (`Terrain/RockFormations.cs`, `TerrainSettings.RockFormations`, off by default; on in every shipped map, so older saves keep their terrain):
+    a derived layer (`grid.RockFormationAt`, rebuilt after sculpting, cleared under pads). Fields and medium rocks need grey ground (rock layer), grass gets only thin scatter; faces need strong rock on very steep ground; `TerrainScatter` sizes rocks by slope; `ScatterMeshes.CreateFace` draws faces. `WayGeometry.Rocks` (derived; `ignoreRocks` for scenario ways, they already exist):
+    sparse stones: `StoneMeters`, extra work; dense stones: a trail is black (`StoneFieldDifficulty`, `RatingCause.Rock`), a path clears them; medium rock: a trail gets
+    a wooden ramp (`RampMeters`, `WorkCosts.WayWood`, at least red), a path is refused; rock face: every way is refused. All checks in `WayPlanner.CheckRocks`; `CheckPad` refuses medium rocks and faces
+    for the player. View: `ScatterKind.Stone/Boulder/Face`, ramps in `WayView.AddBridges`; the runner's surface map colors the formations and `rockFormationsPercent` counts them.
 10. **Terrain generation is integer-only** (Q16 fixed point in `FixedMath`/`IntNoise`, heights in cm, slopes as
     grade permille). Changing the generator changes every map: check the 2D maps before and after.
 11. **Ways store only player input** (oriented, snapped control points + joins). Geometry, segments, ratings, the

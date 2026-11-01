@@ -41,7 +41,8 @@ public static class TerrainGenerator
         var (trees, rock, roots) = Layers(settings, heights, slopes, n, seeds);
         if (scenery is not null) TerrainSceneryBuilder.Clear(scenery, sceneryData!, water, trees, rock, roots, n);
 
-        return new TerrainGrid(settings with { Seed = seed }, seed, heights, slopes, trees, rock, roots, water, sceneryData);
+        var formations = RockFormations.Build(settings, seed, rock, slopes, water, sceneryData, n);
+        return new TerrainGrid(settings with { Seed = seed }, seed, heights, slopes, trees, rock, roots, water, sceneryData, formations);
     }
 
     private sealed class NoiseSeeds(SimRandom rng)

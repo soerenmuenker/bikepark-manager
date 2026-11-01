@@ -120,7 +120,7 @@ public sealed class WayNetwork
             features[way.Id] = placed;
             // Only built features shape the trail (difficulty, rating); planned ones are listed but have no effect.
             var built = placed.Where(f => f.Feature.Built).ToList();
-            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, built);
+            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, built, ignoreRocks: way.Origin == WayOrigin.Scenario);
         }
         return new WayNetwork(ordered, geometries, features, hubs.OrderBy(h => h.Id).ToList(), links.ToList(), rules);
     }

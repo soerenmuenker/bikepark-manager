@@ -824,7 +824,7 @@ def write_scenario(map_id, title, place, square, arrival, commands, parcels, rel
             '  // Real terrain from tools/terrain-import; roughness is the fine detail on top.\n'
             '  // The tree line is out of reach: forest and meadows come from OpenStreetMap.\n'
             f'  "terrain": {{\n    "sizeMeters": {square.size},\n    "heightmapFile": "../terrain/{map_id}.json",\n'
-            '    "reliefScalePermille": ' + str(round(relief * 1000)) + ',\n    "roughnessPermille": 90,\n    "treeLineCm": 900000\n  },\n  "terrainSculpt": [],\n')
+            '    "reliefScalePermille": ' + str(round(relief * 1000)) + ',\n    "rockFormations": true,\n    "roughnessPermille": 90,\n    "treeLineCm": 900000\n  },\n  "terrainSculpt": [],\n')
     between('  "parcels": [', '  "welcome": {',
             '  "parcels": [\n' + ",\n".join("    " + json.dumps(p, ensure_ascii=False) for p in parcels) + "\n  ],\n")
     welcome = {"title": "Welcome to {park}!", "paragraphs": [

@@ -21,8 +21,19 @@ public static class TerrainEditor
         foreach (var edit in edits)
             ApplyPad(edit.Pad, n, heights, trees, rock, roots, water);
 
+        // A pad is built on cleared ground.
+        byte[]? formations = baseGrid.HasRockFormations ? baseGrid.Formations.ToArray() : null;
+        if (formations is not null)
+            foreach (var edit in edits)
+            {
+                var (x0, z0, x1, z1) = Bounds(edit.Pad, n - 1, 0);
+                for (int z = z0; z <= z1; z++)
+                    for (int x = x0; x <= x1; x++)
+                        if (edit.Pad.Contains(x * 100L, z * 100L)) formations[z * n + x] = 0;
+            }
+
         ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, n);
-        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery);
+        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery, formations);
     }
 
     /// <summary>

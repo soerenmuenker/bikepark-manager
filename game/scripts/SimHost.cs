@@ -219,7 +219,7 @@ public partial class SimHost : Node
     public void LoadDemoNetwork(bool planned)
     {
         foreach (var timed in ReadScript(DemoNetworkFile))
-            Enqueue(planned && timed.Command is BuildWayCommand build ? build with { Instant = false } : timed.Command);
+            Enqueue(planned && timed.Command is BuildWayCommand build ? build with { Instant = false, Origin = Bikepark.Sim.Trails.WayOrigin.Player } : timed.Command);
         foreach (var timed in ReadScript(DemoFacilitiesFile))
             Enqueue(timed.Command);
     }

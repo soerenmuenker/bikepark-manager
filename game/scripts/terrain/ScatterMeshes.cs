@@ -22,7 +22,7 @@ internal static class ScatterMeshes
         return b.ToMesh();
     }
 
-    public static ArrayMesh CreateRock()
+    public static ArrayMesh CreateRock(float flatten = 0.65f)
     {
         // Icosahedron with deterministic radial jitter, flattened.
         float p = (1f + MathF.Sqrt(5f)) / 2f;
@@ -36,7 +36,7 @@ internal static class ScatterMeshes
         for (int i = 0; i < v.Length; i++)
         {
             var dir = v[i].Normalized() * 0.6f * jitter[i];
-            v[i] = new Vector3(dir.X, dir.Y * 0.65f + 0.2f, dir.Z);
+            v[i] = new Vector3(dir.X, dir.Y * flatten + 0.2f, dir.Z);
         }
 
         int[][] faces =
@@ -54,6 +54,68 @@ internal static class ScatterMeshes
             float shade = 0.5f + 0.06f * (f % 4);
             b.Triangle(v[faces[f][0]], v[faces[f][1]], v[faces[f][2]], new Color(shade, shade * 0.98f, shade * 0.94f), center);
         }
+        return b.ToMesh();
+    }
+
+    /// <summary>
+    /// A piece of rock face: a finely divided lump with broken ledges (bands of rock stepping in and out) and cracks, wider
+    /// than tall, its foot below the ground. <paramref name="variant"/> gives another shape.
+    /// </summary>
+    public static ArrayMesh CreateFace(int variant)
+    {
+        float p = (1f + MathF.Sqrt(5f)) / 2f;
+        Vector3[] v =
+        [
+            new(-1, p, 0), new(1, p, 0), new(-1, -p, 0), new(1, -p, 0),
+            new(0, -1, p), new(0, 1, p), new(0, -1, -p), new(0, 1, -p),
+            new(p, 0, -1), new(p, 0, 1), new(-p, 0, -1), new(-p, 0, 1),
+        ];
+        int[][] faces =
+        [
+            [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+            [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+            [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+            [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+        ];
+        float seed = variant * 1.9f + 0.4f;
+        const float Band = 0.17f;
+
+        float Wave(Vector3 d, float f) => MathF.Sin(d.X * f + seed) * MathF.Sin(d.Y * f * 0.8f + seed * 2.1f) * MathF.Sin(d.Z * f * 1.1f + seed * 0.7f);
+
+        // A function of the direction alone, so neighbouring triangles share their corners.
+        Vector3 Shape(Vector3 direction)
+        {
+            var d = direction.Normalized();
+            float radius = 1f + 0.26f * Wave(d, 2.3f) + 0.14f * Wave(d, 5.1f) + 0.06f * Wave(d, 11f);
+            float y = d.Y * radius * 0.72f;
+            int band = (int)MathF.Floor(y / Band);
+            float inBand = y / Band - band;
+            // Ledges: each band sits in or out, its top nearly flat.
+            float ledge = 1f + 0.11f * MathF.Sin(band * 2.7f + seed) + 0.05f * MathF.Sin(MathF.Atan2(d.Z, d.X) * 7f + band * 1.3f);
+            float stepped = (band + Math.Min(1f, inBand * 1.7f)) * Band;
+            return new Vector3(d.X * radius * ledge * 1.15f, stepped + 0.12f, d.Z * radius * ledge * 0.85f);
+        }
+
+        var b = new FlatMeshBuilder();
+        var center = new Vector3(0, 0.1f, 0);
+        void Split(Vector3 a, Vector3 c, Vector3 e, int depth)
+        {
+            if (depth > 0)
+            {
+                Vector3 ac = (a + c).Normalized(), ce = (c + e).Normalized(), ea = (e + a).Normalized();
+                Split(a, ac, ea, depth - 1);
+                Split(ac, c, ce, depth - 1);
+                Split(ea, ce, e, depth - 1);
+                Split(ac, ce, ea, depth - 1);
+                return;
+            }
+            Vector3 pa = Shape(a), pc = Shape(c), pe = Shape(e);
+            float mid = (pa.Y + pc.Y + pe.Y) / 3f;
+            float shade = 0.56f + 0.05f * MathF.Sin(mid * 37f + seed) + 0.03f * Wave(a, 9f);
+            b.Triangle(pa, pc, pe, new Color(shade, shade * 0.98f, shade * 0.93f), center);
+        }
+        foreach (var f in faces)
+            Split(v[f[0]].Normalized(), v[f[1]].Normalized(), v[f[2]].Normalized(), 3);
         return b.ToMesh();
     }
 

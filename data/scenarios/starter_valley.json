@@ -104,6 +104,7 @@
   },
   // Terrain is regenerated from these settings; "seed" defaults to the scenario seed.
   "terrain": {
+    "rockFormations": true,
     "sizeMeters": 1000,
     "baseElevationCm": 80000,
     "reliefCm": 35000,

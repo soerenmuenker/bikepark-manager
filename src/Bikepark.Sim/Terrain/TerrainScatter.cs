@@ -4,6 +4,9 @@ public enum ScatterKind : byte
 {
     Tree = 0,
     Rock = 1,
+    Stone = 2,
+    Boulder = 3,
+    Face = 4,
 }
 
 /// <summary>A tree or rock placed on the terrain. Positions in cm; yaw in thousandths of a full turn.</summary>
@@ -27,13 +30,24 @@ public static class TerrainScatter
     public const int RockCellMeters = 8;
     private const uint TreeSalt = 0x7EE5u;
     private const uint RockSalt = 0x60C4u;
+    public const int StoneCellMeters = 2;
+    public const int BoulderCellMeters = 4;
+    public const int FaceCellMeters = 6;
+    private const uint StoneSalt = 0x5704u, BoulderSalt = 0xB01Du, FaceSalt = 0xFACEu;
 
     /// <summary>Appends instances whose cell origin lies in [minX, maxX) × [minZ, maxZ) (meters).</summary>
     public static void Collect(TerrainGrid grid, int minXM, int minZM, int maxXM, int maxZM, List<ScatterInstance> output)
     {
         uint seed = (uint)(grid.Seed ^ (grid.Seed >> 32));
         CollectKind(grid, ScatterKind.Tree, TreeCellMeters, seed ^ TreeSalt, minXM, minZM, maxXM, maxZM, output);
-        CollectKind(grid, ScatterKind.Rock, RockCellMeters, seed ^ RockSalt, minXM, minZM, maxXM, maxZM, output);
+        if (grid.HasRockFormations)
+        {
+            CollectKind(grid, ScatterKind.Stone, StoneCellMeters, seed ^ StoneSalt, minXM, minZM, maxXM, maxZM, output);
+            CollectKind(grid, ScatterKind.Boulder, BoulderCellMeters, seed ^ BoulderSalt, minXM, minZM, maxXM, maxZM, output);
+            CollectKind(grid, ScatterKind.Face, FaceCellMeters, seed ^ FaceSalt, minXM, minZM, maxXM, maxZM, output);
+        }
+        else
+            CollectKind(grid, ScatterKind.Rock, RockCellMeters, seed ^ RockSalt, minXM, minZM, maxXM, maxZM, output);
     }
 
     public static List<ScatterInstance> CollectAll(TerrainGrid grid)
@@ -67,7 +81,30 @@ public static class TerrainScatter
                 if (kind == ScatterKind.Tree)
                 {
                     if (sample.Surface == TerrainSurface.Rock || roll >= sample.TreeDensity) continue;
+                    if (grid.RockFormationAt(xCm, zCm) >= RockFormation.MediumRock) continue;
                     scale = 750 + (int)((h2 >> 8) % 550);
+                }
+                else if (kind != ScatterKind.Rock)
+                {
+                    var formation = grid.RockFormationAt(xCm, zCm);
+                    int more = (int)((h2 >> 8) % 1000);
+                    switch (kind)
+                    {
+                        case ScatterKind.Stone when formation == RockFormation.DenseStones && roll < 230:
+                            scale = 300 + Steep(sample, 0, 1200) / 4 + more / 3;
+                            break;
+                        case ScatterKind.Stone when formation == RockFormation.SparseStones && roll < 50:
+                            scale = 250 + Steep(sample, 0, 1200) / 6 + more / 4;
+                            break;
+                        case ScatterKind.Boulder when formation == RockFormation.MediumRock && roll < 180:
+                            scale = 1500 + Steep(sample, 300, 1300) * 3 + more * 3 / 2;
+                            break;
+                        case ScatterKind.Face when formation == RockFormation.RockFace:
+                            scale = 4000 + Steep(sample, 1150, 2000) * 7 + more * 3;
+                            break;
+                        default:
+                            continue;
+                    }
                 }
                 else
                 {
@@ -84,6 +121,9 @@ public static class TerrainScatter
             }
         }
     }
+
+    /// <summary>How far the slope (permille) is into the range, 0 below it: the steeper, the bigger the rock.</summary>
+    private static int Steep(TerrainSample sample, int from, int to) => Math.Clamp(sample.SlopePermille, from, to) - from;
 
     private static int CeilDiv(int a, int b) => (a + b - 1) / b;
 }

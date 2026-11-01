@@ -20,6 +20,7 @@ internal static class WayMeshes
     {
         RatingCause.OverallSteepness => "steep overall",
         RatingCause.SteepSections => "steep sections",
+        RatingCause.Rock => "rocks",
         _ => "features",
     }})";
 

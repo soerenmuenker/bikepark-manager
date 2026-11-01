@@ -226,6 +226,13 @@ public static class StructurePlanner
             if (built) issues.Add(Error("onBuilding", $"{what}: a building stands here."));
         }
 
+        if (checkLand && grid.HasRockFormations)
+        {
+            bool rocky = false;
+            ForEachSampleInside(grid, pad, (x, z) => rocky |= grid.RockFormationAt(x * 100L, z * 100L) >= RockFormation.MediumRock);
+            if (rocky) issues.Add(Error("onRock", $"{what}: big rocks are in the way."));
+        }
+
         if (state.TerrainEdits.Any(e => PadsOverlap(e.Pad, pad)))
             issues.Add(Error("overlapsStructure", $"{what} overlaps another structure."));
 

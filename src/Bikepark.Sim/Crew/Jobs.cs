@@ -77,7 +77,7 @@ public static class Jobs
             Trees = trees,
             WorkMinutes = WorkCosts.WayWorkMinutes(state.CrewRules, state.TrailRules, way.Kind, geometry),
             MainWorkType = WorkType.Digging,
-            Wood = WorkCosts.BridgeWood(state.CrewRules, geometry),
+            Wood = WorkCosts.WayWood(state.CrewRules, geometry),
         });
     }
 

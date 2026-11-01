@@ -62,7 +62,14 @@ internal static class TerrainMapRenderer
                 Rgb color = mode switch
                 {
                     MapMode.Slope => SlopeColor(sample.SlopePermille),
-                    MapMode.Surface => SurfaceColors[(int)sample.Surface],
+                    MapMode.Surface => grid.RockFormationAt(x * 100L, z * 100L) switch
+                    {
+                        RockFormation.SparseStones => new Rgb(0.78, 0.76, 0.66),
+                        RockFormation.DenseStones => new Rgb(0.45, 0.42, 0.40),
+                        RockFormation.MediumRock => new Rgb(0.90, 0.50, 0.15),
+                        RockFormation.RockFace => new Rgb(0.10, 0.08, 0.10),
+                        _ => SurfaceColors[(int)sample.Surface],
+                    },
                     _ => ReliefColor(grid, sample),
                 };
 
