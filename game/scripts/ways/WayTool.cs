@@ -9,6 +9,9 @@ using Godot;
 
 namespace Bikepark.Game.Ways;
 
+/// <summary>A wooden feature the player can pick for a rock on the trail being drawn.</summary>
+public readonly record struct WayToolRockOption(TrailFeatureType Type, long LengthCm, string? Reason, Action Pick);
+
 /// <summary>
 /// Drawing tool for access paths (P) and trails (T). Left-click places a point; holding the button and dragging
 /// places points continuously. A live preview is validated every frame with the Sim's <see cref="WayPlanner"/>
@@ -82,12 +85,24 @@ public partial class WayTool : Node3D
         Mode = mode;
         _points.Clear();
         _dragging = false;
+        EndRock();
         Plan = null;
         Status = mode == ToolMode.None ? "" : $"Drawing a {(mode == ToolMode.AccessPath ? "gravel access path" : mode == ToolMode.TarmacRoad ? "tarmac road" : "trail")}";
     }
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (_rockPlan is not null && @event is InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.Backspace or Key.Enter or Key.KpEnter })
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (_dropType is not null && @event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true })
+        {
+            ClickDrop();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (@event is InputEventKey { Pressed: true, Echo: false } key)
         {
             switch (key.PhysicalKeycode)
@@ -100,6 +115,10 @@ public partial class WayTool : Node3D
                     break;
                 case Key.T:
                     SetMode(Mode == ToolMode.Trail ? ToolMode.None : ToolMode.Trail);
+                    break;
+                case Key.Escape when _rockPlan is not null:
+                    EndRock();
+                    Status = "Keep drawing, then Enter.";
                     break;
                 case Key.Escape when Mode != ToolMode.None:
                     if (_points.Count > 0) _points.Clear(); else SetMode(ToolMode.None);
@@ -146,12 +165,13 @@ public partial class WayTool : Node3D
         }
 
         var candidate = _points.ToList();
-        if (!_dragging && _cursor is { } cursor && candidate.Count > 0 && candidate[^1] != cursor)
+        if (_rockPlan is null && !_dragging && _cursor is { } cursor && candidate.Count > 0 && candidate[^1] != cursor)
             candidate.Add(cursor);
         var sim = _host.Sim;
         Plan = candidate.Count >= 2
-            ? WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, candidate, Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State))
+            ? WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, candidate, Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State), rockChoice: RockChoice())
             : null;
+        UpdateDropGhost(grid);
         UpdateEstimate(sim, grid, candidate);
 
         UpdatePreview(grid);
@@ -188,12 +208,186 @@ public partial class WayTool : Node3D
             return;
         }
         var sim = _host.Sim;
-        var plan = WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, _points, Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State));
+        var plan = WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, _points, Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State), rockChoice: RockChoice());
         if (!plan.IsValid)
         {
             Status = plan.FirstError ?? "Not valid.";
             return;
         }
+        if (plan.RockCrossings.Count > 0)
+        {
+            _rockPlan = plan;
+            _placements.Clear();
+            NextCrossing(0);
+            return;
+        }
+        Finish(plan, null);
+    }
+
+    // ---- Rock on the line: a wooden feature for each crossing, one at a time, then the trail is ordered.
+
+    private WayPlan? _rockPlan;
+    private readonly List<RockFeaturePlacement> _placements = [];
+    private int _dropIndex;
+    private RockCrossing? _dropCrossing;
+    private TrailFeatureType? _dropType;
+    private long? _dropLip;
+    private MeshInstance3D? _dropGhost;
+
+    /// <summary>Asks which wooden feature crosses a rock (set by the HUD): title, options, keep drawing.</summary>
+    public Action<string, IReadOnlyList<WayToolRockOption>, Action>? AskRock { get; set; }
+
+    private RockFeatureChoice RockChoice()
+    {
+        var state = _host.Sim.State;
+        if (_host.InstantBuild) return new RockFeatureChoice(state.TrailFeatureTypes, _ => true);
+        int level = Bikepark.Sim.Reputation.ParkProgress.CurrentLevel(state, _host.Sim.Network);
+        return new RockFeatureChoice(state.TrailFeatureTypes, t => TrailFeatures.CannotPlace(state, level, t) is null);
+    }
+
+    private void EndRock()
+    {
+        ShowRock(null);
+        _rockPlan = null;
+        _dropCrossing = null;
+        _dropType = null;
+        _dropLip = null;
+        _placements.Clear();
+        if (_dropGhost is not null) _dropGhost.Visible = false;
+    }
+
+    private void NextCrossing(int index)
+    {
+        var plan = _rockPlan!;
+        if (index >= plan.RockCrossings.Count)
+        {
+            var placements = _placements.ToList();
+            EndRock();
+            Finish(plan, placements);
+            return;
+        }
+        var crossing = plan.RockCrossings[index];
+        ShowRock(crossing);
+        var options = RockFeatures.Options(_terrain.Grid!, plan.Geometry!, _host.Sim.State.TrailRules, RockChoice(), crossing)
+            .Select(o => new WayToolRockOption(o.Type, o.Placement.LengthCm, o.Reason, () =>
+            {
+                if (RockFeatures.IsFlatDrop(o.Type))
+                {
+                    _dropIndex = index;
+                    _dropCrossing = crossing;
+                    _dropType = o.Type;
+                    _dropLip = null;
+                    Status = "Flat drop: click on the red rock where the deck ends (its lip). Esc goes back to drawing.";
+                    return;
+                }
+                _placements.Add(o.Placement);
+                NextCrossing(index + 1);
+            })).ToList();
+        string count = plan.RockCrossings.Count > 1 ? $"Rock {index + 1} of {plan.RockCrossings.Count}, in red, at" : "The rock in red, at";
+        string title = $"{count} {crossing.FromCm / 100} m: {crossing.SpanCm / 100} m wide, {crossing.DropCm / 100} m down. How does the trail cross it?";
+        if (AskRock is { } ask) ask(title, options, EndRock);
+        else EndRock();
+    }
+
+    /// <summary>The spot on the drawn trail closest to the cursor.</summary>
+    private long? DistanceAtCursor()
+    {
+        if (_rockPlan?.Geometry is not { } g || _cursor is not { } c) return null;
+        long best = long.MaxValue, at = 0;
+        for (int i = 0; i < g.SampleCount; i++)
+        {
+            long dx = g.Xs[i] - c.X, dz = g.Zs[i] - c.Z, d = dx * dx + dz * dz;
+            if (d < best)
+            {
+                best = d;
+                at = g.Distances[i];
+            }
+        }
+        return at;
+    }
+
+    private RockFeaturePlacement DropAt(long lip, long landing) =>
+        RockFeatures.FlatDropAt(_terrain.Grid!, _rockPlan!.Geometry!, _dropType!, _dropCrossing!, lip, landing);
+
+    private void ClickDrop()
+    {
+        if (DistanceAtCursor() is not { } at || _dropCrossing is not { } crossing) return;
+        if (_dropLip is not { } lip)
+        {
+            _dropLip = Math.Clamp(at, crossing.FromCm, crossing.ToCm);
+            Status = "Flat drop: now click where the landing starts, below the rock.";
+            return;
+        }
+        var placement = DropAt(lip, at);
+        if (RockFeatures.CannotPlace(_terrain.Grid!, _rockPlan!.Geometry!, _host.Sim.State.TrailRules, _dropType!, placement) is { } reason)
+        {
+            Status = reason;
+            return;
+        }
+        _placements.Add(placement);
+        _dropCrossing = null;
+        _dropType = null;
+        _dropLip = null;
+        if (_dropGhost is not null) _dropGhost.Visible = false;
+        NextCrossing(_dropIndex + 1);
+    }
+
+    /// <summary>The flat drop being placed: the deck to the cursor, then deck and landing, green if it fits.</summary>
+    private void UpdateDropGhost(Bikepark.Sim.Terrain.TerrainGrid grid)
+    {
+        if (_dropType is not { } type || _rockPlan?.Geometry is not { } g || DistanceAtCursor() is not { } at)
+        {
+            if (_dropGhost is not null) _dropGhost.Visible = false;
+            return;
+        }
+        _dropGhost ??= AddGhost();
+        var crossing = _dropCrossing!;
+        var placement = _dropLip is { } lip ? DropAt(lip, at) : DropAt(at, crossing.ToCm + 100);
+        string? why = RockFeatures.CannotPlace(grid, g, _host.Sim.State.TrailRules, type, placement);
+        if (placement.StartCm < 0 || placement.LengthCm <= 0 || placement.StartCm + placement.LengthCm > g.LengthCm)
+        {
+            _dropGhost.Visible = false;
+            return;
+        }
+        if (_dropLip is not null && why is not null) Status = why;
+        _dropGhost.Mesh = FeatureMeshes.Build(grid, g, type, placement.StartCm, why is null ? new Color(0.3f, 1f, 0.45f, 0.6f) : new Color(1f, 0.3f, 0.25f, 0.6f), placement.LengthCm, placement.RampCm);
+        _dropGhost.Visible = true;
+    }
+
+    private static readonly Color RockRed = new(1f, 0.08f, 0.05f, 0.62f);
+    private Node3D? _rockMarker;
+
+    /// <summary>The rock being asked about: its boulders and its stretch of trail in red, in the middle of the view. Null clears it.</summary>
+    private void ShowRock(RockCrossing? crossing)
+    {
+        _rockMarker?.QueueFree();
+        _rockMarker = null;
+        if (crossing is null || _rockPlan?.Geometry is not { } g || _terrain.Grid is not { } grid) return;
+        var material = FeatureMeshes.CreateGhostMaterial();
+        material.AlbedoColor = RockRed;
+        material.VertexColorUseAsAlbedo = false;
+        _rockMarker = _terrain.BuildRockHighlight(RockFeatures.RocksOn(grid, g, crossing.FromCm, crossing.ToCm), material);
+        _rockMarker.AddChild(new MeshInstance3D
+        {
+            Mesh = FeatureMeshes.BuildLanding(grid, g, crossing.FromCm, crossing.ToCm, RockRed),
+            MaterialOverride = FeatureMeshes.CreateGhostMaterial(),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        });
+        AddChild(_rockMarker);
+        var middle = g.PositionAt((crossing.FromCm + crossing.ToCm) / 2);
+        _camera.FocusOn(new Vector2(middle.X / 100f, middle.Z / 100f));
+    }
+
+    private MeshInstance3D AddGhost()
+    {
+        var ghost = new MeshInstance3D { Name = "DropGhost", MaterialOverride = FeatureMeshes.CreateGhostMaterial(), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        AddChild(ghost);
+        return ghost;
+    }
+
+    private void Finish(WayPlan plan, List<RockFeaturePlacement>? rockFeatures)
+    {
+        var sim = _host.Sim;
         var points = _points.ToList();
         var kind = Kind;
         var surface = Mode == ToolMode.TarmacRoad ? WaySurface.Tarmac : WaySurface.Gravel;
@@ -201,7 +395,7 @@ public partial class WayTool : Node3D
         _points.Clear();
         void Order(string name)
         {
-            _host.Enqueue(new BuildWayCommand(kind, name, points, Instant: _host.InstantBuild, Surface: surface));
+            _host.Enqueue(new BuildWayCommand(kind, name, points, Instant: _host.InstantBuild, Surface: surface, RockFeatures: rockFeatures));
             Status = _host.InstantBuild
                 ? $"Built ({what}). Draw the next one or press Esc."
                 : $"Planned ({what}): the crew will build it (Crew menu). Draw the next one or press Esc.";

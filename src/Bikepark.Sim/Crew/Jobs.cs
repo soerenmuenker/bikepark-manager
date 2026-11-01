@@ -108,9 +108,9 @@ public static class Jobs
             Kind = JobKind.BuildFeature,
             WayId = wayId,
             FeatureId = feature.Id,
-            WorkMinutes = type.WorkMinutes,
+            WorkMinutes = WorkCosts.FeatureMinutes(type, feature.LengthOn(type)),
             MainWorkType = WorkCosts.FeatureWorkType(type),
-            Wood = type.Wood,
+            Wood = WorkCosts.FeatureWood(type, feature.LengthOn(type)),
         });
 
     /// <summary>Removes a job: its workers stop, wood it took goes back to the stock. Trees felled so far stay felled.</summary>

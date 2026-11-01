@@ -372,7 +372,8 @@ public partial class BuildPanel : HudPanel
 
         Body.AddChild(UiTheme.Separator());
         Body.AddChild(UiTheme.Label("TRAIL FEATURES", 13, UiTheme.Accent, bold: true));
-        var types = Ctx.Sim.State.TrailFeatureTypes;
+        // Features over rock are chosen while drawing a trail across rock.
+        var types = Ctx.Sim.State.TrailFeatureTypes.Where(t => t.CrossesRock == Bikepark.Sim.Terrain.RockFormation.None).ToList();
         if (types.Count == 0)
         {
             Body.AddChild(UiTheme.Label("No trail features in this scenario.", 12, UiTheme.TextDim));

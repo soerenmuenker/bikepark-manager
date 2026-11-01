@@ -28,18 +28,25 @@ public static class WorkCosts
         foreach (var segment in geometry.Segments)
             weightedCm += (segment.EndCm - segment.StartCm) * (1000 + (IsSteep(trail, kind, segment) ? crew.SteepExtraPermille : 0));
         return Math.Max(1, weightedCm * perMeter / 100_000) + (long)geometry.BridgeMeters * crew.BridgeMinutesPerMeter
-            + (long)geometry.StoneMeters * crew.StoneClearMinutesPerMeter + (long)geometry.RampMeters * crew.RampMinutesPerMeter;
+            + (long)geometry.StoneMeters * crew.StoneClearMinutesPerMeter;
     }
 
     public static WorkEstimate Way(CrewRules crew, TrailRules trail, WayKind kind, WayGeometry geometry, int trees) =>
         new(trees, FellMinutes(crew, trees), WayWorkMinutes(crew, trail, kind, geometry), WorkType.Digging, WayWood(crew, geometry), trees * crew.WoodPerTree);
 
-    /// <summary>Wood for the bridges where a way crosses water and the ramps where a trail crosses medium rocks.</summary>
-    public static int WayWood(CrewRules crew, WayGeometry geometry) => geometry.BridgeMeters * crew.BridgeWoodPerMeter + geometry.RampMeters * crew.RampWoodPerMeter;
+    /// <summary>Wood for the bridges where a way crosses water.</summary>
+    public static int WayWood(CrewRules crew, WayGeometry geometry) => geometry.BridgeMeters * crew.BridgeWoodPerMeter;
+
+    /// <summary>A placed feature's work and wood: the type's, plus per meter for features over rock.</summary>
+    public static long FeatureMinutes(TrailFeatureType type, long lengthCm) => type.WorkMinutes + lengthCm / 100 * type.WorkPerMeter;
+    public static int FeatureWood(TrailFeatureType type, long lengthCm) => type.Wood + (int)(lengthCm / 100) * type.WoodPerMeter;
 
     /// <summary>Repairing a feature: <see cref="CrewRules.RepairWorkPermille"/> of its build work, scaled by its wear.</summary>
     public static long RepairMinutes(CrewRules crew, TrailFeatureType type, TrailFeature feature) =>
-        Math.Max(1, (long)type.WorkMinutes * crew.RepairWorkPermille / 1000 * (TrailCondition.Perfect - feature.Condition) / TrailCondition.Perfect);
+        Math.Max(1, FeatureMinutes(type, feature.LengthOn(type)) * crew.RepairWorkPermille / 1000 * (TrailCondition.Perfect - feature.Condition) / TrailCondition.Perfect);
+
+    public static WorkEstimate Feature(TrailFeatureType type, long lengthCm) =>
+        new(0, 0, FeatureMinutes(type, lengthCm), FeatureWorkType(type), FeatureWood(type, lengthCm), 0);
 
     public static WorkType RepairWorkType(TrailFeatureType type) => FeatureWorkType(type);
 

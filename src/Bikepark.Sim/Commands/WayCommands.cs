@@ -12,7 +12,7 @@ namespace Bikepark.Sim.Commands;
 /// </summary>
 public sealed record BuildWayCommand(
     WayKind Kind, string Name, List<PointCm> Points, WayOrigin Origin = WayOrigin.Player, bool Instant = false,
-    WaySurface Surface = WaySurface.Gravel) : ICommand
+    WaySurface Surface = WaySurface.Gravel, List<RockFeaturePlacement>? RockFeatures = null) : ICommand
 {
     public const int MaxNameLength = 40;
 
@@ -21,7 +21,20 @@ public sealed record BuildWayCommand(
         if (Points is null) return "No points given.";
         if (Name is { Length: > MaxNameLength }) return $"Name cannot exceed {MaxNameLength} characters.";
         if (Kind == WayKind.Trail && !string.IsNullOrWhiteSpace(Name) && RenameTrailCommand.CannotName(ctx.State, Name) is { } taken) return taken;
-        return Plan(ctx).FirstError;
+        var plan = Plan(ctx);
+        if (plan.FirstError is { } error) return error;
+        return Kind == WayKind.Trail && plan.Geometry is { } geometry && Origin != WayOrigin.Scenario
+            ? Trails.RockFeatures.CannotCross(ctx.Terrain, geometry, ctx.State.TrailRules, Choice(ctx), RockFeatures)
+            : null;
+    }
+
+    /// <summary>The feature types over rock this build may use: what the park's level allows, or all for a debug instant build.</summary>
+    private RockFeatureChoice Choice(SimContext ctx)
+    {
+        if (Instant) return new RockFeatureChoice(ctx.State.TrailFeatureTypes, _ => true);
+        int level = Reputation.ParkProgress.CurrentLevel(ctx.State, ctx.Network);
+        var state = ctx.State;
+        return new RockFeatureChoice(state.TrailFeatureTypes, t => TrailFeatures.CannotPlace(state, level, t) is null);
     }
 
     public void Apply(SimContext ctx)
@@ -45,6 +58,13 @@ public sealed record BuildWayCommand(
         };
         if (!way.Built)
             Jobs.QueueWay(ctx, way, plan.Geometry!);
+        if (Origin != WayOrigin.Scenario)
+            foreach (var placement in (RockFeatures ?? []).OrderBy(p => p.StartCm))
+            {
+                var feature = new TrailFeature { Id = state.AllocateEntityId(), TypeId = placement.TypeId, DistanceCm = placement.StartCm, LengthCm = placement.LengthCm, RampCm = placement.RampCm, Built = way.Built };
+                way.Features.Add(feature);
+                if (!way.Built) Jobs.QueueFeature(ctx, id, feature, TrailFeatures.FindType(state.TrailFeatureTypes, placement.TypeId)!);
+            }
         state.Ways.Add(way);
         state.WaysRevision++;
         ctx.Publish(new WayBuilt(ctx.Tick, id));
@@ -60,11 +80,12 @@ public sealed record BuildWayCommand(
 
     private WayPlan Plan(SimContext ctx) =>
         WayPlanner.Plan(ctx.Terrain, ctx.Network, ctx.State.TrailRules, Kind, Points,
-            Origin == WayOrigin.Scenario ? null : Land.LandMath.OwnedPredicate(ctx.State), mayStandAlone: Origin == WayOrigin.Scenario);
+            Origin == WayOrigin.Scenario ? null : Land.LandMath.OwnedPredicate(ctx.State), mayStandAlone: Origin == WayOrigin.Scenario, rockChoice: Choice(ctx));
 
     // Value equality over the points, so identical commands compare equal (records compare lists by reference).
     public bool Equals(BuildWayCommand? other) =>
         other is not null && Kind == other.Kind && Name == other.Name && Origin == other.Origin && Instant == other.Instant && Surface == other.Surface
+        && (RockFeatures ?? []).SequenceEqual(other.RockFeatures ?? [])
         && (ReferenceEquals(Points, other.Points) || (Points is not null && other.Points is not null && Points.SequenceEqual(other.Points)));
 
     public override int GetHashCode() => HashCode.Combine(Kind, Name, Points?.Count ?? -1);

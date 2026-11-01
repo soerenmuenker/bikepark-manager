@@ -155,7 +155,7 @@ public partial class WayView : Node3D
         var rules = state.WearRules;
         long at = g.Distances[sample];
         var worn = way.Features.FirstOrDefault(f => f.Built && at >= f.DistanceCm
-            && TrailFeatures.FindType(state.TrailFeatureTypes, f.TypeId) is { } type && at < f.DistanceCm + type.LengthCm);
+            && TrailFeatures.FindType(state.TrailFeatureTypes, f.TypeId) is { } type && at < f.DistanceCm + f.LengthOn(type));
         int condition = worn is null ? 1000 : TrailCondition.Permille(worn);
         var color = condition < rules.WarnBelowPermille ? WornOutDirt
             : condition < rules.RoughBelowPermille ? WayMeshes.Dirt.Lerp(Rutted, (rules.RoughBelowPermille - condition) / (float)rules.RoughBelowPermille)
@@ -220,15 +220,11 @@ public partial class WayView : Node3D
     /// <summary>The ribbon runs over a bridge's deck, so there it shows the boards.</summary>
     private static Color Planked(WayGeometry g, int i, Color color)
     {
-        foreach (var (from, to) in Decks(g))
-            if (i >= from - WayGeometry.BridgeBankSamples && i <= to + WayGeometry.BridgeBankSamples)
+        foreach (var bridge in g.Bridges)
+            if (i >= bridge.From - WayGeometry.BridgeBankSamples && i <= bridge.To + WayGeometry.BridgeBankSamples)
                 return i % 2 == 0 ? PlankLight : PlankDark;
         return color;
     }
-
-    /// <summary>Sample ranges of the way's wooden decks: bridges over water and a trail's ramps over medium rocks.</summary>
-    private static IEnumerable<(int From, int To)> Decks(WayGeometry g) =>
-        g.Bridges.Select(b => (b.From, b.To)).Concat(g.RampMeters == 0 ? [] : g.Rocks.Where(r => r.Kind == RockFormation.MediumRock).Select(r => (r.From, r.To)));
 
     private static readonly Color PlankLight = new Color(0.56f, 0.40f, 0.25f).SrgbToLinear();
     private static readonly Color PlankDark = new Color(0.44f, 0.30f, 0.18f).SrgbToLinear();
@@ -236,13 +232,13 @@ public partial class WayView : Node3D
     /// <summary>Plank decks with rails where the way crosses water, following its (levelled) height from bank to bank.</summary>
     private void AddBridges(WayGeometry g, float width)
     {
-        if (!Decks(g).Any()) return;
+        if (g.Bridges.Count == 0) return;
         var mesh = new FlatMeshBuilder();
         var wood = new Color(0.46f, 0.32f, 0.20f).SrgbToLinear();
         var rail = new Color(0.36f, 0.25f, 0.16f).SrgbToLinear();
-        foreach (var (deckFrom, deckTo) in Decks(g))
+        foreach (var bridge in g.Bridges)
         {
-            int a = Math.Max(0, deckFrom - WayGeometry.BridgeBankSamples), b = Math.Min(g.SampleCount - 1, deckTo + WayGeometry.BridgeBankSamples);
+            int a = Math.Max(0, bridge.From - WayGeometry.BridgeBankSamples), b = Math.Min(g.SampleCount - 1, bridge.To + WayGeometry.BridgeBankSamples);
             var from = new Vector3(g.Xs[a], g.Ys[a], g.Zs[a]) / 100f;
             var to = new Vector3(g.Xs[b], g.Ys[b], g.Zs[b]) / 100f;
             var flat = new Vector3(to.X - from.X, 0, to.Z - from.Z).Normalized();
@@ -303,7 +299,7 @@ public partial class WayView : Node3D
             {
                 Name = $"{way.Name} {feature.Type.Name} {feature.Feature.Id}",
                 Mesh = FeatureMeshes.Build(grid, g, feature.Type, feature.StartCm,
-                    built ? FeatureMeshes.BaseColor(feature.Type.Material) : FeatureMeshes.ProgressColor(feature.Type.Material, progress)),
+                    built ? FeatureMeshes.BaseColor(feature.Type.Material) : FeatureMeshes.ProgressColor(feature.Type.Material, progress), feature.EndCm - feature.StartCm, feature.Feature.RampCm),
                 MaterialOverride = built ? _featureMaterial : _plannedFeatureMaterial,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, // the depth bias would self-shadow
             });

@@ -291,7 +291,7 @@ public static class WayEditing
     }
 
     private static long FeatureLength(WorldState state, TrailFeature feature) =>
-        TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId)?.LengthCm ?? 0;
+        TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId) is { } type ? feature.LengthOn(type) : 0;
 
     /// <summary>Re-points every join onto <paramref name="wayId"/> (null: the joining way gets a loose end there).</summary>
     private static void RemapJoins(WorldState state, int wayId, Func<long, (int WayId, long DistanceCm)?> map)

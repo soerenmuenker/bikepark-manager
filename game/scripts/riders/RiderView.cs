@@ -335,6 +335,9 @@ public partial class RiderView : Node3D
             int dir = leg.ToCm >= leg.FromCm ? 1 : -1;
             long d = leg.FromCm + dir * Math.Min(remaining, leg.LengthCm);
             position = WayMeshes.ToWorld(g.PositionAt(d));
+            foreach (var placed in network.FeaturesOn(leg.WayId))
+                if (placed.Feature.Built && FeatureMeshes.RideHeight(g, placed.Type, placed.StartCm, placed.EndCm - placed.StartCm, placed.Feature.RampCm, d) is { } ride)
+                    position.Y = ride;
             var ahead = WayMeshes.ToWorld(g.PositionAt(d + dir * 150));
             var behind = WayMeshes.ToWorld(g.PositionAt(d - dir * 150));
             var f = ahead - behind;

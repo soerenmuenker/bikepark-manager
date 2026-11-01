@@ -52,11 +52,13 @@ internal static class FeatureMeshes
     };
 
     /// <summary>The feature's mesh in world coordinates, from <paramref name="startCm"/> along the trail.</summary>
-    public static ArrayMesh Build(TerrainGrid grid, WayGeometry g, TrailFeatureType type, long startCm, Color color)
+    public static ArrayMesh Build(TerrainGrid grid, WayGeometry g, TrailFeatureType type, long startCm, Color color, long placedLengthCm = 0, long rampCm = 0)
     {
+        if (type.Kind == FeatureKind.FlatDrop) return BuildFlatDrop(grid, g, type, startCm, placedLengthCm > 0 ? placedLengthCm : type.LengthCm, rampCm, color);
         if (type.Kind == FeatureKind.RockGarden) return BuildRocks(grid, g, type, startCm, color);
-        long lengthCm = type.LengthCm;
-        int steps = Math.Max(6, type.LengthMeters * 3);
+        long lengthCm = placedLengthCm > 0 ? placedLengthCm : type.LengthCm;
+        float meters = lengthCm / 100f;
+        int steps = Math.Max(6, (int)(meters * 3));
         float outside = OutsideSign(g, startCm, startCm + lengthCm);
 
         var st = new SurfaceTool();
@@ -79,7 +81,7 @@ internal static class FeatureMeshes
             var right = new Vector2(-dir.Y, dir.X);
             var center = new Vector2(p.X / 100f, p.Z / 100f);
 
-            var profile = Profile(type, t, outside, fallen);
+            var profile = Profile(type, t, outside, fallen, meters);
             var section = new Vector3[profile.Length];
             for (int k = 0; k < profile.Length; k++)
             {
@@ -106,17 +108,131 @@ internal static class FeatureMeshes
         return st.Commit();
     }
 
+    private const float DeckHalfWidth = 0.9f, DeckThickness = 0.14f, LandingHeight = 1.3f;
+
+    /// <summary>
+    /// A flat drop: a level plank deck on posts, from where it meets the hillside to its lip on top of the rock (open underneath, the
+    /// rock stands in it); then the gap; then the wooden landing falling to the trail.
+    /// </summary>
+    private static ArrayMesh BuildFlatDrop(TerrainGrid grid, WayGeometry g, TrailFeatureType type, long startCm, long lengthCm, long rampCm, Color color)
+    {
+        var st = new SurfaceTool();
+        st.Begin(Mesh.PrimitiveType.Triangles);
+        float deck = g.HeightAt(startCm) / 100f + 0.05f;
+        var dark = new Color(color.R * 0.82f, color.G * 0.82f, color.B * 0.82f, color.A);
+        const float PlankMeters = 0.5f, PostEveryMeters = 2f;
+        float deckMeters = rampCm / 100f;
+        int planks = Math.Max(1, (int)(deckMeters / PlankMeters));
+        for (int i = 0; i < planks; i++)
+        {
+            long a = startCm + rampCm * i / planks, b = startCm + rampCm * (i + 1) / planks;
+            var (ca, ra) = Frame(g, a);
+            var (cb, rb) = Frame(g, b);
+            st.SetColor(i % 2 == 0 ? color : dark);
+            Vector3 At(Vector2 c, Vector2 r, float side, float y) => new(c.X + r.X * side, y, c.Y + r.Y * side);
+            float top = deck, under = deck - DeckThickness;
+            Quad(st, At(ca, ra, -DeckHalfWidth, top), At(ca, ra, DeckHalfWidth, top), At(cb, rb, DeckHalfWidth, top), At(cb, rb, -DeckHalfWidth, top));
+            Quad(st, At(ca, ra, -DeckHalfWidth, under), At(ca, ra, DeckHalfWidth, under), At(cb, rb, DeckHalfWidth, under), At(cb, rb, -DeckHalfWidth, under));
+            Quad(st, At(ca, ra, -DeckHalfWidth, top), At(cb, rb, -DeckHalfWidth, top), At(cb, rb, -DeckHalfWidth, under), At(ca, ra, -DeckHalfWidth, under));
+            Quad(st, At(ca, ra, DeckHalfWidth, top), At(cb, rb, DeckHalfWidth, top), At(cb, rb, DeckHalfWidth, under), At(ca, ra, DeckHalfWidth, under));
+            if (i == planks - 1) Quad(st, At(cb, rb, -DeckHalfWidth, top), At(cb, rb, DeckHalfWidth, top), At(cb, rb, DeckHalfWidth, under), At(cb, rb, -DeckHalfWidth, under));
+        }
+        st.SetColor(dark);
+        for (float along = deckMeters; along > 0.2f; along -= PostEveryMeters)
+        {
+            var (c, r) = Frame(g, startCm + (long)(along * 100));
+            foreach (float side in new[] { -DeckHalfWidth + 0.1f, DeckHalfWidth - 0.1f })
+                Post(st, grid, c + r * side, deck - DeckThickness);
+        }
+
+        // The landing: wooden, highest at its start.
+        long landingCm = type.LandingDeckMeters * 100L, from = startCm + lengthCm - landingCm;
+        st.SetColor(color);
+        const int Steps = 12;
+        Vector3[]? previous = null;
+        Vector3[] first = [], last = [];
+        for (int i = 0; i <= Steps; i++)
+        {
+            float t = (float)i / Steps;
+            var (c, r) = Frame(g, from + (long)(landingCm * t));
+            var section = Hump(LandingHeight * (1 - t), 0.9f).Select(q =>
+            {
+                var xz = c + r * q.Item1;
+                return new Vector3(xz.X, grid.HeightAt((long)MathF.Round(xz.X * 100), (long)MathF.Round(xz.Y * 100)) / 100f + 0.05f + q.Item2, xz.Y);
+            }).ToArray();
+            if (previous is not null)
+                for (int k = 0; k < section.Length - 1; k++)
+                    Quad(st, previous[k], previous[k + 1], section[k + 1], section[k]);
+            if (i == 0) first = section;
+            last = section;
+            previous = section;
+        }
+        Cap(st, first);
+        Cap(st, last);
+        st.GenerateNormals();
+        return st.Commit();
+    }
+
+    /// <summary>A square post from the ground up to the given height.</summary>
+    private static void Post(SurfaceTool st, TerrainGrid grid, Vector2 at, float top)
+    {
+        float bottom = grid.HeightAt((long)MathF.Round(at.X * 100), (long)MathF.Round(at.Y * 100)) / 100f - 0.1f;
+        if (top <= bottom) return;
+        const float H = 0.07f;
+        Vector2[] corners = [at + new Vector2(-H, -H), at + new Vector2(H, -H), at + new Vector2(H, H), at + new Vector2(-H, H)];
+        for (int k = 0; k < 4; k++)
+        {
+            var a = corners[k];
+            var b = corners[(k + 1) % 4];
+            Quad(st, new Vector3(a.X, bottom, a.Y), new Vector3(b.X, bottom, b.Y), new Vector3(b.X, top, b.Y), new Vector3(a.X, top, a.Y));
+        }
+    }
+
+    /// <summary>The spot on the trail (meters) and the direction to the right of travel.</summary>
+    private static (Vector2 Center, Vector2 Right) Frame(WayGeometry g, long d)
+    {
+        var p = g.PositionAt(Math.Clamp(d, 0, g.LengthCm));
+        var ahead = g.PositionAt(Math.Min(g.LengthCm, d + 50));
+        var behind = g.PositionAt(Math.Max(0, d - 50));
+        var dir = new Vector2(ahead.X - behind.X, ahead.Z - behind.Z).Normalized();
+        return (new Vector2(p.X / 100f, p.Z / 100f), new Vector2(-dir.Y, dir.X));
+    }
+
+    /// <summary>
+    /// How high a rider is here on a flat drop (meters): level on the deck, a falling arc over the gap, down the landing. Null off it.
+    /// </summary>
+    public static float? RideHeight(WayGeometry g, TrailFeatureType type, long startCm, long lengthCm, long rampCm, long d)
+    {
+        if (type.Kind != FeatureKind.FlatDrop || d < startCm || d > startCm + lengthCm) return null;
+        float deck = g.HeightAt(startCm) / 100f + 0.05f;
+        long lip = startCm + rampCm, landingCm = type.LandingDeckMeters * 100L, close = startCm + lengthCm - landingCm;
+        if (d <= lip) return deck;
+        float landingTop = g.HeightAt(close) / 100f + 0.05f + LandingHeight;
+        if (d <= close)
+        {
+            float t = (float)(d - lip) / Math.Max(1, close - lip);
+            return deck + (landingTop - deck) * t * t;
+        }
+        return g.HeightAt(d) / 100f + 0.05f + LandingHeight * (1 - (float)(d - close) / Math.Max(1, landingCm));
+    }
+
     /// <summary>
     /// Cross-section at <paramref name="t"/> (0..1 along the feature), from one side to the other: (lateral offset to the
     /// right of travel, height). The ends of each section are on the ground.
     /// </summary>
-    private static (float U, float H)[] Profile(TrailFeatureType type, float t, float outside, float fallen)
+    private static (float U, float H)[] Profile(TrailFeatureType type, float t, float outside, float fallen, float meters)
     {
         float ease = Mathf.Clamp(Math.Min(t, 1 - t) * 5f, 0f, 1f); // ramps in and out over the first/last 20 %
         // Where the gap is (after the takeoff); landings are the slope beyond it.
         float gap = (float)type.GapMeters / Math.Max(1, type.LengthMeters);
         switch (type.Kind)
         {
+            case FeatureKind.WoodRoller:
+            {
+                // A raised deck over the rock, with a roller about every meter.
+                float bump = Mathf.Sin(t * meters * Mathf.Tau);
+                return Hump(Mathf.Clamp(Math.Min(t, 1 - t) * meters, 0f, 1f) * (0.7f + 0.07f * bump), 0.8f);
+            }
             case FeatureKind.LongJump:
             {
                 float takeoff = (1 - gap) * 0.4f, land = takeoff + gap;

@@ -40,8 +40,13 @@ public sealed record PlaceTrailFeatureCommand(int WayId, string TypeId, long Dis
 /// <summary>Removes a feature from a trail (a planned one: cancels its job, wood it took goes back to the stock).</summary>
 public sealed record RemoveTrailFeatureCommand(int WayId, int FeatureId) : ICommand
 {
-    public string? Validate(SimContext ctx) =>
-        ctx.State.Ways.FirstOrDefault(w => w.Id == WayId)?.Features.Any(f => f.Id == FeatureId) == true ? null : "No such feature.";
+    public string? Validate(SimContext ctx)
+    {
+        if (ctx.State.Ways.FirstOrDefault(w => w.Id == WayId)?.Features.FirstOrDefault(f => f.Id == FeatureId) is not { } feature) return "No such feature.";
+        return TrailFeatures.FindType(ctx.State.TrailFeatureTypes, feature.TypeId) is { CrossesRock: not Terrain.RockFormation.None }
+            ? "This feature carries the trail over rock: renaturalize that section of the trail instead."
+            : null;
+    }
 
     public void Apply(SimContext ctx)
     {

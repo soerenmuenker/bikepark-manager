@@ -23,7 +23,7 @@ public enum RatingCause : byte
     /// <summary>Its hardest feature (a feature on the line is mandatory).</summary>
     Feature = 2,
 
-    /// <summary>Rock on its line: a dense stone field or a ramp over a medium rock.</summary>
+    /// <summary>Rock on its line: a dense stone field.</summary>
     Rock = 3,
 }
 
@@ -128,12 +128,6 @@ public sealed class WayGeometry
 
     /// <summary>A dense stone field on a trail: difficulty of the stretch, as hard as a Rock garden, so the trail is black.</summary>
     public const int StoneFieldDifficulty = 740;
-
-    /// <summary>A wooden ramp over a medium rock: difficulty of the stretch, so the trail is at least red.</summary>
-    public const int RampDifficulty = 500;
-
-    /// <summary>Meters of a trail's wooden ramps over medium rocks.</summary>
-    public int RampMeters => Kind == WayKind.Trail ? RockMeters(RockFormation.MediumRock) : 0;
 
     /// <summary>Meters of stones the crew moves away: a trail leaves a dense field as it is, a gravel path clears it.</summary>
     public int StoneMeters => RockMeters(RockFormation.SparseStones) + (Kind == WayKind.Trail ? 0 : RockMeters(RockFormation.DenseStones));
@@ -327,7 +321,6 @@ public sealed class WayGeometry
                     hardest = Math.Max(hardest, StoneFieldDifficulty);
                     rough = 255;
                 }
-                else if (rock.Kind == RockFormation.MediumRock) hardest = Math.Max(hardest, RampDifficulty);
             }
             if (hardest > 0)
                 segments[i] = s with

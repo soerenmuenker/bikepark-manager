@@ -35,6 +35,7 @@ public partial class TerrainView : Node3D
     private ArrayMesh _treeMesh = null!;
     private ArrayMesh _rockMesh = null!;
     private ArrayMesh[] _faceMeshes = [];
+    private ArrayMesh _boulderMesh = null!;
     private StandardMaterial3D _scatterMaterial = null!;
     private Node3D? _chunks;
     private readonly List<(Node3D Node, int X0, int Z0, int SizeX, int SizeZ)> _chunkInfo = [];
@@ -78,6 +79,7 @@ public partial class TerrainView : Node3D
         _terrainMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/terrain.gdshader") };
         _treeMesh = ScatterMeshes.CreateTree();
         _rockMesh = ScatterMeshes.CreateRock();
+        _boulderMesh = ScatterMeshes.CreateFace(3, ledges: false, detail: 2);
         _faceMeshes = [ScatterMeshes.CreateFace(0), ScatterMeshes.CreateFace(1), ScatterMeshes.CreateFace(2)];
         _scatterMaterial = ScatterMeshes.CreateMaterial();
 
@@ -290,12 +292,14 @@ public partial class TerrainView : Node3D
         scatter.Clear();
         TerrainScatter.Collect(grid, x0, z0, maxX, maxZ, scatter);
         if (_cleared is { } cleared)
-            scatter.RemoveAll(s => cleared(s.XCm, s.ZCm) && !DenseFieldOnTrail(grid, s));
+            scatter.RemoveAll(s => cleared(s.XCm, s.ZCm) && !DenseFieldOnTrail(grid, s) && !UnderFlatDrop(s));
         var treeItems = scatter.Where(s => s.Kind == ScatterKind.Tree).ToList();
-        var rockItems = scatter.Where(s => s.Kind is ScatterKind.Rock or ScatterKind.Stone or ScatterKind.Boulder).ToList();
+        var rockItems = scatter.Where(s => s.Kind is ScatterKind.Rock or ScatterKind.Stone).ToList();
+        var boulderItems = scatter.Where(s => s.Kind == ScatterKind.Boulder).ToList();
         var faceItems = scatter.Where(s => s.Kind == ScatterKind.Face).ToList();
         if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
         if (rockItems.Count > 0) chunk.AddChild(BuildInstances("Rocks", _rockMesh, rockItems, center, RockDrawDistance, RockTint));
+        if (boulderItems.Count > 0) chunk.AddChild(BuildInstances("Boulders", _boulderMesh, boulderItems, center, RockDrawDistance, RockTint));
         for (int m = 0; m < _faceMeshes.Length; m++)
         {
             var items = faceItems.Where(s => s.Variant % _faceMeshes.Length == m).ToList();
@@ -311,6 +315,36 @@ public partial class TerrainView : Node3D
         if (item.Kind != ScatterKind.Stone || grid.RockFormationAt(item.XCm, item.ZCm) != RockFormation.DenseStones) return false;
         var network = _host.Sim.Network;
         return network.Nearest(item.XCm, item.ZCm, 300) is { } near && network.FindWay(near.WayId) is { Kind: WayKind.Trail };
+    }
+
+    /// <summary>A flat drop's deck rests on the rock: it stays, also while the drop is only planned.</summary>
+    private bool UnderFlatDrop(ScatterInstance item)
+    {
+        if (item.Kind is not (ScatterKind.Boulder or ScatterKind.Face)) return false;
+        var network = _host.Sim.Network;
+        return network.NearestTrail(item.XCm, item.ZCm, RockKeepRadiusCm) is { } near
+            && network.FeaturesOn(near.WayId).Any(f => f.Type.Kind == FeatureKind.FlatDrop && near.DistanceCm >= f.StartCm && near.DistanceCm <= f.EndCm);
+    }
+
+    private const int RockKeepRadiusCm = 800;
+
+    /// <summary>Red see-through copies of these rocks, on top of everything (the rock the trail tool is asking about).</summary>
+    public Node3D BuildRockHighlight(IEnumerable<ScatterInstance> rocks, Material material)
+    {
+        var root = new Node3D { Name = "RockHighlight" };
+        foreach (var rock in rocks)
+        {
+            float scale = rock.ScalePermille / 1000f * 1.04f;
+            root.AddChild(new MeshInstance3D
+            {
+                Mesh = rock.Kind == ScatterKind.Face ? _faceMeshes[rock.Variant % _faceMeshes.Length] : _boulderMesh,
+                MaterialOverride = material,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                Transform = new Transform3D(new Basis(Vector3.Up, rock.YawPermille / 1000f * Mathf.Tau).Scaled(Vector3.One * scale),
+                    new Vector3(rock.XCm / 100f, rock.YCm / 100f - 0.15f, rock.ZCm / 100f)),
+            });
+        }
+        return root;
     }
 
     private MultiMeshInstance3D BuildInstances(

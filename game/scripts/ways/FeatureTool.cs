@@ -157,7 +157,7 @@ public partial class FeatureTool : Node3D
 
         if (Hovered is { } hovered)
         {
-            _highlight.Mesh = FeatureMeshes.Build(grid, geometry, hovered.Feature.Type, hovered.Feature.StartCm, Highlight);
+            _highlight.Mesh = FeatureMeshes.Build(grid, geometry, hovered.Feature.Type, hovered.Feature.StartCm, Highlight, hovered.Feature.EndCm - hovered.Feature.StartCm);
             _highlight.Visible = true;
         }
         else

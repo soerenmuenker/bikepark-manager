@@ -59,9 +59,9 @@ internal static class ScatterMeshes
 
     /// <summary>
     /// A piece of rock face: a finely divided lump with broken ledges (bands of rock stepping in and out) and cracks, wider
-    /// than tall, its foot below the ground. <paramref name="variant"/> gives another shape.
+    /// than tall, its foot below the ground. <paramref name="variant"/> gives another shape. Without ledges: a boulder.
     /// </summary>
-    public static ArrayMesh CreateFace(int variant)
+    public static ArrayMesh CreateFace(int variant, bool ledges = true, int detail = 3)
     {
         float p = (1f + MathF.Sqrt(5f)) / 2f;
         Vector3[] v =
@@ -87,6 +87,7 @@ internal static class ScatterMeshes
         {
             var d = direction.Normalized();
             float radius = 1f + 0.26f * Wave(d, 2.3f) + 0.14f * Wave(d, 5.1f) + 0.06f * Wave(d, 11f);
+            if (!ledges) return new Vector3(d.X * radius, d.Y * radius * 0.68f + 0.18f, d.Z * radius * 0.9f);
             float y = d.Y * radius * 0.72f;
             int band = (int)MathF.Floor(y / Band);
             float inBand = y / Band - band;
@@ -115,7 +116,7 @@ internal static class ScatterMeshes
             b.Triangle(pa, pc, pe, new Color(shade, shade * 0.98f, shade * 0.93f), center);
         }
         foreach (var f in faces)
-            Split(v[f[0]].Normalized(), v[f[1]].Normalized(), v[f[2]].Normalized(), 3);
+            Split(v[f[0]].Normalized(), v[f[1]].Normalized(), v[f[2]].Normalized(), detail);
         return b.ToMesh();
     }
 

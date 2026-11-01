@@ -208,7 +208,17 @@ public sealed class WayNetwork
     private bool[]? _reachable, _returnable;
 
     /// <summary>Riders may ride it: paths always; trails when open (<see cref="Way.IsRideable"/>) and connected.</summary>
-    public bool IsRideable(Way way) => way.Kind != WayKind.Trail || way.IsRideable && IsConnected(way);
+    public bool IsRideable(Way way) => way.Kind != WayKind.Trail || way.IsRideable && IsConnected(way) && !IsBlockedByRock(way);
+
+    /// <summary>A trail with rock on its line that no built wooden feature gets across yet (or any more).</summary>
+    public bool IsBlockedByRock(Way way)
+    {
+        if (way.Kind != WayKind.Trail || !_geometries.TryGetValue(way.Id, out var geometry)) return false;
+        var built = FeaturesOn(way.Id).Where(f => f.Feature.Built && f.Type.CrossesRock != Terrain.RockFormation.None).ToList();
+        foreach (var crossing in RockFeatures.Crossings(geometry))
+            if (!built.Any(f => f.StartCm <= crossing.FromCm && f.EndCm >= crossing.ToCm)) return true;
+        return false;
+    }
 
     /// <summary>Nodes reachable from the base (forward) or from which the base can be reached (backward), over all edges.</summary>
     private bool[] Reach(bool forward)

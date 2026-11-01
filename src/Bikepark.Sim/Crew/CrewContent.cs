@@ -82,10 +82,6 @@ public sealed class CrewRules
     /// <summary>Moving loose stones out of a way's line, per meter.</summary>
     public int StoneClearMinutesPerMeter { get; set; } = 6;
 
-    /// <summary>A wooden ramp over a medium rock on a trail: wood and extra work per meter of it.</summary>
-    public int RampWoodPerMeter { get; set; } = 1;
-    public int RampMinutesPerMeter { get; set; } = 20;
-
     /// <summary>Worker grades applicants come in (none: no applicants, every hire is a standard worker).</summary>
     public List<CrewGrade> Grades { get; set; } = [];
 

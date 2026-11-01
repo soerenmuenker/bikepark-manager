@@ -97,7 +97,7 @@ public static class TerrainScatter
                             scale = 250 + Steep(sample, 0, 1200) / 6 + more / 4;
                             break;
                         case ScatterKind.Boulder when formation == RockFormation.MediumRock && roll < 180:
-                            scale = 1500 + Steep(sample, 300, 1300) * 3 + more * 3 / 2;
+                            scale = 1200 + Steep(sample, 300, 1300) * 2 + more * 13 / 10;
                             break;
                         case ScatterKind.Face when formation == RockFormation.RockFace:
                             scale = 4000 + Steep(sample, 1150, 2000) * 7 + more * 3;

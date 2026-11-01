@@ -304,6 +304,9 @@ public partial class Hud : CanvasLayer
             "It's planned once named: the crew builds it (Crew menu). You can rename it later in the Trails menu.",
             suggestion, name => Bikepark.Sim.Commands.RenameTrailCommand.CannotName(_ctx.Sim.State, name), ok, cancel);
         _root.AddChild(_nameDialog);
+        var rockDialog = new RockCrossingDialog();
+        _ctx.Ways.AskRock = rockDialog.Ask;
+        _root.AddChild(rockDialog);
 
         // Click on things in the world to open their menu.
         AddChild(_picker = new WorldPicker(_ctx, GetNodeOrNull<Bikepark.Game.Crew.CrewView>(CrewViewPath), () => !ToolActive && !_nameDialog.Visible,
