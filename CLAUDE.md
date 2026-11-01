@@ -93,7 +93,7 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/demo_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json] [--bare] [--raw grid.bin]
 # (parcel borders are drawn too: owned at start teal, for sale yellow; --bare: terrain only)
 # Map maker (browser, http://localhost:8767): find a place, drag the square, see the real routes / lifts / parking, click where guests
-# arrive, create the map. Real maps build only what OpenStreetMap has (no made-up infrastructure); the game's validators report refusals.
+# arrive, click tracks or roads to leave them out, create the map. Real maps build only what OpenStreetMap has (no made-up infrastructure); the game's validators report refusals.
 # Land: a 3 x 3 grid of parcels to redraw, or don't split (no parcels: the whole map is owned, also --no-parcels on the command line).
 # After creating, its button starts the scenario editor on that map (first free port from 8765; stopped with the map maker, one at a time).
 # Any scenario with a "menu" block is on the start screen (SimHost.CareerMaps).
@@ -106,7 +106,8 @@ python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --o
 # (lift stations, parking lots, way points) on the terrain map; Terrain tab: raise / lower / paint-surface brushes
 # (same integer math as TerrainSculptor, live on the raw grid from `terrain --raw`); Validate runs the scenario commands,
 # Save rewrites only the scenario's "parcels", "commands" and "terrainSculpt" blocks (comments elsewhere are kept); a real map's
-# water, streets and buildings are drawn for reference; --back <url> adds a link back (the map maker uses it)
+# water, streets and buildings are drawn for reference; --back <url> adds a link back (the map maker uses it). Also: set where guests
+# arrive (green dot; cuts the way there and makes the climbing piece the first way), starter parking lot, draw, cut, delete ways and change their surface
 python3 tools/scenario-editor/server.py data/scenarios/starter_valley.json
 # Reputation: the output's "reputation" block (stars overall/per group, demand parts, XP parts, level, influencer posts,
 # a log of influencer visits and level changes); --daily adds reviews, rating, demand, XP and level per day
@@ -171,7 +172,7 @@ tools/release/export.sh 0.1.0
     ridge, relief and coverage settings are ignored. `TerrainSettings.ReliefScalePermille` multiplies the height above the lowest point
     before upsampling (real mountains read flat against grading tuned to Starter Valley; the map maker suggests a value per map). Scenario tracks may stand alone (`WayPlanner` `mayStandAlone`: real routes not
     connected to the arrival). Every real road is a tarmac way (`Way.Surface`: looks only, behaves like a gravel path: riders use it, trails start and end on it; the Build menu's Tarmac road makes more); `SceneryStreet` remains only for older saves. Where scenario tracks exist and there is no parking lot, guests arrive at the low end of the first one,
-    even after the player adds lifts (`WayNetwork` base: parking → scenario road → valley station → any path).
+    even after the player adds lifts (`WayNetwork` base: parking → scenario road → valley station → any path). A scenario's parking lot needs no valley station (`LiftId` 0; its ways connect it), a player's does.
 9b. **Scenery** (`Terrain/TerrainScenery.cs`, `TerrainHeightmap.Scenery`; real maps only, generated maps are untouched): what really
     stands there, static, nothing simulated. `TerrainSceneryBuilder` (in the generator, integer-only) carves lakes (flat at the lowest
     shore) and streams (a never-rising fit to the ground, flow direction from the heights) and fills `WaterDepth`, clears vegetation

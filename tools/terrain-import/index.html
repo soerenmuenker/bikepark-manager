@@ -22,9 +22,10 @@
 <button id="look">Show what's there</button>
 <h2>2 · What really stands there</h2>
 <div id="facts" class="dim">Nothing loaded yet.</div>
+<div class="dim">Click a gravel track or road to leave it out; click again to keep it. After creating, the editor can move, draw and delete them.</div><div id="leftOutText" class="dim"></div>
 <div class="key dim"><i style="background:#ffb000"></i>gravel &nbsp; <i style="background:#30343a"></i>road &nbsp; <i style="background:#1e88e5"></i>water &nbsp; <i style="background:#6d4c41"></i>house &nbsp; <i style="background:#e0218a"></i>lift &nbsp; <i style="background:#8a97a3"></i>not imported</div>
 <h2>3 · Where guests arrive</h2>
-<div class="dim">Click a round junction on the map. A real parking lot wins over this.</div>
+<div class="dim">Click a round junction on the map. A real parking lot wins over this. The editor can place the arrival and a starter parking lot anywhere.</div>
 <div id="arrivalText" class="dim"></div>
 <h2>4 · Make the map</h2>
 <label>Name</label><input id="title" placeholder="Farrenpoint">
@@ -95,8 +96,14 @@ $('look').onclick = async () => {
     const d = await post('/api/preview', {lat: center.lat, lon: center.lng, size: size()});
     info.clearLayers();
     d.minor.forEach(l => L.polyline(l, {color: '#8a97a3', weight: 1.5, opacity: .8, interactive: false}).addTo(info));
-    d.roads.forEach(l => L.polyline(l, {color: '#30343a', weight: 4, interactive: false}).addTo(info));
-    d.routes.forEach(l => L.polyline(l, {color: '#ffb000', weight: 4, interactive: false}).addTo(info));
+    leaveOut.clear(); showLeftOut();
+    const way = (w, color) => { const line = L.polyline(w.line, {color, weight: 5}).on('click', e => {
+      L.DomEvent.stopPropagation(e);
+      const out = !leaveOut.delete(w.edge); if (out) leaveOut.add(w.edge);
+      line.setStyle(out ? {color: '#ff5252', dashArray: '4 6', weight: 3} : {color, dashArray: null, weight: 5}); showLeftOut();
+    }).addTo(info); };
+    d.roads.forEach(w => way(w, '#30343a'));
+    d.routes.forEach(w => way(w, '#ffb000'));
     d.lakes.forEach(l => L.polygon(l, {color: '#1e88e5', weight: 1, fillOpacity: .55, interactive: false}).addTo(info));
     d.streams.forEach(s => L.polyline(s.line, {color: '#1e88e5', weight: s.width > 300 ? 4 : 2, interactive: false}).addTo(info));
     d.buildings.forEach(b => L.polygon(b, {color: '#6d4c41', weight: 1, fillOpacity: .8, interactive: false}).addTo(info));
@@ -112,6 +119,8 @@ $('look').onclick = async () => {
   } catch (e) { $('facts').innerHTML = '<span class="bad"></span>'; $('facts').firstChild.textContent = e.message; }
   $('look').disabled = false; refresh();
 };
+const leaveOut = new Set();
+function showLeftOut() { $('leftOutText').textContent = leaveOut.size ? leaveOut.size + ' sections left out (red dashes).' : ''; }
 let realMedian = null;
 function showRelief() {
   const k = +$('relief').value, deg = realMedian === null ? '' : ' · median slope ' + (Math.atan(Math.tan(realMedian * Math.PI / 180) * k) * 180 / Math.PI).toFixed(0) + '° (Starter Valley 24°)';
@@ -122,7 +131,7 @@ async function make(overwrite) {
   $('make').disabled = true; $('result').textContent = 'Fetching terrain and building the map…';
   try {
     const d = await post('/api/create', {lat: center.lat, lon: center.lng, size: size(), id: $('id').value, title: $('title').value,
-      place: $('place').value, land: document.querySelector('input[name=land]:checked').value, relief: +$('relief').value, arrival: arrival && [arrival[0], arrival[1]], overwrite});
+      place: $('place').value, land: document.querySelector('input[name=land]:checked').value, relief: +$('relief').value, arrival: arrival && [arrival[0], arrival[1]], leaveOut: [...leaveOut], overwrite});
     if (d.exists) { $('result').textContent = ''; if (confirm('A map with this file id exists. Overwrite it?')) return make(true); return; }
     const box = $('result'); box.innerHTML = '';
     const add = (text, cls) => { const p = document.createElement('div'); p.textContent = text; p.className = cls || 'dim'; box.appendChild(p); };
@@ -133,7 +142,7 @@ async function make(overwrite) {
     const id = $('id').value, split = document.querySelector('input[name=land]:checked').value === 'grid';
     add(split ? 'It is on the start screen now. Next: draw the land parcels.' : 'It is on the start screen now. The whole map is yours from the start.');
     const open = document.createElement('button');
-    open.textContent = split ? 'Define land parcels in the editor' : 'Open in the scenario editor';
+    open.textContent = split ? 'Edit land, paths and parking in the editor' : 'Edit paths and parking in the editor';
     open.onclick = async () => {
       open.disabled = true; open.textContent = 'Starting the editor…';
       try { location.href = (await post('/api/open-editor', {id})).url; }

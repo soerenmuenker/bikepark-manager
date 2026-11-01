@@ -62,6 +62,13 @@
     <button id="tSplit" title="Select a parcel, click its border, optional points inside, then its border again">Split parcel</button>
     <button id="undo" title="Ctrl/Cmd+Z">Undo</button>
   </div>
+  <div id="wayTools" class="row">
+    <button id="tArrival" title="Click a track or road: guests arrive there (no parking lot may exist: a parking lot wins)">Set arrival</button>
+    <button id="tParking" title="Click where the starter parking lot goes: guests arrive there, a gravel link joins it to the nearest way">Starter parking</button>
+    <button id="tGravel" title="Click points, Enter to finish">New gravel path</button>
+    <button id="tTarmac" title="Click points, Enter to finish">New road</button>
+    <button id="tCut" title="Click a way: it becomes two ways there, so a section can be deleted">Cut way</button>
+  </div>
   <div class="row">
     <button id="validate">Validate</button>
     <button id="save" class="primary">Save to scenario</button>
@@ -78,11 +85,12 @@
   <div id="checks"></div>
   <h2>Controls</h2>
   <div class="small">
+    Green dot: where guests arrive. Select a way or structure, then <kbd>Del</kbd> deletes it.<br>
     Drag map: pan · wheel: zoom · Terrain tab: drag to brush, right-/middle-drag to pan<br>
     Drag a corner: move it (shared corners of neighbours move along; <kbd>Alt</kbd> at drag start moves only this one). Snaps to other corners/borders, else the grid.<br>
     Double-click a border: add a corner (on shared borders in both parcels) · right-click a corner: remove it<br>
     Structures: select, drag their points (lift stations, parking centre/direction, way points); double-click a way: add a point; right-click: remove<br>
-    <kbd>Esc</kbd> cancel tool · <kbd>Del</kbd> delete selected parcel
+    <kbd>Esc</kbd> cancel tool · <kbd>Del</kbd> delete the selected parcel, way or structure
   </div>
   </div>
 </div>
@@ -297,6 +305,21 @@ function drawScenery() {
   }
   ctx.lineCap = 'butt';
 }
+// Same rule as WayNetwork: the first parking lot, else the low end of the first way.
+function arrivalPoint() {
+  const lot = data.commands.find(t => t.command.type === 'buildParkingLot');
+  if (lot) return lot.command.center;
+  const way = data.commands.find(t => t.command.kind === 'accessPath');
+  if (way) { const p = way.command.points; return heightAt(p[0]) <= heightAt(p[p.length - 1]) ? p[0] : p[p.length - 1]; }
+  return data.commands.find(t => t.command.valley)?.command.valley ?? null;
+}
+const heightAt = p => T.h[Math.round(p.z / 100) * T.n + Math.round(p.x / 100)];
+function drawArrival() {
+  const at = T && arrivalPoint(); if (!at) return;
+  const s = w2s(at);
+  ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, 7); ctx.fillStyle = '#2ecc71'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+  label('Guests arrive', s.x, s.y - 13);
+}
 function parcelColor(p, i) { return p.ownedAtStart ? '#2ec4b6' : PALETTE[i % PALETTE.length]; }
 function draw() {
   const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
@@ -352,12 +375,13 @@ function draw() {
       ctx.strokeStyle = '#fff8'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
       label(cmdLabel(c), a.x, a.y - r - 6);
     } else if (c.points) {
-      ctx.strokeStyle = c.kind === 'accessPath' ? '#f4ede1' : '#1565c0';
+      ctx.strokeStyle = c.surface === 'tarmac' ? '#30343a' : c.kind === 'accessPath' ? '#f4ede1' : '#1565c0';
       ctx.beginPath(); c.points.forEach((p, k) => { const s = w2s(p); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.stroke();
     } else if (c.center) {
       const a = w2s(c.center); ctx.fillStyle = '#d7ccc8'; ctx.fillRect(a.x - 5, a.y - 5, 10, 10);
     }
   });
+  drawArrival();
   // handles
   if (editMode === 'terrain') return drawBrush();
   for (const hnd of allHandles()) {
@@ -408,19 +432,94 @@ function setHandle(h, w) {
 function setTool(name) {
   tool = name && tool?.name !== name ? { name, pts: [] } : null;
   if (tool?.name === 'split' && sel?.kind !== 'parcel') { tool = null; return hintText('Select the parcel to split first.'); }
-  $('tDraw').classList.toggle('on', tool?.name === 'draw');
-  $('tSplit').classList.toggle('on', tool?.name === 'split');
-  hintText(tool?.name === 'draw' ? 'New parcel: click corners (snapping to neighbours), click the first corner or Enter to finish, Esc to cancel.'
+  for (const [id, n] of [['tDraw', 'draw'], ['tSplit', 'split'], ['tArrival', 'arrival'], ['tParking', 'parking'], ['tGravel', 'gravel'], ['tTarmac', 'tarmac'], ['tCut', 'cut']])
+    $(id).classList.toggle('on', tool?.name === n);
+  hintText(tool?.name === 'arrival' ? 'Click a track or road where guests should arrive.'
+    : tool?.name === 'parking' ? 'Click where the starter parking lot goes. Guests arrive there.'
+    : tool?.name === 'cut' ? 'Click a way where it should become two.'
+    : tool?.name === 'gravel' || tool?.name === 'tarmac' ? 'Click points (ends snap onto other ways), Enter to finish, Esc to cancel.'
+    : tool?.name === 'draw' ? 'New parcel: click corners (snapping to neighbours), click the first corner or Enter to finish, Esc to cancel.'
     : tool?.name === 'split' ? `Split ${selected().name}: click its border, optionally points inside, then its border again. Esc cancels.` : '');
   draw();
 }
-function toolPoint(sp) { return snapLand(sp); }
+const isWayTool = () => tool?.name === 'gravel' || tool?.name === 'tarmac';
+function toolPoint(sp) { return isWayTool() ? wayPoint(sp) : snapLand(sp); }
+const wayIndexes = () => data.commands.flatMap((t, ci) => t.command.kind === 'accessPath' ? [ci] : []);
+// The closest spot on any gravel path or road: {ci, i (segment end), w, d in screen pixels}.
+function nearestWay(sp) {
+  let best = null;
+  for (const ci of wayIndexes()) {
+    const pts = data.commands[ci].command.points;
+    for (let i = 1; i < pts.length; i++) {
+      const pr = segProject(sp, w2s(pts[i - 1]), w2s(pts[i]));
+      if (!best || pr.d < best.d) { const w = s2w(pr.q.x, pr.q.y); best = { ci, i, d: pr.d, w: { x: Math.round(w.x), z: Math.round(w.z) } }; }
+    }
+  }
+  return best;
+}
+function wayPoint(sp) { const n = nearestWay(sp); return n && n.d < 10 ? n.w : snapGrid(clampW(s2w(sp.x, sp.y))); }
+// Cuts a way at its spot; returns the two commands, in order along the old way.
+function cutWay(n) {
+  const t = data.commands[n.ci], pts = t.command.points;
+  const near = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) < 100;
+  const head = pts.slice(0, n.i), tail = pts.slice(n.i);
+  if (!near(head[head.length - 1], n.w)) head.push({ ...n.w });
+  if (!near(tail[0], n.w)) tail.unshift({ ...n.w });
+  const second = JSON.parse(JSON.stringify(t)); t.command.points = head; second.command.points = tail;
+  return head.length > 1 && tail.length > 1 && [t, second];
+}
+function setArrivalOn(sp) {
+  const n = nearestWay(sp);
+  if (!n || n.d > 12) return hintText('Click on a track or road.');
+  if (data.commands.some(t => t.command.type === 'buildParkingLot')) return hintText('A parking lot is where guests arrive: delete it first, or drag it here.');
+  snapshot();
+  const end = n.w, pts = data.commands[n.ci].command.points;
+  const atEnd = !!(Math.hypot(pts[0].x - end.x, pts[0].z - end.z) < 100 || Math.hypot(pts[pts.length - 1].x - end.x, pts[pts.length - 1].z - end.z) < 100);
+  const pieces = atEnd ? [data.commands[n.ci]] : cutWay(n);
+  if (atEnd) data.commands.splice(n.ci, 1); else if (pieces) data.commands.splice(n.ci, 1, pieces[1]);
+  // A way starts at its low end: the piece must climb away from the arrival.
+  const up = pieces && pieces.find(t => { const p = t.command.points, far = Math.hypot(p[0].x - end.x, p[0].z - end.z) < 100 ? p[p.length - 1] : p[0]; return heightAt(far) > heightAt(end); });
+  if (!up) { undo(); return hintText('No way climbs from here (a high point): pick a lower spot.'); }
+  if (!atEnd && up === pieces[1]) { data.commands.splice(data.commands.indexOf(pieces[1]), 1, pieces[0]); }
+  const firstWay = data.commands.findIndex(t => t.command.kind === 'accessPath');
+  data.commands.splice(firstWay < 0 ? data.commands.length : firstWay, 0, up);
+  sel = null; setTool(null); changed();
+}
+function placeParking(sp) {
+  snapshot();
+  const center = snapGrid(clampW(s2w(sp.x, sp.y))), n = nearestWay(w2s(center));
+  const toward = n && Math.hypot(n.w.x - center.x, n.w.z - center.z) > 100 ? n.w : { x: center.x + 1000, z: center.z };
+  const old = data.commands.filter(t => t.command.type === 'buildParkingLot').length;
+  data.commands.unshift({ tick: 0, command: { type: 'buildParkingLot', name: old ? `Parking ${old + 1}` : 'Parking', origin: 'scenario', spaces: 40, center, toward } });
+  if (n) data.commands.push({ tick: 0, command: { type: 'buildWay', kind: 'accessPath', name: '', origin: 'scenario', points: [{ ...center }, n.w] } });
+  sel = { kind: 'cmd', ci: 0 }; setTool(null); changed();
+  post('/api/validate'); // pads have the most rules: say at once if the game refuses this spot
+}
+function finishWay() {
+  if (tool.pts.length < 2) return hintText('Place at least two points.');
+  snapshot();
+  const command = { type: 'buildWay', kind: 'accessPath', name: '', origin: 'scenario', points: tool.pts };
+  if (tool.name === 'tarmac') command.surface = 'tarmac';
+  data.commands.push({ tick: 0, command });
+  sel = { kind: 'cmd', ci: data.commands.length - 1 }; setTool(null); changed();
+}
 function onBorder(pi, w) {
   const o = data.parcels[pi].outline, sp = w2s(w);
   return o.some((v, vi) => segProject(sp, w2s(v), w2s(o[(vi + 1) % o.length])).d < 1.5);
 }
 function toolClick(sp) {
+  if (tool.name === 'arrival') return setArrivalOn(sp);
+  if (tool.name === 'parking') return placeParking(sp);
+  if (tool.name === 'cut') {
+    const n = nearestWay(sp);
+    if (!n || n.d > 12) return hintText('Click on a way.');
+    snapshot();
+    const pieces = cutWay(n);
+    if (!pieces) { undoStack.pop(); return hintText('That is the end of the way already.'); }
+    data.commands.splice(n.ci, 1, ...pieces); sel = null; setTool(null); return changed();
+  }
   const w = toolPoint(sp);
+  if (isWayTool()) { tool.pts.push({ x: w.x, z: w.z }); return draw(); }
   if (tool.name === 'draw') {
     if (tool.pts.length >= 3 && dist(sp, w2s(tool.pts[0])) < 10) return finishDraw();
     tool.pts.push({ x: w.x, z: w.z });
@@ -589,7 +688,7 @@ function setEditMode(m) {
   editMode = m; setTool(null); hover = null;
   $('mLand').classList.toggle('on', m === 'land'); $('mTerrain').classList.toggle('on', m === 'terrain');
   $('terrainPanel').style.display = m === 'terrain' ? '' : 'none';
-  $('landPanel').style.display = $('landTools').style.display = $('coverage').style.display = $('snap10').style.display = m === 'land' ? '' : 'none';
+  $('landPanel').style.display = $('landTools').style.display = $('wayTools').style.display = $('coverage').style.display = $('snap10').style.display = m === 'land' ? '' : 'none';
   cv.style.cursor = m === 'terrain' ? 'none' : 'crosshair';
   draw();
 }
@@ -636,6 +735,9 @@ cv.addEventListener('mousedown', e => {
   const h = handleAt(sp);
   snapshot();
   let group = [h];
+  // A parking lot takes its link along.
+  if (h.kind === 'cmd' && h.key === 'center')
+    data.commands.forEach((t, ci) => { for (const g of cmdHandles(ci)) if (ci !== h.ci && g.idx !== undefined && eq(g.w, h.w)) group.push(g); });
   if (h.kind === 'parcel' && !e.altKey)
     data.parcels.forEach((p, pi) => p.outline.forEach((v, vi) => { if (pi !== h.pi && eq(v, h.w)) group.push({ kind: 'parcel', pi, vi, w: v }); }));
   drag = { handle: h, group, moved: false };
@@ -723,10 +825,14 @@ window.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
   else if (e.key === 'Escape') setTool(null);
   else if (e.key === 'Enter' && tool?.name === 'draw') finishDraw();
-  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel?.kind === 'parcel' && !tool && editMode === 'land') deleteParcel();
+  else if (e.key === 'Enter' && isWayTool()) finishWay();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel && !tool && editMode === 'land') sel.kind === 'parcel' ? deleteParcel() : deleteCommand();
 });
 window.addEventListener('resize', draw);
 window.addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
+function deleteCommand() {
+  snapshot(); data.commands.splice(sel.ci, 1); sel = null; changed();
+}
 function deleteParcel() {
   if (!confirm(`Delete parcel ${selected().name}?`)) return;
   snapshot(); data.parcels.splice(sel.pi, 1); sel = null; changed();
@@ -788,7 +894,14 @@ function renderDetail() {
     if (c.points) html += `<div class="small">${c.points.length} points (double-click the way to add, right-click to remove)</div>`;
     for (const [k, v] of Object.entries(c)) if (['name', 'spaces'].includes(k))
       html += `<div class="field"><label>${k}</label><input type="${typeof v === 'number' ? 'number' : 'text'}" data-k="${k}" value="${esc(v)}"></div>`;
+    if (c.kind === 'accessPath') html += `<div class="field"><label>surface</label><select id="surfacePick"><option value="gravel">gravel</option><option value="tarmac">tarmac</option></select></div>`;
+    html += '<div class="row"><button id="delCmd">Delete</button></div>';
     el.innerHTML = html;
+    $('delCmd').onclick = deleteCommand;
+    if ($('surfacePick')) {
+      $('surfacePick').value = c.surface === 'tarmac' ? 'tarmac' : 'gravel';
+      $('surfacePick').onchange = e => { snapshot(); if (e.target.value === 'tarmac') c.surface = 'tarmac'; else delete c.surface; e.target.blur(); changed(); };
+    }
     el.querySelectorAll('[data-k]').forEach(inp => inp.addEventListener('change', () => {
       snapshot(); c[inp.dataset.k] = inp.type === 'number' ? parseInt(inp.value, 10) : inp.value; inp.blur(); changed();
     }));
@@ -832,6 +945,7 @@ $('save').onclick = () => post('/api/save');
 $('undo').onclick = undo;
 $('tDraw').onclick = () => setTool('draw');
 $('tSplit').onclick = () => setTool('split');
+for (const [id, n] of [['tArrival', 'arrival'], ['tParking', 'parking'], ['tGravel', 'gravel'], ['tTarmac', 'tarmac'], ['tCut', 'cut']]) $(id).onclick = () => setTool(n);
 $('mode').onchange = () => { renderTerrain(0, 0, T.n - 1, T.n - 1); draw(); };
 $('coverage').onclick = () => { $('coverage').classList.toggle('on'); draw(); };
 $('snap10').onclick = () => $('snap10').classList.toggle('on');

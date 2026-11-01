@@ -137,7 +137,8 @@ public static class StructurePlanner
         if (liftId == 0 || best > rules.StationReachMeters * 100L)
         {
             liftId = 0;
-            issues.Add(Error("noStation", $"Place it within {rules.StationReachMeters} m of a valley station."));
+            // A scenario's starter lot needs no lift: its ways connect it.
+            if (!scenario) issues.Add(Error("noStation", $"Place it within {rules.StationReachMeters} m of a valley station."));
         }
 
         return new ParkingPlan { Pad = pad, LiftId = liftId, Issues = issues };

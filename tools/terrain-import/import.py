@@ -876,10 +876,11 @@ def suggest_relief(square, elevation=None):
     return max(1.0, min(2.0, round(wanted * 20) / 20)), math.degrees(math.atan(median))
 
 
-def make_map(square, cell, map_id, title, place, arrival, split_land=True, relief=None):
-    """Terrain and scenario for this square. Returns what happened, for the command line and the browser tool."""
+def make_map(square, cell, map_id, title, place, arrival, split_land=True, relief=None, leave_out=()):
+    """Terrain and scenario for this square; leave_out: indices into road_network the player unticked. Returns what happened,
+    for the command line and the browser tool."""
     elements = fetch_infrastructure(square)
-    edges = road_network(elements, square)
+    edges = [e for i, e in enumerate(road_network(elements, square)) if i not in set(leave_out)]
     lifts, parking = real_structures(elements, square, Elevation())
     # A real parking lot is where guests arrive: scenario_commands starts there, so the road links must too.
     near = [lot["center"] for lot in parking if nearest_edge(edges, lot["center"]) <= LINK_METERS]

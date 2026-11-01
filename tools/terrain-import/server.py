@@ -51,7 +51,7 @@ def preview(body):
     elevation = ti.Elevation()
     lifts, parking = ti.real_structures(elements, square, elevation)
     relief, median = ti.suggest_relief(square, elevation)
-    scenery = ti.scenery_from(elements, square, [])
+    scenery = ti.scenery_from(elements, square)
     ll = lambda p: list(square.latlon(p["x"] / 100, p["z"] / 100))
     corners = []
     for b in scenery["buildings"]:
@@ -62,8 +62,8 @@ def preview(body):
     return {
         "relief": relief,
         "medianDegrees": round(median, 1),
-        "routes": [[list(square.latlon(*p)) for p in e[2]] for e in edges if e[3] == "gravel"],
-        "roads": [[list(square.latlon(*p)) for p in e[2]] for e in edges if e[3] == "tarmac"],
+        "routes": [{"edge": i, "line": [list(square.latlon(*p)) for p in e[2]]} for i, e in enumerate(edges) if e[3] == "gravel"],
+        "roads": [{"edge": i, "line": [list(square.latlon(*p)) for p in e[2]]} for i, e in enumerate(edges) if e[3] == "tarmac"],
         "minor": minor,
         "junctions": [list(square.latlon(*p)) for p in junctions.values()],
         "lifts": [{"name": l["name"], "type": l["typeId"], "line": [list(square.latlon(*l["valley"])), list(square.latlon(*l["mountain"]))]} for l in lifts],
@@ -86,7 +86,7 @@ def create(body):
     arrival = square.xz(*body["arrival"]) if body.get("arrival") else (square.size / 2, square.size / 2)
     log = io.StringIO()
     with contextlib.redirect_stdout(log):
-        stats = ti.make_map(square, 5, map_id, body["title"], body.get("place") or body["title"], arrival, body.get("land") != "none", float(body["relief"]) if body.get("relief") else None)
+        stats = ti.make_map(square, 5, map_id, body["title"], body.get("place") or body["title"], arrival, body.get("land") != "none", float(body["relief"]) if body.get("relief") else None, body.get("leaveOut") or ())
     # The scenario editor caches its terrain per map id.
     for cached in (ROOT / "out" / "editor").glob(f"{map_id}_*"):
         cached.unlink()

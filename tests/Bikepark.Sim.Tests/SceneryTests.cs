@@ -344,6 +344,24 @@ public class SceneryTests
         Assert.Equal("a tarmac road", planned.Label);
     }
 
+    [Fact]
+    public void ScenarioParking_NeedsNoLift_AndIsWhereGuestsArrive()
+    {
+        var sim = Sim();
+        sim.Commands.Enqueue(new BuildParkingLotCommand("Starter", M(60, 60), M(120, 60), 40, WayOrigin.Scenario));
+        sim.Commands.Enqueue(new BuildWayCommand(WayKind.AccessPath, "", [M(60, 60), M(120, 60)], WayOrigin.Scenario));
+        sim.Step();
+        Assert.Equal(sim.State.ParkingLots.Single().Id, sim.Network!.BaseHub?.Id);
+        Assert.True(sim.Network.HasBase);
+
+        sim.Commands.Enqueue(new BuildParkingLotCommand("Mine", M(60, 120), M(120, 120), 40));
+        var rejected = new List<CommandRejected>();
+        sim.Events.Subscribe<CommandRejected>(rejected.Add);
+        sim.Step();
+        sim.Events.Dispatch();
+        Assert.Contains(rejected, r => r.Reason.Contains("valley station"));
+    }
+
     [Theory]
     [InlineData("auer_berg_2")]
     [InlineData("auer_berg_hocheck")]
