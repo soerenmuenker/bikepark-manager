@@ -284,7 +284,7 @@ function drawScenery() {
   const line = (pts, closed) => { ctx.beginPath(); pts.forEach((p, k) => { const s = w2s(p); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); if (closed) ctx.closePath(); };
   ctx.setLineDash([]); ctx.lineCap = 'round';
   ctx.strokeStyle = '#3a3e44';
-  for (const s of scenery.streets) { ctx.lineWidth = Math.max(1, s.widthCm * scale); line(s.points); ctx.stroke(); }
+  for (const s of scenery.streets || []) { ctx.lineWidth = Math.max(1, s.widthCm * scale); line(s.points); ctx.stroke(); }
   ctx.fillStyle = '#2f7fb8';
   for (const l of scenery.lakes) { line(l.outline, true); ctx.fill(); }
   ctx.strokeStyle = '#2f7fb8';

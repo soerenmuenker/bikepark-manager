@@ -18,7 +18,7 @@ public enum WayOrigin : byte
 /// <summary>A horizontal position in centimeters (X east, Z south).</summary>
 public readonly record struct PointCm(int X, int Z);
 
-/// <summary>What a gravel path is made of: it only changes how it looks (real maps' road links are tarmac).</summary>
+/// <summary>What an access path is made of: it only changes how it looks (real maps' roads and the player's are tarmac).</summary>
 public enum WaySurface : byte
 {
     Gravel = 0,
@@ -42,7 +42,7 @@ public sealed class Way
 
     /// <summary>The name, or what to call an unnamed way in messages.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
-    public string Label => Name.Length > 0 ? Name : Kind == WayKind.AccessPath ? "a gravel path" : $"Trail #{Id}";
+    public string Label => Name.Length > 0 ? Name : Kind == WayKind.AccessPath ? (Surface == WaySurface.Tarmac ? "a tarmac road" : "a gravel path") : $"Trail #{Id}";
 
     /// <summary>Control points from start to end. Paths start at their low end, trails at their high end.</summary>
     public List<PointCm> Points { get; set; } = [];

@@ -116,7 +116,7 @@ public class HeightmapTests
         Assert.DoesNotContain(sim.Events.Pending, e => e is CommandRejected);
         Assert.Null(sim.State.Terrain.HeightmapFile);
         Assert.Equal(1500, sim.Terrain.SizeMeters);
-        Assert.InRange(sim.BaseTerrain.MaxHeightCm, 124_000, 128_000);
+        Assert.InRange(sim.BaseTerrain.MaxHeightCm, 135_000, 140_000); // 1262 m real, 1.2 times the height above the lowest point
         Assert.InRange(sim.BaseTerrain.MinHeightCm, 67_000, 71_000);
     }
 

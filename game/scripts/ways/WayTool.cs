@@ -22,6 +22,7 @@ public partial class WayTool : Node3D
         None,
         AccessPath,
         Trail,
+        TarmacRoad,
     }
 
     [Export] public NodePath SimHostPath { get; set; } = "../SimHost";
@@ -82,7 +83,7 @@ public partial class WayTool : Node3D
         _points.Clear();
         _dragging = false;
         Plan = null;
-        Status = mode == ToolMode.None ? "" : $"Drawing a {(mode == ToolMode.AccessPath ? "gravel access path" : "trail")}";
+        Status = mode == ToolMode.None ? "" : $"Drawing a {(mode == ToolMode.AccessPath ? "gravel access path" : mode == ToolMode.TarmacRoad ? "tarmac road" : "trail")}";
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -195,11 +196,12 @@ public partial class WayTool : Node3D
         }
         var points = _points.ToList();
         var kind = Kind;
+        var surface = Mode == ToolMode.TarmacRoad ? WaySurface.Tarmac : WaySurface.Gravel;
         string what = $"{plan.LengthCm / 100} m{(kind == WayKind.Trail ? $", {plan.Geometry!.Rating}" : "")}";
         _points.Clear();
         void Order(string name)
         {
-            _host.Enqueue(new BuildWayCommand(kind, name, points, Instant: _host.InstantBuild));
+            _host.Enqueue(new BuildWayCommand(kind, name, points, Instant: _host.InstantBuild, Surface: surface));
             Status = _host.InstantBuild
                 ? $"Built ({what}). Draw the next one or press Esc."
                 : $"Planned ({what}): the crew will build it (Crew menu). Draw the next one or press Esc.";

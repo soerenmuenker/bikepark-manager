@@ -103,6 +103,7 @@
   "terrain": {
     "sizeMeters": 1500,
     "heightmapFile": "../terrain/farrenpoint.json",
+    "reliefScalePermille": 1200,
     "roughnessPermille": 90,
     "treeLineCm": 900000
   },

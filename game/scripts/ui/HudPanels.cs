@@ -298,7 +298,7 @@ public partial class ToolCard : PanelContainer
 
 public partial class BuildPanel : HudPanel
 {
-    private ToolCard _path = null!, _trail = null!, _parking = null!, _fell = null!, _platform = null!, _renaturalize = null!;
+    private ToolCard _path = null!, _road = null!, _trail = null!, _parking = null!, _fell = null!, _platform = null!, _renaturalize = null!;
     private readonly List<(LiftType Type, ToolCard Card)> _lifts = [];
     private readonly List<(TrailFeatureType Type, ToolCard Card)> _features = [];
     private readonly List<(Bikepark.Sim.Facilities.FacilityType Type, ToolCard Card)> _facilities = [];
@@ -311,7 +311,9 @@ public partial class BuildPanel : HudPanel
         Body.AddChild(cards);
         _path = new ToolCard(UiIcon.Path, "Gravel path", "P", "Gravel path  [P]\nTwo-way access path riders can pedal up and walk on; the crew builds it.\n\n• Max gradient ±4.0\n• Bars and shops need one nearby",
             () => ToggleWay(WayTool.ToolMode.AccessPath));
-        _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "Trail  [T]\nOne-way downhill trail. Start it on a plateau, path or loose trail end.\n\n• The crew fells the trees in the way, then digs it\n• Its rating comes from steepness and features",
+        _road = new ToolCard(UiIcon.Path, "Tarmac road", "like a path", "Tarmac road\nA paved road: works like a gravel path, riders pedal up and walk on it and trails can start and end on it; the crew builds it.\n\n• Max gradient ±4.0\n• Bars and shops need one nearby",
+            () => ToggleWay(WayTool.ToolMode.TarmacRoad));
+        _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "Trail  [T]\nOne-way downhill trail. Start it on a plateau, path, road or loose trail end.\n\n• The crew fells the trees in the way, then digs it\n• Its rating comes from steepness and features",
             () => ToggleWay(WayTool.ToolMode.Trail));
         _parking = new ToolCard(UiIcon.Parking, "Parking lot", "K", "Parking lot  [K]\nParking next to a valley station; guests arriving by car park here.\n\n• Free to build, on your land\n• Parking fee: Park menu [H]",
             () => ToggleStructure(StructureTool.ToolMode.Parking));
@@ -326,7 +328,7 @@ public partial class BuildPanel : HudPanel
             "• Lifts and parking lots: click them; a contractor tears them down for a fee\n" +
             "• Platforms: free",
             () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize), UiTheme.Warn);
-        foreach (var card in new[] { _path, _trail, _fell, _parking, _platform }) cards.AddChild(card);
+        foreach (var card in new[] { _path, _road, _trail, _fell, _parking, _platform }) cards.AddChild(card);
         // Removing things sits apart, at the right end of the row.
         cards.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(16, 0) });
         cards.AddChild(new VSeparator());
@@ -532,6 +534,7 @@ public partial class BuildPanel : HudPanel
     public override void Refresh()
     {
         _path.Active = Ctx.Ways.Mode == WayTool.ToolMode.AccessPath;
+        _road.Active = Ctx.Ways.Mode == WayTool.ToolMode.TarmacRoad;
         _trail.Active = Ctx.Ways.Mode == WayTool.ToolMode.Trail;
         int level = Ctx.Kpi.Level;
         foreach (var (type, card) in _lifts)

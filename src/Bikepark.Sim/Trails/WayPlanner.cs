@@ -49,7 +49,7 @@ public sealed class WayPlan
 public static class WayPlanner
 {
     /// <param name="onOwnLand">The park's land (<see cref="Land.LandMath.OwnedPredicate"/>); null = no land limits.</param>
-    /// <param name="mayStandAlone">A gravel path needn't touch the network (a scenario's real tracks).</param>
+    /// <param name="mayStandAlone">A scenario's real tracks: they exist, so a gravel path needn't touch the network, may touch lakes and buildings and may be steeper than players may build.</param>
     public static WayPlan Plan(TerrainGrid grid, WayNetwork network, TrailRules rules, WayKind kind, IReadOnlyList<PointCm> input,
         Func<long, long, bool>? onOwnLand = null, bool mayStandAlone = false)
     {
@@ -150,6 +150,8 @@ public static class WayPlanner
         var (trees, rocks) = CountCleared(grid, network, rules, kind, geometry);
         if (trees + rocks > 0)
             issues.Add(Warning("clearing", $"Clears {trees} trees and {rocks} rocks along the way."));
+
+        if (mayStandAlone) issues.RemoveAll(i => i.Code == "pathTooSteep");
 
         return new WayPlan
         {

@@ -167,6 +167,19 @@ public class SceneryTests
     }
 
     [Fact]
+    public void ScenarioTracks_MayBeSteeperThanPlayersMayBuild()
+    {
+        var settings = Settings(null) with { ReliefScalePermille = 3000 };
+        var grid = TerrainGenerator.Generate(settings with { Heightmap = settings.Heightmap! with { MinElevationCm = 70_000 } }, 0);
+        var rules = new TrailRules { PathMaxGradient = 10, PathGradingMeters = 1 };
+        var network = WayNetwork.Build([], grid, rules);
+        List<PointCm> straightDown = [M(50, 50), M(50, 250)];
+
+        Assert.Contains(WayPlanner.Plan(grid, network, rules, WayKind.AccessPath, straightDown).Issues, i => i.Code == "pathTooSteep");
+        Assert.DoesNotContain(WayPlanner.Plan(grid, network, rules, WayKind.AccessPath, straightDown, mayStandAlone: true).Issues, i => i.Code == "pathTooSteep");
+    }
+
+    [Fact]
     public void GeneratedMaps_HaveNoBridges()
     {
         var grid = TerrainGenerator.Generate(new TerrainSettings { Seed = 7, SizeMeters = 256, PeakXMeters = 140, PeakZMeters = 110, PeakRadiusMeters = 200, ReliefCm = 9_000, TreeLineCm = 87_000 }, 0);
@@ -258,6 +271,44 @@ public class SceneryTests
     }
 
     [Fact]
+    public void ReliefScale_Default_ChangesNothing()
+    {
+        Assert.Equal(Grid().ComputeHash(), TerrainGenerator.Generate(Settings(Scenery()) with { ReliefScalePermille = 1000 }, 0).ComputeHash());
+    }
+
+    [Fact]
+    public void ReliefScale_ScalesHeightAboveTheLowestPoint()
+    {
+        var real = TerrainGenerator.Generate(Settings(null), 0);
+        var tall = TerrainGenerator.Generate(Settings(null) with { ReliefScalePermille = 2000 }, 0);
+
+        Assert.Equal(real.MinHeightCm, tall.MinHeightCm);
+        foreach (var (x, z) in new[] { (0, 0), (50, 50), (100, 200), (150, 295) })
+            Assert.Equal(real.MinHeightCm + 2 * (real.SampleAt(x, z).HeightCm - real.MinHeightCm), tall.SampleAt(x, z).HeightCm);
+    }
+
+    [Fact]
+    public void ReliefScale_KeepsLakesFlatAndStreamsFalling()
+    {
+        var grid = TerrainGenerator.Generate(Settings(Scenery()) with { ReliefScalePermille = 2000 }, 0);
+        var lake = Assert.Single(grid.Scenery!.Lakes);
+        foreach (var (x, z) in new[] { (30, 210), (80, 260) })
+        {
+            var s = grid.Sample(x * 100, z * 100);
+            Assert.Equal(lake.LevelCm - s.WaterDepthCm, s.HeightCm);
+        }
+        var stream = grid.Scenery.Streams[0];
+        for (int i = 1; i < stream.Points.Count; i++)
+            Assert.True(stream.Points[i].LevelCm <= stream.Points[i - 1].LevelCm);
+    }
+
+    [Fact]
+    public void ReliefScale_OutOfRange_IsRefused()
+    {
+        Assert.Contains((Settings(null) with { ReliefScalePermille = 100 }).Validate(), e => e.Contains("reliefScalePermille"));
+    }
+
+    [Fact]
     public void Tarmac_IsKeptWhenAWayIsCutInTwo()
     {
         var sim = Sim();
@@ -265,5 +316,46 @@ public class SceneryTests
         sim.Step();
         Assert.Equal(WaySurface.Tarmac, sim.State.Ways.Last().Surface);
         Assert.Equal(WaySurface.Gravel, sim.State.Ways[0].Surface);
+    }
+
+    [Fact]
+    public void TarmacRoad_IsPlayerBuilt_ForTheCrew_AndTrailsStartAndEndOnIt()
+    {
+        var sim = Sim();
+        var roads = new[] { (M(200, 40), M(200, 90)), (M(200, 200), M(200, 250)) };
+        foreach (var (a, b) in roads)
+            sim.Commands.Enqueue(new BuildWayCommand(WayKind.AccessPath, "", [a, b], WayOrigin.Scenario, Surface: WaySurface.Tarmac));
+        sim.Step();
+        var top = sim.State.Ways[^2];
+        var bottom = sim.State.Ways[^1];
+
+        sim.Commands.Enqueue(new BuildWayCommand(WayKind.Trail, "Down", [M(200, 80), M(190, 140), M(200, 210)], Instant: true));
+        sim.Step();
+        var trail = sim.State.Ways[^1];
+        Assert.Equal(WayKind.Trail, trail.Kind);
+        Assert.Equal(top.Id, trail.StartJoin?.WayId);
+        Assert.Equal(bottom.Id, trail.EndJoin?.WayId);
+
+        sim.Commands.Enqueue(new BuildWayCommand(WayKind.AccessPath, "", [M(200, 250), M(240, 260)], Surface: WaySurface.Tarmac));
+        sim.Step();
+        var planned = sim.State.Ways[^1];
+        Assert.False(planned.Built);
+        Assert.Equal(WaySurface.Tarmac, planned.Surface);
+        Assert.Equal("a tarmac road", planned.Label);
+    }
+
+    [Theory]
+    [InlineData("auer_berg_2")]
+    [InlineData("auer_berg_hocheck")]
+    public void RealMaps_BuildTheirRoadsAsWays_NoneAreScenery(string map)
+    {
+        var rejected = new List<CommandRejected>();
+        var sim = new Simulation(ScenarioLoader.CreateWorld(ScenarioLoader.LoadFile(RepoFile($"data/scenarios/{map}.json"))));
+        sim.Events.Subscribe<CommandRejected>(rejected.Add);
+        sim.Step();
+        sim.Events.Dispatch();
+        Assert.DoesNotContain(rejected, r => r.Command is BuildWayCommand);
+        Assert.Contains(sim.State.Ways, w => w.Surface == WaySurface.Tarmac);
+        Assert.Empty(sim.State.Terrain.Heightmap!.Scenery!.Streets);
     }
 }

@@ -30,6 +30,8 @@
 <label>Name</label><input id="title" placeholder="Farrenpoint">
 <label>File id</label><input id="id" placeholder="farrenpoint">
 <label>What it is (for the game's texts)</label><input id="place" placeholder="the Farrenpoint above Bad Feilnbach, Bavaria">
+<label>Height ×<b id="reliefText"></b></label><input id="relief" type="range" min="1" max="2.5" step="0.05" value="1">
+<div class="dim">Real mountains look flat next to the game's. The suggestion makes this place as steep as Starter Valley.</div>
 <label>Land</label>
 <label class="choice"><input type="radio" name="land" value="grid" checked> Parcels to buy: starts as a 3 × 3 grid, redraw it in the editor</label>
 <label class="choice"><input type="radio" name="land" value="none"> Don't split: the whole map is yours from the start</label>
@@ -104,16 +106,23 @@ $('look').onclick = async () => {
       .on('click', e => { L.DomEvent.stopPropagation(e); setArrival(j); }).addTo(info));
     $('facts').innerHTML = '<ul id="facts"><li>' + d.routes.length + ' gravel sections</li><li>' + d.lifts.length + ' lifts</li><li>' + d.parking.length + ' parking lots</li><li>' + d.roads.length + ' road sections</li><li>' + d.streams.length + ' streams, ' + d.lakes.length + ' lakes</li><li>' + d.buildings.length + ' buildings</li></ul>'
       + (d.buildings.length > 1500 ? '<div class="bad">That is a lot of buildings: check the frame rate, or pick a smaller square.</div>' : '');
+    realMedian = d.medianDegrees; $('relief').value = d.relief; showRelief();
     if (d.junctions.length) setArrival(d.junctions[0]);
     loaded = true;
   } catch (e) { $('facts').innerHTML = '<span class="bad"></span>'; $('facts').firstChild.textContent = e.message; }
   $('look').disabled = false; refresh();
 };
+let realMedian = null;
+function showRelief() {
+  const k = +$('relief').value, deg = realMedian === null ? '' : ' · median slope ' + (Math.atan(Math.tan(realMedian * Math.PI / 180) * k) * 180 / Math.PI).toFixed(0) + '° (Starter Valley 24°)';
+  $('reliefText').textContent = ' ' + k.toFixed(2) + deg;
+}
+$('relief').oninput = showRelief;
 async function make(overwrite) {
   $('make').disabled = true; $('result').textContent = 'Fetching terrain and building the map…';
   try {
     const d = await post('/api/create', {lat: center.lat, lon: center.lng, size: size(), id: $('id').value, title: $('title').value,
-      place: $('place').value, land: document.querySelector('input[name=land]:checked').value, arrival: arrival && [arrival[0], arrival[1]], overwrite});
+      place: $('place').value, land: document.querySelector('input[name=land]:checked').value, relief: +$('relief').value, arrival: arrival && [arrival[0], arrival[1]], overwrite});
     if (d.exists) { $('result').textContent = ''; if (confirm('A map with this file id exists. Overwrite it?')) return make(true); return; }
     const box = $('result'); box.innerHTML = '';
     const add = (text, cls) => { const p = document.createElement('div'); p.textContent = text; p.className = cls || 'dim'; box.appendChild(p); };
@@ -137,4 +146,5 @@ async function make(overwrite) {
 }
 $('make').onclick = () => make(false);
 moved();
+showRelief();
 </script></body></html>

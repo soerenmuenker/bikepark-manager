@@ -174,14 +174,14 @@ internal sealed partial class WorldPicker : Node
         if (!way.Built)
         {
             var job = Jobs.ForWay(state, wayId);
-            return new WorldPick($"{(way.Kind == WayKind.Trail ? way.Name : "Gravel path")} · planned · click for the crew's job",
+            return new WorldPick($"{(way.Kind == WayKind.Trail ? way.Name : Road(way))} · planned · click for the crew's job",
                 () => _show(Hud.Menu.Crew, job?.Id.ToString()));
         }
         var g = network.Geometry(wayId);
         if (way.Kind == WayKind.AccessPath)
-            return new WorldPick($"{(way.Name.Length > 0 ? way.Name : "Gravel path")} · {g.LengthCm / 100} m",
-                () => _note($"{(way.Name.Length > 0 ? way.Name : "A gravel path")}: {g.LengthCm / 100} m, {Math.Abs(g.EndHeightCm - g.StartHeightCm) / 100} m up. " +
-                            "Riders pedal up and walk on it; gravel paths have no menu."));
+            return new WorldPick($"{(way.Name.Length > 0 ? way.Name : Road(way))} · {g.LengthCm / 100} m",
+                () => _note($"{(way.Name.Length > 0 ? way.Name : Road(way))}: {g.LengthCm / 100} m, {Math.Abs(g.EndHeightCm - g.StartHeightCm) / 100} m up. " +
+                            "Riders pedal up and walk on it; paths and roads have no menu."));
 
         var onFeature = network.FeaturesOn(wayId).FirstOrDefault(f => f.StartCm - 300 <= atCm && atCm <= f.EndCm + 300);
         string what = onFeature is { Type: not null } f
@@ -190,6 +190,8 @@ internal sealed partial class WorldPicker : Node
         string? tab = onFeature.Type is not null ? "Features" : null;
         return new WorldPick($"{what} · click for details", () => _ctx.Inspect(new InspectTarget(InspectKind.Trail, wayId, tab)));
     }
+
+    private static string Road(Way way) => way.Surface == WaySurface.Tarmac ? "Tarmac road" : "Gravel path";
 
     /// <summary>The lift whose line (valley to top station) passes closest, within the radius.</summary>
     private (Lift Lift, long Off)? NearestLiftLine(int x, int z, int radiusCm)

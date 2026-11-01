@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Turns a square of the real world into a map: terrain content (data/terrain/<id>.json) and, with --scenario, a career
-scenario (data/scenarios/<id>.json) whose only infrastructure is what really exists: major gravel routes, road links, lifts, parking, water, buildings, streets.
+scenario (data/scenarios/<id>.json) whose only infrastructure is what really exists: gravel routes and roads (riders can use them all), lifts, parking, water, buildings.
 
 Elevation: AWS open terrain tiles (Terrarium PNG, no key). Everything else: OpenStreetMap via Overpass.
 Python stdlib + curl. Downloads are cached in out/terrain-import/, so re-runs are cheap. The browser tool (server.py) uses this too.
@@ -14,7 +14,6 @@ junction nearest to it (a real parking lot wins). The map's +X is east, +Z is so
 import argparse
 import base64
 import hashlib
-import heapq
 import json
 import math
 import re
@@ -36,7 +35,9 @@ SMOOTH_METERS = 10  # blur radius per pass
 MAX_WAY_METERS = 3500  # TrailRules.MaxLengthMeters is 4000
 GAP_METERS = 20  # track ends this close to another track join it
 MIN_LAKE_M2 = 100
-MAX_PARKING = 3  # a village has dozens; each would pull its road into the riders' network
+STARTER_MEDIAN_GRADE = 0.4536  # tan 24.4 deg, measured over 20 m
+STARTER_P90_GRADE = 0.8342  # tan 39.8 deg
+MAX_PARKING = 3  # a village has dozens, and each needs its own pad
 LINK_METERS = 60  # a real lift or parking lot further from any route stays out: it couldn't be reached
 START_MONEY_CENTS = 7_500_000
 M_PER_DEG_LAT = 111_320.0
@@ -544,44 +545,6 @@ def nearest_node(edges, arrival):
     return start, ends[start]
 
 
-def split_roads(edges, arrival, hubs=()):
-    """Gravel stays. Of the roads, only those on the shortest link from the arrival to some gravel, or to a real lift or parking
-    lot (hubs), become rideable ways; the rest are scenery streets. Returns (way edges, street edges)."""
-    start, _ = nearest_node(edges, arrival)
-    if start is None:
-        return [], []
-    links = {}
-    for i, e in enumerate(edges):
-        length = sum(math.dist(p, q) for p, q in zip(e[2], e[2][1:]))
-        links.setdefault(e[0], []).append((length, e[1], i))
-        links.setdefault(e[1], []).append((length, e[0], i))
-    dist, came, heap = {start: 0.0}, {}, [(0.0, 0, start)]
-    tie = 0
-    while heap:
-        d, _, node = heapq.heappop(heap)
-        if d > dist.get(node, 1e18):
-            continue
-        for length, other, i in links[node]:
-            if d + length < dist.get(other, 1e18):
-                dist[other] = d + length
-                came[other] = (node, i)
-                tie += 1
-                heapq.heappush(heap, (d + length, tie, other))
-    keep = {i for i, e in enumerate(edges) if e[3] == "gravel"}
-    wanted = [n for e in edges if e[3] == "gravel" for n in (e[0], e[1])]
-    for hub in hubs:
-        close = [(min(math.dist(hub, p) for p in dense(e[2])), i) for i, e in enumerate(edges)]
-        if close and min(close)[0] <= LINK_METERS:
-            i = min(close)[1]
-            keep.add(i)
-            wanted += [edges[i][0], edges[i][1]]
-    for node in wanted:
-        while node in came:
-            node, i = came[node]
-            keep.add(i)
-    return [e for i, e in enumerate(edges) if i in keep], [e for i, e in enumerate(edges) if i not in keep]
-
-
 def order_from(edges, arrival):
     """All edges, breadth first from the junction nearest to arrival; routes not connected to it come last (they stand alone
     until the player links them). Returns (start point, ordered (points, kind), how many stand alone)."""
@@ -686,7 +649,7 @@ def number(text):
         return None
 
 
-def scenery_from(elements, square, street_edges):
+def scenery_from(elements, square):
     """The scenery block of the terrain file: what stands here, nothing made up."""
     size = square.size
     xz = lambda ring: [square.xz(*p) for p in ring]
@@ -735,8 +698,7 @@ def scenery_from(elements, square, street_edges):
             if small or tags.get("roof:shape") == "flat":
                 building["flatRoof"] = True
             buildings.append(building)
-    streets = [{"points": [cm(p) for p in simplify(e[2])], "widthCm": e[4]} for e in street_edges]
-    return {"streams": streams, "lakes": lakes, "buildings": buildings, "streets": streets}
+    return {"streams": streams, "lakes": lakes, "buildings": buildings}
 
 
 def simplify_ring(pts):
@@ -840,7 +802,7 @@ def default_parcels(size, arrival):
     return parcels
 
 
-def write_scenario(map_id, title, place, square, arrival, commands, parcels, stats, has_lifts):
+def write_scenario(map_id, title, place, square, arrival, commands, parcels, relief, has_lifts):
     """data/scenarios/<id>.json: the Starter Valley career's rules (comments kept) with this place's map."""
     text = (ROOT / "data" / "scenarios" / "starter_valley.json").read_text()
 
@@ -862,14 +824,14 @@ def write_scenario(map_id, title, place, square, arrival, commands, parcels, sta
             '  // Real terrain from tools/terrain-import; roughness is the fine detail on top.\n'
             '  // The tree line is out of reach: forest and meadows come from OpenStreetMap.\n'
             f'  "terrain": {{\n    "sizeMeters": {square.size},\n    "heightmapFile": "../terrain/{map_id}.json",\n'
-            '    "roughnessPermille": 90,\n    "treeLineCm": 900000\n  },\n  "terrainSculpt": [],\n')
+            '    "reliefScalePermille": ' + str(round(relief * 1000)) + ',\n    "roughnessPermille": 90,\n    "treeLineCm": 900000\n  },\n  "terrainSculpt": [],\n')
     between('  "parcels": [', '  "welcome": {',
             '  "parcels": [\n' + ",\n".join("    " + json.dumps(p, ensure_ascii=False) for p in parcels) + "\n  ],\n")
     welcome = {"title": "Welcome to {park}!", "paragraphs": [
         f"This is a real place: {place}. Nothing has been made up here: what you see standing is what really stands there, and the gravel tracks are the real ones.",
         ("The lifts here are the real ones too. " if has_lifts else "There is no lift, so your guests pedal up the tracks and tire quickly. A T-bar (Build menu) is the first thing to save for: you have just enough money to order one on your own land. Link its valley station to a track with a gravel path (P), or nobody can reach it. ")
         + "Guests arrive on the track at the edge of your land.",
-        "1. Hire a worker or two in the Crew menu (C). Your crew builds everything you plan.\n2. Press T to draw your first trail: start on a gravel track, wind across the slope and end on a track or lift further down. Press Enter and the crew gets to work.",
+        "1. Hire a worker or two in the Crew menu (C). Your crew builds everything you plan.\n2. Press T to draw your first trail: start on a road or gravel track, wind across the slope and end on a road, track or lift further down. Press Enter and the crew gets to work.",
         "Steep real slopes rate trails harder, so use switchbacks. Trails and paths may cross brooks and rivers: the crew builds a little bridge, which takes wood. Lakes and houses are in the way. Every trail and feature earns XP. New park levels unlock harder features, more land and bigger lifts. Good luck!"]}
     between('  "welcome": {', '  "commands": [', '  "welcome": ' + json.dumps(welcome, ensure_ascii=False, indent=2).replace("\n", "\n  ") + ",\n")
     between('  "commands": [', None,
@@ -880,16 +842,8 @@ def write_scenario(map_id, title, place, square, arrival, commands, parcels, sta
 
 
 def refresh_scenery(square, cell, map_id):
-    """Rewrites only the terrain file: hand-drawn parcels and commands stay. Roads the scenario already builds are no streets."""
-    text = (ROOT / "data" / "scenarios" / f"{map_id}.json").read_text()
-    built = [[(p["x"] / 100, p["z"] / 100) for p in json.loads(m)] for m in re.findall(r'"points": (\[\{.*?\}\])', text[text.index('"commands": ['):])]
-    near_built = lambda p: any(math.dist(p, q) < 8 for way in built for q in dense(way))
-    elements = fetch_infrastructure(square)
-    streets = []
-    for e in road_network(elements, square):
-        if e[3] == "tarmac" and not all(near_built(p) for p in simplify(e[2])):
-            streets.append(e)
-    return write_terrain(square, cell, map_id, scenery_from(elements, square, streets))[1]
+    """Rewrites only the terrain file: hand-drawn parcels and commands stay, and so do the roads, which are commands."""
+    return write_terrain(square, cell, map_id, scenery_from(fetch_infrastructure(square), square))[1]
 
 
 def nearest_edge(edges, p):
@@ -903,7 +857,26 @@ def dense(way):
             yield a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps
 
 
-def make_map(square, cell, map_id, title, place, arrival, split_land=True):
+def suggest_relief(square, elevation=None):
+    """(multiplier, median slope in degrees): how much taller this place must be to look like Starter Valley, whose steepness the
+    trail grading is tuned to. Blends the median and the 90th percentile, because a map should match both its slopes and its steep
+    sections; kept within 1.0 to 2.0 and rounded to 0.05. Slopes over 20 m, as the game's terrain has them."""
+    elevation = elevation or Elevation()
+    step = max(40, square.size // 40)
+    half = 10
+    grades = []
+    for z in range(half, square.size - half, step):
+        for x in range(half, square.size - half, step):
+            gx = (elevation.at(*square.latlon(x + half, z)) - elevation.at(*square.latlon(x - half, z))) / (2 * half)
+            gz = (elevation.at(*square.latlon(x, z + half)) - elevation.at(*square.latlon(x, z - half))) / (2 * half)
+            grades.append(math.hypot(gx, gz))
+    grades.sort()
+    median, steep = grades[len(grades) // 2], grades[len(grades) * 9 // 10]
+    wanted = (STARTER_MEDIAN_GRADE / max(median, 0.01) + STARTER_P90_GRADE / max(steep, 0.01)) / 2
+    return max(1.0, min(2.0, round(wanted * 20) / 20)), math.degrees(math.atan(median))
+
+
+def make_map(square, cell, map_id, title, place, arrival, split_land=True, relief=None):
     """Terrain and scenario for this square. Returns what happened, for the command line and the browser tool."""
     elements = fetch_infrastructure(square)
     edges = road_network(elements, square)
@@ -913,14 +886,15 @@ def make_map(square, cell, map_id, title, place, arrival, split_land=True):
     near = sorted(near, key=lambda p: math.dist(p, arrival))[:MAX_PARKING]
     left_out = len(parking) - len(near)
     parking = [lot for p in near for lot in parking if lot["center"] == p]
-    way_edges, street_edges = split_roads(edges, near[0] if near else arrival, [l["valley"] for l in lifts] + near)
-    elevation, summary = write_terrain(square, cell, map_id, scenery_from(elements, square, street_edges))
-    commands, stats = scenario_commands(way_edges, lifts, parking, arrival, "alpine_lifts",
+    elevation, summary = write_terrain(square, cell, map_id, scenery_from(elements, square))
+    commands, stats = scenario_commands(edges, lifts, parking, arrival, "alpine_lifts",
                                         lambda p: elevation.at(*square.latlon(*p)))
     if left_out:
         stats["skipped"].append(f"{left_out} parking lots further from the arrival")
     home = stats["arrival"] or arrival
-    write_scenario(map_id, title, place, square, home, commands, default_parcels(square.size, home) if split_land else [], stats,
+    relief = relief or suggest_relief(square, elevation)[0]
+    stats["relief"] = relief
+    write_scenario(map_id, title, place, square, home, commands, default_parcels(square.size, home) if split_land else [], relief,
                    any(c["type"] == "buildLift" for c in commands))
     stats.update({"terrain": summary, "lifts": sum(c["type"] == "buildLift" for c in commands),
                   "parking": sum(c["type"] == "buildParkingLot" for c in commands)})
@@ -940,6 +914,7 @@ def main():
     ap.add_argument("--scenario", action="store_true", help="also write data/scenarios/<id>.json")
     ap.add_argument("--refresh-scenery", action="store_true", help="rewrite only the terrain file of an existing map (parcels and commands stay)")
     ap.add_argument("--no-parcels", action="store_true", help="don't split the land: the whole map is the park's from the start")
+    ap.add_argument("--relief-scale", type=float, help="height multiplier (default: suggested for this place)")
     ap.add_argument("--title", help="the map's name (default: the id)")
     ap.add_argument("--place", help="what the place is, for the texts")
     ap.add_argument("--arrival", default=None, help="map meters x,z near where guests should arrive (default: the centre)")
@@ -967,7 +942,7 @@ def main():
         return
     arrival = tuple(float(v) for v in args.arrival.split(",")) if args.arrival else (args.size / 2, args.size / 2)
     title = args.title or args.id.replace("_", " ").title()
-    print(json.dumps(make_map(square, args.cell, args.id, title, args.place or title, arrival, not args.no_parcels), indent=1))
+    print(json.dumps(make_map(square, args.cell, args.id, title, args.place or title, arrival, not args.no_parcels, args.relief_scale), indent=1))
 
 
 if __name__ == "__main__":

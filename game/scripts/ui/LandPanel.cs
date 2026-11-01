@@ -269,7 +269,7 @@ public partial class LandView : Node3D
         if (length < 0.01f) return;
         var side = new Vector2(-dir.Y, dir.X) / length * (WidthMeters / 2);
         int steps = Math.Max(1, (int)(length / StepMeters));
-        Vector3 At(Vector2 p) => new(p.X, _terrain.HeightAt(Math.Clamp(p.X, 0, 999.9f), Math.Clamp(p.Y, 0, 999.9f)) + lift, p.Y);
+        Vector3 At(Vector2 p) => new(p.X, _terrain.HeightAt(p.X, p.Y) + lift, p.Y);
         st.SetColor(color);
         for (int i = 0; i < steps; i++)
         {

@@ -54,7 +54,7 @@ public sealed class SceneryBuilding
     public bool FlatRoof { get; set; }
 }
 
-/// <summary>A tarmac street that is only scenery: nobody rides it, nothing routes over it.</summary>
+/// <summary>A tarmac street that is only scenery: nobody rides it, nothing routes over it. Only in older saves: real maps now build their roads as tarmac ways.</summary>
 public sealed class SceneryStreet
 {
     public List<PointCm> Points { get; set; } = [];

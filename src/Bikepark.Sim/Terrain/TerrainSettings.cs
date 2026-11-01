@@ -44,6 +44,12 @@ public sealed record TerrainSettings
     /// </summary>
     public TerrainHeightmap? Heightmap { get; set; }
 
+    /// <summary>
+    /// Real terrain only: height above the lowest point, in permille of the real one. Real mountains read flat next to the
+    /// game's grading, which is tuned to Starter Valley's steepness (the map maker suggests a value per map).
+    /// </summary>
+    public int ReliefScalePermille { get; set; } = 1000;
+
     /// <summary>Scenario files only: the heightmap's file, relative to the scenario. <c>ScenarioLoader.LoadFile</c> resolves it.</summary>
     public string? HeightmapFile { get; set; }
 
@@ -58,6 +64,7 @@ public sealed record TerrainSettings
         if (PeakRadiusMeters < 50) errors.Add("terrain.peakRadiusMeters must be >= 50");
         if (RidgeCount is < 0 or > 8) errors.Add("terrain.ridgeCount must be within 0..8");
         if (ForestCoveragePermille is < 0 or > 1000) errors.Add("terrain.forestCoveragePermille must be within 0..1000");
+        if (ReliefScalePermille is < 500 or > 3000) errors.Add("terrain.reliefScalePermille must be within 500..3000");
         if (HeightmapFile is not null) errors.Add("terrain.heightmapFile was not loaded");
         if (Heightmap is not null) errors.AddRange(Heightmap.Validate(SizeMeters));
         return errors;

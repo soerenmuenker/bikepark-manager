@@ -29,7 +29,7 @@ public static class TerrainGenerator
         var rng = SimRandom.FromSeed(seed, stream: 0x7E44A1);
         var seeds = new NoiseSeeds(rng);
 
-        int[] heights = settings.Heightmap is { } map ? FromHeightmap(map, settings.RoughnessPermille, n, seeds) : Shape(settings, n, rng, seeds);
+        int[] heights = settings.Heightmap is { } map ? FromHeightmap(map, settings, n, seeds) : Shape(settings, n, rng, seeds);
         var water = new byte[n * n];
         var scenery = settings.Heightmap?.Scenery;
         var sceneryData = scenery is null ? null : TerrainSceneryBuilder.Carve(scenery, heights, water, n);
@@ -132,9 +132,16 @@ public static class TerrainGenerator
     }
 
     /// <summary>Catmull-Rom through the samples (so the real heights are kept at every sample), then the detail noise.</summary>
-    private static int[] FromHeightmap(TerrainHeightmap map, int roughnessPermille, int n, NoiseSeeds seeds)
+    private static int[] FromHeightmap(TerrainHeightmap map, TerrainSettings settings, int n, NoiseSeeds seeds)
     {
+        int roughnessPermille = settings.RoughnessPermille;
         int[] source = map.DecodeHeights();
+        if (settings.ReliefScalePermille != 1000)
+        {
+            int low = source.Min();
+            for (int i = 0; i < source.Length; i++)
+                source[i] = low + (int)((long)(source[i] - low) * settings.ReliefScalePermille / 1000);
+        }
         int m = map.Samples, cell = map.CellMeters;
         var heights = new int[n * n];
         var row = new long[m];
