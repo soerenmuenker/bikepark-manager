@@ -95,24 +95,24 @@ internal static class TerrainSceneryBuilder
     private const int StepCm = 100;
 
     /// <summary>Carves lakes and streams into the heights and fills the water layer. Before the slopes are computed.</summary>
-    public static TerrainSceneryData Carve(TerrainScenery scenery, int[] heights, byte[] water, int n)
+    public static TerrainSceneryData Carve(TerrainScenery scenery, int[] heights, byte[] water, int nx, int nz)
     {
-        var blocked = new byte[n * n];
-        var best = new long[n * n];
+        var blocked = new byte[nx * nz];
+        var best = new long[nx * nz];
         Array.Fill(best, long.MaxValue);
-        var target = new int[n * n];
+        var target = new int[nx * nz];
         var lakes = new List<WaterLake>();
         foreach (var lake in scenery.Lakes)
         {
             var shore = Walk([.. lake.Outline, lake.Outline[0]]);
             int level = int.MaxValue;
             foreach (var p in shore)
-                level = Math.Min(level, heights[Sample(p.Z, n) * n + Sample(p.X, n)]);
-            Channel(shore.Select(p => new StreamPoint(p.X, p.Z, level)).ToList(), 0, 0, heights, water, blocked, best, target, n);
-            Fill(lake.Outline, n, i => blocked[i] = TerrainSceneryData.Lake);
+                level = Math.Min(level, heights[Sample(p.Z, nz) * nx + Sample(p.X, nx)]);
+            Channel(shore.Select(p => new StreamPoint(p.X, p.Z, level)).ToList(), 0, 0, heights, water, blocked, best, target, nx, nz);
+            Fill(lake.Outline, nx, nz, i => blocked[i] = TerrainSceneryData.Lake);
             foreach (var hole in lake.Holes)
-                Fill(hole, n, i => blocked[i] = 0);
-            Fill(lake.Outline, n, i =>
+                Fill(hole, nx, nz, i => blocked[i] = 0);
+            Fill(lake.Outline, nx, nz, i =>
             {
                 if (blocked[i] != TerrainSceneryData.Lake) return;
                 heights[i] = level - LakeDepthCm;
@@ -125,22 +125,22 @@ internal static class TerrainSceneryBuilder
         foreach (var stream in scenery.Streams)
         {
             var points = Walk(stream.Points);
-            int first = heights[Sample(points[0].Z, n) * n + Sample(points[0].X, n)];
-            int last = heights[Sample(points[^1].Z, n) * n + Sample(points[^1].X, n)];
+            int first = heights[Sample(points[0].Z, nz) * nx + Sample(points[0].X, nx)];
+            int last = heights[Sample(points[^1].Z, nz) * nx + Sample(points[^1].X, nx)];
             if (last > first) points.Reverse(); // mapped against the flow
-            var levels = NeverRising(points.Select(p => heights[Sample(p.Z, n) * n + Sample(p.X, n)]).ToList());
+            var levels = NeverRising(points.Select(p => heights[Sample(p.Z, nz) * nx + Sample(p.X, nx)]).ToList());
             var surface = new List<StreamPoint>(points.Count);
             for (int i = 0; i < points.Count; i++)
                 surface.Add(new StreamPoint(points[i].X, points[i].Z, levels[i]));
             int half = Math.Max(stream.WidthCm / 2, MinWaterHalfWidthCm);
-            Channel(surface, half, stream.WidthCm >= RiverFromWidthCm ? RiverDepthCm : BrookDepthCm, heights, water, blocked, best, target, n);
+            Channel(surface, half, stream.WidthCm >= RiverFromWidthCm ? RiverDepthCm : BrookDepthCm, heights, water, blocked, best, target, nx, nz);
             streams.Add(new WaterStream(surface, stream.WidthCm));
         }
         return new TerrainSceneryData(blocked, streams, lakes);
     }
 
     /// <summary>Clears the vegetation under water, buildings and streets and blocks the buildings. After the layers.</summary>
-    public static void Clear(TerrainScenery scenery, TerrainSceneryData data, byte[] water, byte[] trees, byte[] rock, byte[] roots, int n)
+    public static void Clear(TerrainScenery scenery, TerrainSceneryData data, byte[] water, byte[] trees, byte[] rock, byte[] roots, int nx, int nz)
     {
         void Bare(int i)
         {
@@ -156,26 +156,26 @@ internal static class TerrainSceneryBuilder
             int radius = street.WidthCm / 200 + 1;
             foreach (var p in Walk(street.Points))
             {
-                int cx = Sample(p.X, n), cz = Sample(p.Z, n);
-                for (int z = Math.Max(0, cz - radius); z <= Math.Min(n - 1, cz + radius); z++)
-                    for (int x = Math.Max(0, cx - radius); x <= Math.Min(n - 1, cx + radius); x++)
-                        Bare(z * n + x);
+                int cx = Sample(p.X, nx), cz = Sample(p.Z, nz);
+                for (int z = Math.Max(0, cz - radius); z <= Math.Min(nz - 1, cz + radius); z++)
+                    for (int x = Math.Max(0, cx - radius); x <= Math.Min(nx - 1, cx + radius); x++)
+                        Bare(z * nx + x);
             }
         }
 
         foreach (var b in scenery.Buildings)
         {
             int reach = (Math.Max(b.HalfLengthCm, b.HalfWidthCm) * 1415 / 1000 + 200) / 100 + 1;
-            int cx = Sample(b.CenterX, n), cz = Sample(b.CenterZ, n);
-            for (int z = Math.Max(0, cz - reach); z <= Math.Min(n - 1, cz + reach); z++)
-                for (int x = Math.Max(0, cx - reach); x <= Math.Min(n - 1, cx + reach); x++)
+            int cx = Sample(b.CenterX, nx), cz = Sample(b.CenterZ, nz);
+            for (int z = Math.Max(0, cz - reach); z <= Math.Min(nz - 1, cz + reach); z++)
+                for (int x = Math.Max(0, cx - reach); x <= Math.Min(nx - 1, cx + reach); x++)
                 {
                     long dx = x * 100L - b.CenterX, dz = z * 100L - b.CenterZ;
                     long u = Math.Abs(dx * b.DirX + dz * b.DirZ) / 1000, v = Math.Abs(dz * b.DirX - dx * b.DirZ) / 1000;
                     if (u > b.HalfLengthCm + 200 || v > b.HalfWidthCm + 200) continue;
-                    Bare(z * n + x);
-                    if (u <= b.HalfLengthCm + 100 && v <= b.HalfWidthCm + 100 && water[z * n + x] == 0)
-                        data.Blocked[z * n + x] = TerrainSceneryData.Building;
+                    Bare(z * nx + x);
+                    if (u <= b.HalfLengthCm + 100 && v <= b.HalfWidthCm + 100 && water[z * nx + x] == 0)
+                        data.Blocked[z * nx + x] = TerrainSceneryData.Building;
                 }
         }
     }
@@ -229,19 +229,19 @@ internal static class TerrainSceneryBuilder
     /// A bed under the line (<paramref name="depthCm"/> below the level within <paramref name="halfCm"/>) and banks meeting
     /// the ground. Lakes stay as they are. <paramref name="best"/> and <paramref name="target"/> are scratch, reset here.
     /// </summary>
-    private static void Channel(List<StreamPoint> line, int halfCm, int depthCm, int[] heights, byte[] water, byte[] blocked, long[] best, int[] target, int n)
+    private static void Channel(List<StreamPoint> line, int halfCm, int depthCm, int[] heights, byte[] water, byte[] blocked, long[] best, int[] target, int nx, int nz)
     {
         int radius = (halfCm + BankReachCm) / 100 + 1;
         long reach2 = (long)(halfCm + BankReachCm) * (halfCm + BankReachCm);
         var touched = new List<int>();
         foreach (var p in line)
         {
-            int cx = Sample(p.X, n), cz = Sample(p.Z, n);
-            for (int z = Math.Max(0, cz - radius); z <= Math.Min(n - 1, cz + radius); z++)
-                for (int x = Math.Max(0, cx - radius); x <= Math.Min(n - 1, cx + radius); x++)
+            int cx = Sample(p.X, nx), cz = Sample(p.Z, nz);
+            for (int z = Math.Max(0, cz - radius); z <= Math.Min(nz - 1, cz + radius); z++)
+                for (int x = Math.Max(0, cx - radius); x <= Math.Min(nx - 1, cx + radius); x++)
                 {
                     long dx = x * 100L - p.X, dz = z * 100L - p.Z, d2 = dx * dx + dz * dz;
-                    int i = z * n + x;
+                    int i = z * nx + x;
                     if (d2 > reach2 || d2 >= best[i]) continue;
                     if (best[i] == long.MaxValue) touched.Add(i);
                     best[i] = d2;
@@ -267,9 +267,9 @@ internal static class TerrainSceneryBuilder
     }
 
     /// <summary>Calls <paramref name="visit"/> for every sample inside the polygon (scanlines, even-odd).</summary>
-    private static void Fill(IReadOnlyList<PointCm> polygon, int n, Action<int> visit)
+    private static void Fill(IReadOnlyList<PointCm> polygon, int nx, int nz, Action<int> visit)
     {
-        int minZ = Math.Max(0, polygon.Min(p => p.Z) / 100), maxZ = Math.Min(n - 1, polygon.Max(p => p.Z) / 100 + 1);
+        int minZ = Math.Max(0, polygon.Min(p => p.Z) / 100), maxZ = Math.Min(nz - 1, polygon.Max(p => p.Z) / 100 + 1);
         var crossings = new List<long>();
         for (int z = minZ; z <= maxZ; z++)
         {
@@ -285,8 +285,8 @@ internal static class TerrainSceneryBuilder
             crossings.Sort();
             for (int c = 0; c + 1 < crossings.Count; c += 2)
             {
-                int x0 = (int)Math.Max(0, (crossings[c] + 99) / 100), x1 = (int)Math.Min(n - 1, crossings[c + 1] / 100);
-                for (int x = x0; x <= x1; x++) visit(z * n + x);
+                int x0 = (int)Math.Max(0, (crossings[c] + 99) / 100), x1 = (int)Math.Min(nx - 1, crossings[c + 1] / 100);
+                for (int x = x0; x <= x1; x++) visit(z * nx + x);
             }
         }
     }

@@ -13,8 +13,17 @@ public sealed record TerrainHeightmap
     /// <summary>Distance between samples in meters.</summary>
     public int CellMeters { get; set; }
 
-    /// <summary>Samples per side.</summary>
+    /// <summary>Samples per row (east-west; of a square map: both ways).</summary>
     public int Samples { get; set; }
+
+    /// <summary>Rows (north-south); 0 = square.</summary>
+    public int SamplesZ { get; set; }
+
+    /// <summary>How many degrees clockwise from north the map's top edge faces. Only the importer uses it: the map itself is already turned.</summary>
+    public int RotationDegrees { get; set; }
+
+    /// <summary>Rows, also of a square map.</summary>
+    public int Rows() => SamplesZ > 0 ? SamplesZ : Samples;
 
     /// <summary>The elevation <see cref="HeightsDm"/> count from.</summary>
     public int MinElevationCm { get; set; }
@@ -37,12 +46,14 @@ public sealed record TerrainHeightmap
     /// <summary>Water, buildings and streets that really stand here, or null.</summary>
     public TerrainScenery? Scenery { get; set; }
 
-    public List<string> Validate(int sizeMeters)
+    public List<string> Validate(int sizeMeters, int depthMeters)
     {
         var errors = new List<string>();
         if (CellMeters is < 1 or > 30) errors.Add("terrain.heightmap.cellMeters must be within 1..30");
         if (Samples is < 2 or > 801) errors.Add("terrain.heightmap.samples must be within 2..801");
         if ((Samples - 1) * CellMeters != sizeMeters) errors.Add("terrain.sizeMeters must equal (heightmap.samples - 1) * cellMeters");
+        if (Rows() is < 2 or > 801) errors.Add("terrain.heightmap.samplesZ must be within 2..801");
+        if ((Rows() - 1) * CellMeters != depthMeters) errors.Add("terrain.depthMeters must equal (heightmap.samplesZ - 1) * cellMeters");
         if (MinElevationCm < 0) errors.Add("terrain.heightmap.minElevationCm must be >= 0");
         if (Scenery is not null) errors.AddRange(Scenery.Validate());
         return errors;
@@ -51,16 +62,16 @@ public sealed record TerrainHeightmap
     /// <summary>Heights in cm, one per sample.</summary>
     public int[] DecodeHeights()
     {
-        byte[] raw = Inflate(HeightsDm, Samples * Samples * 2, "heightsDm");
-        var heights = new int[Samples * Samples];
+        byte[] raw = Inflate(HeightsDm, Samples * Rows() * 2, "heightsDm");
+        var heights = new int[Samples * Rows()];
         for (int i = 0; i < heights.Length; i++)
             heights[i] = MinElevationCm + (raw[2 * i] | raw[2 * i + 1] << 8) * 10;
         return heights;
     }
 
-    public byte[] DecodeForest() => Inflate(Forest, Samples * Samples, "forest");
+    public byte[] DecodeForest() => Inflate(Forest, Samples * Rows(), "forest");
 
-    public byte[] DecodeRock() => Inflate(Rock, Samples * Samples, "rock");
+    public byte[] DecodeRock() => Inflate(Rock, Samples * Rows(), "rock");
 
     /// <summary>Packs a blob the way the importer does (tests, tools).</summary>
     public static string Pack(byte[] raw)

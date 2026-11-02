@@ -90,7 +90,7 @@ public partial class TerrainView : Node3D
         // Structures flatten the ground (terrain edits): rebuild the chunks whose samples changed.
         var grid = _host.Sim.Terrain;
         UpdateOwnership();
-        if (Grid is not null && !ReferenceEquals(grid, Grid) && grid.SizeMeters == Grid.SizeMeters)
+        if (Grid is not null && !ReferenceEquals(grid, Grid) && grid.WidthMeters == Grid.WidthMeters && grid.DepthMeters == Grid.DepthMeters)
             RebuildChangedChunks(grid);
     }
 
@@ -122,8 +122,8 @@ public partial class TerrainView : Node3D
     private static bool ChunkChanged(TerrainGrid a, TerrainGrid b, int x0, int z0, int sizeX, int sizeZ)
     {
         // Include the skirt/normal neighbourhood: one sample around the chunk.
-        int xa = Math.Max(0, x0 - 1), xb = Math.Min(a.SizeMeters, x0 + sizeX + 1);
-        for (int z = Math.Max(0, z0 - 1); z <= Math.Min(a.SizeMeters, z0 + sizeZ + 1); z++)
+        int xa = Math.Max(0, x0 - 1), xb = Math.Min(a.WidthMeters, x0 + sizeX + 1);
+        for (int z = Math.Max(0, z0 - 1); z <= Math.Min(a.DepthMeters, z0 + sizeZ + 1); z++)
         {
             int start = a.Index(xa, z), length = xb - xa + 1;
             if (!a.Heights.Slice(start, length).SequenceEqual(b.Heights.Slice(start, length))) return true;
@@ -161,18 +161,18 @@ public partial class TerrainView : Node3D
     {
         var state = _host.Sim.State;
         if (Grid is null) return;
-        string signature = $"{state.Parcels.Count}|{string.Join(',', state.OwnedParcelIds)}|{Grid.SizeMeters}";
+        string signature = $"{state.Parcels.Count}|{string.Join(',', state.OwnedParcelIds)}|{Grid.WidthMeters}x{Grid.DepthMeters}";
         if (signature == _ownSignature) return;
         _ownSignature = signature;
         const int cell = 4;
-        int n = Math.Max(1, Grid.SizeMeters / cell);
-        var image = Image.CreateEmpty(n, n, false, Image.Format.R8);
-        for (int z = 0; z < n; z++)
-            for (int x = 0; x < n; x++)
+        int nx = Math.Max(1, Grid.WidthMeters / cell), nz = Math.Max(1, Grid.DepthMeters / cell);
+        var image = Image.CreateEmpty(nx, nz, false, Image.Format.R8);
+        for (int z = 0; z < nz; z++)
+            for (int x = 0; x < nx; x++)
                 image.SetPixel(x, z, LandMath.IsOwned(state, (x * cell + cell / 2) * 100L, (z * cell + cell / 2) * 100L) ? Colors.White : Colors.Black);
         _ownMask = ImageTexture.CreateFromImage(image);
         _terrainMaterial.SetShaderParameter("own_mask", _ownMask);
-        _terrainMaterial.SetShaderParameter("map_size_m", (float)Grid.SizeMeters);
+        _terrainMaterial.SetShaderParameter("map_size_m", new Vector2(Grid.WidthMeters, Grid.DepthMeters));
         ApplyLandDim();
     }
 
@@ -198,7 +198,7 @@ public partial class TerrainView : Node3D
         for (float t = step; t <= maxDistance; t += step)
         {
             var p = origin + direction * t;
-            if (p.X < -50 || p.Z < -50 || p.X > Grid.SizeMeters + 50 || p.Z > Grid.SizeMeters + 50) break;
+            if (p.X < -50 || p.Z < -50 || p.X > Grid.WidthMeters + 50 || p.Z > Grid.DepthMeters + 50) break;
             if (p.Y > HeightAt(p.X, p.Z)) { previous = p; continue; }
 
             // Bisect between the last point above and this point below the ground.
@@ -234,9 +234,9 @@ public partial class TerrainView : Node3D
 
         var scatter = new List<ScatterInstance>();
         int chunkCount = 0;
-        for (int z0 = 0; z0 < grid.SizeMeters; z0 += ChunkSizeMeters)
+        for (int z0 = 0; z0 < grid.DepthMeters; z0 += ChunkSizeMeters)
         {
-            for (int x0 = 0; x0 < grid.SizeMeters; x0 += ChunkSizeMeters)
+            for (int x0 = 0; x0 < grid.WidthMeters; x0 += ChunkSizeMeters)
             {
                 _chunks.AddChild(BuildChunk(grid, x0, z0, scatter));
                 chunkCount++;
@@ -251,8 +251,8 @@ public partial class TerrainView : Node3D
 
     private Node3D BuildChunk(TerrainGrid grid, int x0, int z0, List<ScatterInstance> scatter)
     {
-        int sizeX = Math.Min(ChunkSizeMeters, grid.SizeMeters - x0);
-        int sizeZ = Math.Min(ChunkSizeMeters, grid.SizeMeters - z0);
+        int sizeX = Math.Min(ChunkSizeMeters, grid.WidthMeters - x0);
+        int sizeZ = Math.Min(ChunkSizeMeters, grid.DepthMeters - z0);
         float centerHeight = grid.HeightAtSample(x0 + sizeX / 2, z0 + sizeZ / 2) / 100f;
         var center = new Vector3(x0 + sizeX / 2f, centerHeight, z0 + sizeZ / 2f);
 
@@ -284,8 +284,8 @@ public partial class TerrainView : Node3D
     private void AddScatter(TerrainGrid grid, Node3D chunk, int x0, int z0, int sizeX, int sizeZ, Vector3 center, List<ScatterInstance> scatter)
     {
         // Scatter cells are owned by the chunk containing their origin; the last row/column also owns the map edge.
-        int maxX = x0 + sizeX >= grid.SizeMeters ? grid.SizeMeters + 1 : x0 + sizeX;
-        int maxZ = z0 + sizeZ >= grid.SizeMeters ? grid.SizeMeters + 1 : z0 + sizeZ;
+        int maxX = x0 + sizeX >= grid.WidthMeters ? grid.WidthMeters + 1 : x0 + sizeX;
+        int maxZ = z0 + sizeZ >= grid.DepthMeters ? grid.DepthMeters + 1 : z0 + sizeZ;
         scatter.Clear();
         TerrainScatter.Collect(grid, x0, z0, maxX, maxZ, scatter);
         if (_cleared is { } cleared)

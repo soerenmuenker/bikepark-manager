@@ -209,7 +209,7 @@ public sealed class WayGeometry
     {
         if (points.Count < 2) throw new ArgumentException("A way needs at least two points.", nameof(points));
 
-        var (xs, zs) = SampleSpline(points, grid.SizeMeters * 100);
+        var (xs, zs) = SampleSpline(points, grid.WidthMeters * 100, grid.DepthMeters * 100);
         int n = xs.Count;
         var ground = new int[n];
         for (int i = 0; i < n; i++)
@@ -343,9 +343,9 @@ public sealed class WayGeometry
     /// <see cref="SampleSpacingCm"/> of horizontal distance. Even spacing matters: path grading averages over a
     /// number of samples, and spline parameter steps are not evenly spaced. Both ends stay exact.
     /// </summary>
-    private static (List<int> X, List<int> Z) SampleSpline(IReadOnlyList<PointCm> p, int limitCm)
+    private static (List<int> X, List<int> Z) SampleSpline(IReadOnlyList<PointCm> p, int limitXCm, int limitZCm)
     {
-        var (dx, dz) = SampleSplineDense(p, limitCm);
+        var (dx, dz) = SampleSplineDense(p, limitXCm, limitZCm);
         var xs = new List<int> { dx[0] };
         var zs = new List<int> { dz[0] };
         // Distances in 1/16 cm, so rounding the short dense steps doesn't stretch the spacing.
@@ -386,10 +386,10 @@ public sealed class WayGeometry
     }
 
     /// <summary>Catmull-Rom through all control points (endpoints repeated), sampled densely by spline parameter.</summary>
-    private static (List<int> X, List<int> Z) SampleSplineDense(IReadOnlyList<PointCm> p, int limitCm)
+    private static (List<int> X, List<int> Z) SampleSplineDense(IReadOnlyList<PointCm> p, int limitXCm, int limitZCm)
     {
-        var xs = new List<int> { Math.Clamp(p[0].X, 0, limitCm) };
-        var zs = new List<int> { Math.Clamp(p[0].Z, 0, limitCm) };
+        var xs = new List<int> { Math.Clamp(p[0].X, 0, limitXCm) };
+        var zs = new List<int> { Math.Clamp(p[0].Z, 0, limitZCm) };
         for (int i = 0; i < p.Count - 1; i++)
         {
             var p0 = p[Math.Max(i - 1, 0)];
@@ -401,8 +401,8 @@ public sealed class WayGeometry
             for (int k = 1; k <= steps; k++)
             {
                 long t = k * One / steps;
-                int x = Math.Clamp((int)CatmullRom(p0.X, p1.X, p2.X, p3.X, t), 0, limitCm);
-                int z = Math.Clamp((int)CatmullRom(p0.Z, p1.Z, p2.Z, p3.Z, t), 0, limitCm);
+                int x = Math.Clamp((int)CatmullRom(p0.X, p1.X, p2.X, p3.X, t), 0, limitXCm);
+                int z = Math.Clamp((int)CatmullRom(p0.Z, p1.Z, p2.Z, p3.Z, t), 0, limitZCm);
                 if (x == xs[^1] && z == zs[^1]) continue;
                 xs.Add(x);
                 zs.Add(z);

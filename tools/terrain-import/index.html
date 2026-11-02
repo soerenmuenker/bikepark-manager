@@ -12,13 +12,18 @@
  button:disabled{opacity:.45;cursor:default} .dim{color:#a9b7c4;font-size:12px} .row{display:flex;gap:6px} .row button{margin-top:0;width:auto}
  #facts li{margin:2px 0} #facts{padding-left:18px;margin:6px 0} .bad{color:#ff9d8a} img{width:100%;border-radius:6px;margin-top:8px}
  .choice{display:flex;gap:6px;align-items:flex-start;color:inherit;font-size:13px} .choice input{width:auto;margin-top:3px}
+ #ratios button{flex:1;background:#33475a} #ratios button.on{background:#2a7f92}
+ .turn{width:26px!important;height:26px!important;margin:-13px 0 0 -13px!important;border-radius:50%;background:#00bcd4;color:#fff;font:bold 15px/26px system-ui;text-align:center;box-shadow:0 1px 4px #0008;cursor:grab}
  .key i{display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle}
 </style></head><body><div id="app"><div id="map"></div><div id="side">
 <h1>Bikepark Map Maker</h1><div class="dim">Pick a real place. Only what really stands there gets built.</div>
 <h2>1 · Find the place</h2>
 <div class="row"><input id="q" placeholder="Search, e.g. Wendelstein"><button id="go">Go</button></div>
-<label>Map size: <b id="sizeText"></b></label><input id="size" type="range" min="500" max="3000" step="100" value="1500">
-<div class="dim">Drag the marker, or click the map, to move the square.</div>
+<label>Shape</label>
+<div class="row" id="ratios"><button data-ratio="1:1">1:1</button><button data-ratio="2:3">2:3</button><button data-ratio="1:2">1:2</button><button data-ratio="1:3">1:3</button></div>
+<label>Long side: <b id="sizeText"></b></label><input id="size" type="range" min="500" max="3000" step="100" value="1500">
+<label>Turned: <b id="rotationText"></b></label><input id="rotation" type="range" min="0" max="359" step="1" value="0">
+<div class="dim">Drag the marker, or click the map, to move the map. Drag the arrow to turn it: it points to the top of the map in the game.</div>
 <button id="look">Show what's there</button>
 <h2>2 · What really stands there</h2>
 <div id="facts" class="dim">Nothing loaded yet.</div>
@@ -48,25 +53,53 @@ const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {ma
 const map = L.map('map', {layers: [topo]}).setView([47.7433, 12.0282], 14);
 L.control.layers({'Topographic': topo, 'OpenStreetMap': osm}).addTo(map);
 let center = L.latLng(47.7433, 12.0282), arrival = null, loaded = false;
-const rect = L.rectangle([[0,0],[0,0]], {color: '#00bcd4', weight: 2, fillOpacity: .06, interactive: false}).addTo(map);
-const handle = L.marker(center, {draggable: true, title: 'Drag the square'}).addTo(map);
+const rect = L.polygon([[0,0],[0,0],[0,0],[0,0]], {color: '#00bcd4', weight: 2, fillOpacity: .06, interactive: false}).addTo(map);
+const topEdge = L.polyline([[0,0],[0,0]], {color: '#00bcd4', weight: 5, interactive: false}).addTo(map);
+const handle = L.marker(center, {draggable: true, title: 'Drag to move the map'}).addTo(map);
+const turnIcon = L.divIcon({className: 'turn', html: '<div id="turnArrow">↑</div>'});
+const turn = L.marker(center, {draggable: true, icon: turnIcon, title: 'Drag to turn the map'}).addTo(map);
 const info = L.layerGroup().addTo(map);
 let arrivalMark = null;
+let ratio = '1:1';
 const size = () => +$('size').value;
-function box() {
-  const half = size() / 2, dLat = half / M, dLon = half / (M * Math.cos(center.lat * Math.PI / 180));
-  return [[center.lat - dLat, center.lng - dLon], [center.lat + dLat, center.lng + dLon]];
+const rotation = () => +$('rotation').value;
+// The same as the importer's Frame and frame_for: the long side along the map's x, both sides whole 5 m cells.
+function depth() { const [a, b] = ratio.split(':').map(Number); return Math.round(size() * a / b / 5) * 5; }
+function toLatLng(x, z) {
+  const r = rotation() * Math.PI / 180, east = x * Math.cos(r) - z * Math.sin(r), south = x * Math.sin(r) + z * Math.cos(r);
+  return [center.lat - south / M, center.lng + east / (M * Math.cos(center.lat * Math.PI / 180))];
 }
+const TURN_GAP = 0.08; // how far beyond the top edge the arrow sits, in long sides
 function moved() {
-  rect.setBounds(box()); handle.setLatLng(center);
-  $('sizeText').textContent = (size() / 1000).toFixed(1) + ' km';
+  const w = size() / 2, d = depth() / 2;
+  rect.setLatLngs([toLatLng(-w, -d), toLatLng(w, -d), toLatLng(w, d), toLatLng(-w, d)]);
+  topEdge.setLatLngs([toLatLng(-w, -d), toLatLng(w, -d)]);
+  handle.setLatLng(center); turn.setLatLng(toLatLng(0, -d - size() * TURN_GAP));
+  const arrow = $('turnArrow'); if (arrow) arrow.style.transform = `rotate(${rotation()}deg)`;
+  $('sizeText').textContent = (size() / 1000).toFixed(1) + (depth() === size() ? ' km square' : ' × ' + (depth() / 1000).toFixed(2) + ' km');
+  $('rotationText').textContent = rotation() + '° from north';
   if (loaded) { info.clearLayers(); loaded = false; arrival = null; if (arrivalMark) arrivalMark.remove();
-    $('facts').textContent = 'The square moved: load it again.'; $('arrivalText').textContent = ''; }
+    $('facts').textContent = 'The map moved: load it again.'; $('arrivalText').textContent = ''; }
   refresh();
 }
 function refresh() { $('make').disabled = !(loaded && $('id').value && $('title').value); }
 handle.on('drag', e => { center = e.target.getLatLng(); moved(); });
-map.on('click', e => { if (!loaded) { center = e.latlng; moved(); } });
+let droppedAt = 0; // letting go of a dragged marker also clicks the map
+handle.on('dragend', () => droppedAt = Date.now());
+turn.on('dragend', () => droppedAt = Date.now());
+map.on('click', e => { if (!loaded && Date.now() - droppedAt > 300) { center = e.latlng; moved(); } });
+turn.on('drag', e => {
+  const p = e.target.getLatLng(), east = (p.lng - center.lng) * M * Math.cos(center.lat * Math.PI / 180), north = (p.lat - center.lat) * M;
+  $('rotation').value = (Math.round(Math.atan2(east, north) * 180 / Math.PI) + 360) % 360; moved();
+});
+function setRatio(r) {
+  ratio = r;
+  document.querySelectorAll('#ratios button').forEach(b => b.classList.toggle('on', b.dataset.ratio === r));
+  $('size').max = r === '1:1' ? 3000 : 4000; // as MAX_SQUARE_METERS and MAX_LONG_METERS
+  moved();
+}
+document.querySelectorAll('#ratios button').forEach(b => b.onclick = () => setRatio(b.dataset.ratio));
+$('rotation').oninput = moved;
 $('size').oninput = moved; $('id').oninput = refresh; $('title').oninput = () => {
   if (!$('id').dataset.touched) $('id').value = $('title').value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   refresh(); };
@@ -93,7 +126,7 @@ function setArrival(ll) {
 $('look').onclick = async () => {
   $('look').disabled = true; $('facts').textContent = 'Asking OpenStreetMap, this can take a minute when it is busy…';
   try {
-    const d = await post('/api/preview', {lat: center.lat, lon: center.lng, size: size()});
+    const d = await post('/api/preview', {lat: center.lat, lon: center.lng, size: size(), ratio, rotation: rotation()});
     info.clearLayers();
     d.minor.forEach(l => L.polyline(l, {color: '#8a97a3', weight: 1.5, opacity: .8, interactive: false}).addTo(info));
     leaveOut.clear(); showLeftOut();
@@ -112,7 +145,7 @@ $('look').onclick = async () => {
     d.junctions.forEach(j => L.circleMarker(j, {radius: 6, color: '#222', fillColor: '#ffb000', fillOpacity: 1})
       .on('click', e => { L.DomEvent.stopPropagation(e); setArrival(j); }).addTo(info));
     $('facts').innerHTML = '<ul id="facts"><li>' + d.routes.length + ' gravel sections</li><li>' + d.lifts.length + ' lifts</li><li>' + d.parking.length + ' parking lots</li><li>' + d.roads.length + ' road sections</li><li>' + d.streams.length + ' streams, ' + d.lakes.length + ' lakes</li><li>' + d.buildings.length + ' buildings</li></ul>'
-      + (d.buildings.length > 1500 ? '<div class="bad">That is a lot of buildings: check the frame rate, or pick a smaller square.</div>' : '');
+      + (d.buildings.length > 1500 ? '<div class="bad">That is a lot of buildings: check the frame rate, or pick a smaller map.</div>' : '');
     realMedian = d.medianDegrees; $('relief').value = d.relief; showRelief();
     if (d.junctions.length) setArrival(d.junctions[0]);
     loaded = true;
@@ -130,7 +163,7 @@ $('relief').oninput = showRelief;
 async function make(overwrite) {
   $('make').disabled = true; $('result').textContent = 'Fetching terrain and building the map…';
   try {
-    const d = await post('/api/create', {lat: center.lat, lon: center.lng, size: size(), id: $('id').value, title: $('title').value,
+    const d = await post('/api/create', {lat: center.lat, lon: center.lng, size: size(), ratio, rotation: rotation(), id: $('id').value, title: $('title').value,
       place: $('place').value, land: document.querySelector('input[name=land]:checked').value, relief: +$('relief').value, arrival: arrival && [arrival[0], arrival[1]], leaveOut: [...leaveOut], overwrite});
     if (d.exists) { $('result').textContent = ''; if (confirm('A map with this file id exists. Overwrite it?')) return make(true); return; }
     const box = $('result'); box.innerHTML = '';
@@ -154,6 +187,6 @@ async function make(overwrite) {
   refresh();
 }
 $('make').onclick = () => make(false);
-moved();
+setRatio('1:1');
 showRelief();
 </script></body></html>

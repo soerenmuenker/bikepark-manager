@@ -37,15 +37,15 @@ internal static class RockFormations
     private const int FieldMinRock = 60, FieldGatePermille = 450, DenseMinRock = 80, DenseGatePermille = 540;
     private const int GrassStonesMinSlope = 350, GrassStonesGatePermille = 720;
 
-    public static byte[]? Build(TerrainSettings settings, ulong seed, byte[] rock, ushort[] slopes, byte[] water, TerrainSceneryData? scenery, int n)
+    public static byte[]? Build(TerrainSettings settings, ulong seed, byte[] rock, ushort[] slopes, byte[] water, TerrainSceneryData? scenery, int nx, int nz)
     {
         if (!settings.RockFormations) return null;
         uint s = (uint)(seed ^ (seed >> 32));
-        var layer = new byte[n * n];
-        for (int z = 0; z < n; z++)
-            for (int x = 0; x < n; x++)
+        var layer = new byte[nx * nz];
+        for (int z = 0; z < nz; z++)
+            for (int x = 0; x < nx; x++)
             {
-                int i = z * n + x;
+                int i = z * nx + x;
                 if (water[i] > 0 || scenery?.Blocked[i] == TerrainSceneryData.Building) continue;
                 int r = rock[i], slope = slopes[i];
                 if (r >= FaceMinRock && slope >= FaceMinSlope && Above(x, z, 60, 2, s ^ FaceSalt, FaceGatePermille))
@@ -57,7 +57,7 @@ internal static class RockFormations
                 else if (r < FieldMinRock && slope >= GrassStonesMinSlope && Above(x, z, 40, 3, s ^ FieldSalt, GrassStonesGatePermille))
                     layer[i] = (byte)RockFormation.SparseStones;
             }
-        ShrinkSmallFaces(layer, n);
+        ShrinkSmallFaces(layer, nx);
         return layer;
     }
 

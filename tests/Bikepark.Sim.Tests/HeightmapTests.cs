@@ -54,7 +54,7 @@ public class HeightmapTests
     {
         var grid = TerrainGenerator.Generate(Settings(), 0);
 
-        Assert.Equal(Samples * Cell - Cell, grid.SizeMeters);
+        Assert.Equal(Samples * Cell - Cell, grid.WidthMeters);
         Assert.Equal(70_000, grid.HeightAt(0, 0));
         Assert.Equal(70_000 + 5 * 500, grid.HeightAt(5 * Cell * 100, 3 * Cell * 100));
         Assert.Equal(70_000 + 10 * 500 + 300, grid.HeightAt(10 * Cell * 100, 10 * Cell * 100));

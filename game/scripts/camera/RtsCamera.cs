@@ -54,8 +54,7 @@ public partial class RtsCamera : Node3D
         Camera.MakeCurrent();
 
         // Start south-west of the map center, looking north-east at the mountain.
-        float half = (_terrain.Grid?.SizeMeters ?? 1000) / 2f;
-        _focus = _targetFocus = new Vector2(half, half);
+        _focus = _targetFocus = new Vector2(_terrain.Grid?.WidthMeters ?? 1000, _terrain.Grid?.DepthMeters ?? 1000) / 2f;
         _yaw = _targetYaw = Mathf.DegToRad(-35f);
         _pitch = _targetPitch = Mathf.DegToRad(40f);
         _distance = _targetDistance = StartDistance;
@@ -209,7 +208,6 @@ public partial class RtsCamera : Node3D
 
     private Vector2 ClampToMap(Vector2 p)
     {
-        float size = _terrain.Grid?.SizeMeters ?? 1000;
-        return new Vector2(Mathf.Clamp(p.X, 0, size), Mathf.Clamp(p.Y, 0, size));
+        return new Vector2(Mathf.Clamp(p.X, 0, _terrain.Grid?.WidthMeters ?? 1000), Mathf.Clamp(p.Y, 0, _terrain.Grid?.DepthMeters ?? 1000));
     }
 }

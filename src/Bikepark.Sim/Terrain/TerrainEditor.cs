@@ -11,7 +11,7 @@ public static class TerrainEditor
     {
         if (edits.Count == 0) return baseGrid;
 
-        int n = baseGrid.Samples;
+        int nx = baseGrid.SamplesX, nz = baseGrid.SamplesZ;
         int[] heights = baseGrid.Heights.ToArray();
         byte[] trees = baseGrid.TreeDensity.ToArray();
         byte[] rock = baseGrid.Rock.ToArray();
@@ -19,20 +19,20 @@ public static class TerrainEditor
         byte[] water = baseGrid.WaterDepth.ToArray();
 
         foreach (var edit in edits)
-            ApplyPad(edit.Pad, n, heights, trees, rock, roots, water);
+            ApplyPad(edit.Pad, nx, nz, heights, trees, rock, roots, water);
 
         // A pad is built on cleared ground.
         byte[]? formations = baseGrid.HasRockFormations ? baseGrid.Formations.ToArray() : null;
         if (formations is not null)
             foreach (var edit in edits)
             {
-                var (x0, z0, x1, z1) = Bounds(edit.Pad, n - 1, 0);
+                var (x0, z0, x1, z1) = Bounds(edit.Pad, nx - 1, nz - 1, 0);
                 for (int z = z0; z <= z1; z++)
                     for (int x = x0; x <= x1; x++)
-                        if (edit.Pad.Contains(x * 100L, z * 100L)) formations[z * n + x] = 0;
+                        if (edit.Pad.Contains(x * 100L, z * 100L)) formations[z * nx + x] = 0;
             }
 
-        ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, n);
+        ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, nx, nz);
         return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery, formations);
     }
 
@@ -52,29 +52,29 @@ public static class TerrainEditor
     /// Sample bounds (inclusive, clamped to the map) of the flat area plus an embankment that has to bridge at most
     /// <paramref name="maxDifferenceCm"/>.
     /// </summary>
-    public static (int MinX, int MinZ, int MaxX, int MaxZ) Bounds(TerrainPad pad, int sizeMeters, int maxDifferenceCm, long bandCm = 0)
+    public static (int MinX, int MinZ, int MaxX, int MaxZ) Bounds(TerrainPad pad, int widthMeters, int depthMeters, int maxDifferenceCm, long bandCm = 0)
     {
         long reach = 0;
         while (AllowedDifference(reach, pad.EmbankmentPermille, bandCm) < maxDifferenceCm)
             reach += 100;
         reach += (long)Math.Max(pad.HalfLengthCm, pad.HalfWidthCm) * 1415 / 1000 + 100;
-        int minX = (int)Math.Clamp((pad.CenterX - reach) / 100, 0, sizeMeters);
-        int maxX = (int)Math.Clamp((pad.CenterX + reach + 99) / 100, 0, sizeMeters);
-        int minZ = (int)Math.Clamp((pad.CenterZ - reach) / 100, 0, sizeMeters);
-        int maxZ = (int)Math.Clamp((pad.CenterZ + reach + 99) / 100, 0, sizeMeters);
+        int minX = (int)Math.Clamp((pad.CenterX - reach) / 100, 0, widthMeters);
+        int maxX = (int)Math.Clamp((pad.CenterX + reach + 99) / 100, 0, widthMeters);
+        int minZ = (int)Math.Clamp((pad.CenterZ - reach) / 100, 0, depthMeters);
+        int maxZ = (int)Math.Clamp((pad.CenterZ + reach + 99) / 100, 0, depthMeters);
         return (minX, minZ, maxX, maxZ);
     }
 
-    private static void ApplyPad(TerrainPad pad, int n, int[] heights, byte[] trees, byte[] rock, byte[] roots, byte[] water)
+    private static void ApplyPad(TerrainPad pad, int nx, int nz, int[] heights, byte[] trees, byte[] rock, byte[] roots, byte[] water)
     {
         // Full-grade embankment wide enough for the largest difference under the pad (at least 20 m); beyond that it
         // steepens until it meets the ground, which must happen within the map's relief.
         int maxDiff = 0, min = int.MaxValue, max = int.MinValue;
-        var (fx0, fz0, fx1, fz1) = Bounds(pad, n - 1, 0);
+        var (fx0, fz0, fx1, fz1) = Bounds(pad, nx - 1, nz - 1, 0);
         for (int z = fz0; z <= fz1; z++)
             for (int x = fx0; x <= fx1; x++)
                 if (pad.Contains(x * 100L, z * 100L))
-                    maxDiff = Math.Max(maxDiff, Math.Abs(heights[z * n + x] - pad.TargetHeightCm));
+                    maxDiff = Math.Max(maxDiff, Math.Abs(heights[z * nx + x] - pad.TargetHeightCm));
         foreach (int h in heights)
         {
             min = Math.Min(min, h);
@@ -84,12 +84,12 @@ public static class TerrainEditor
         long band = Math.Max(2_000, (long)maxDiff * 1000 / grade);
         int relief = Math.Max(Math.Abs(max - pad.TargetHeightCm), Math.Abs(pad.TargetHeightCm - min));
 
-        var (x0, z0, x1, z1) = Bounds(pad, n - 1, relief, band);
+        var (x0, z0, x1, z1) = Bounds(pad, nx - 1, nz - 1, relief, band);
         for (int z = z0; z <= z1; z++)
         {
             for (int x = x0; x <= x1; x++)
             {
-                int i = z * n + x;
+                int i = z * nx + x;
                 long allowed = AllowedDifference(pad.DistanceOutside(x * 100L, z * 100L), grade, band);
                 long diff = heights[i] - pad.TargetHeightCm;
                 if (allowed > 0 && Math.Abs(diff) <= allowed)

@@ -28,20 +28,20 @@ public static class TerrainGenerator
             throw new InvalidDataException($"Invalid terrain settings: {string.Join("; ", errors)}");
 
         ulong seed = settings.Seed ?? worldSeed;
-        int n = settings.SizeMeters + 1;
+        int nx = settings.SizeMeters + 1, nz = settings.Depth() + 1;
         var rng = SimRandom.FromSeed(seed, stream: 0x7E44A1);
         var seeds = new NoiseSeeds(rng);
 
-        int[] heights = settings.Heightmap is { } map ? FromHeightmap(map, settings, n, seeds) : Shape(settings, n, rng, seeds);
-        var water = new byte[n * n];
-        TerrainSculptor.ApplyHeights(heightStrokes, heights, n);
+        int[] heights = settings.Heightmap is { } map ? FromHeightmap(map, settings, nx, nz, seeds) : Shape(settings, nx, nz, rng, seeds);
+        var water = new byte[nx * nz];
+        TerrainSculptor.ApplyHeights(heightStrokes, heights, nx, nz);
         var scenery = settings.Heightmap?.Scenery;
-        var sceneryData = scenery is null ? null : TerrainSceneryBuilder.Carve(scenery, heights, water, n);
-        ushort[] slopes = ComputeSlopes(heights, n);
-        var (trees, rock, roots) = Layers(settings, heights, slopes, n, seeds);
-        if (scenery is not null) TerrainSceneryBuilder.Clear(scenery, sceneryData!, water, trees, rock, roots, n);
+        var sceneryData = scenery is null ? null : TerrainSceneryBuilder.Carve(scenery, heights, water, nx, nz);
+        ushort[] slopes = ComputeSlopes(heights, nx, nz);
+        var (trees, rock, roots) = Layers(settings, heights, slopes, nx, nz, seeds);
+        if (scenery is not null) TerrainSceneryBuilder.Clear(scenery, sceneryData!, water, trees, rock, roots, nx, nz);
 
-        var formations = RockFormations.Build(settings, seed, rock, slopes, water, sceneryData, n);
+        var formations = RockFormations.Build(settings, seed, rock, slopes, water, sceneryData, nx, nz);
         return new TerrainGrid(settings with { Seed = seed }, seed, heights, slopes, trees, rock, roots, water, sceneryData, formations);
     }
 
@@ -58,7 +58,7 @@ public static class TerrainGenerator
 
     // ---------------------------------------------------------------- shape
 
-    private static int[] Shape(TerrainSettings s, int n, SimRandom rng, NoiseSeeds seeds)
+    private static int[] Shape(TerrainSettings s, int nx, int nz, SimRandom rng, NoiseSeeds seeds)
     {
         long radius = s.PeakRadiusMeters;
         var ridges = new Ridge[s.RidgeCount];
@@ -72,11 +72,11 @@ public static class TerrainGenerator
                 MeanderSeed: rng.NextUInt());
         }
 
-        var raw = new long[n * n];
+        var raw = new long[nx * nz];
         long min = long.MaxValue, max = long.MinValue;
-        for (int z = 0; z < n; z++)
+        for (int z = 0; z < nz; z++)
         {
-            for (int x = 0; x < n; x++)
+            for (int x = 0; x < nx; x++)
             {
                 long dx = x - s.PeakXMeters, dz = z - s.PeakZMeters;
 
@@ -122,14 +122,14 @@ public static class TerrainGenerator
                          + detail * s.RoughnessPermille * 2
                          + Mul(crag, dome) * s.RoughnessPermille
                          + undulation * 80;
-                raw[z * n + x] = v;
+                raw[z * nx + x] = v;
                 if (v < min) min = v;
                 if (v > max) max = v;
             }
         }
 
         // Rescale so the terrain spans exactly [BaseElevation, BaseElevation + Relief].
-        var heights = new int[n * n];
+        var heights = new int[nx * nz];
         long range = Math.Max(1, max - min);
         for (int i = 0; i < heights.Length; i++)
             heights[i] = s.BaseElevationCm + (int)((raw[i] - min) * s.ReliefCm / range);
@@ -137,7 +137,7 @@ public static class TerrainGenerator
     }
 
     /// <summary>Catmull-Rom through the samples (so the real heights are kept at every sample), then the detail noise.</summary>
-    private static int[] FromHeightmap(TerrainHeightmap map, TerrainSettings settings, int n, NoiseSeeds seeds)
+    private static int[] FromHeightmap(TerrainHeightmap map, TerrainSettings settings, int nx, int nz, NoiseSeeds seeds)
     {
         int roughnessPermille = settings.RoughnessPermille;
         int[] source = map.DecodeHeights();
@@ -147,23 +147,23 @@ public static class TerrainGenerator
             for (int i = 0; i < source.Length; i++)
                 source[i] = low + (int)((long)(source[i] - low) * settings.ReliefScalePermille / 1000);
         }
-        int m = map.Samples, cell = map.CellMeters;
-        var heights = new int[n * n];
-        var row = new long[m];
-        for (int z = 0; z < n; z++)
+        int mx = map.Samples, mz = map.Rows(), cell = map.CellMeters;
+        var heights = new int[nx * nz];
+        var row = new long[mx];
+        for (int z = 0; z < nz; z++)
         {
-            int zi = Math.Min(z / cell, m - 2);
+            int zi = Math.Min(z / cell, mz - 2);
             long zt = (z - zi * cell) * One / cell;
-            int z0 = Math.Max(zi - 1, 0), z2 = zi + 1, z3 = Math.Min(zi + 2, m - 1);
-            for (int c = 0; c < m; c++)
-                row[c] = CatmullRom(source[z0 * m + c], source[zi * m + c], source[z2 * m + c], source[z3 * m + c], zt);
-            for (int x = 0; x < n; x++)
+            int z0 = Math.Max(zi - 1, 0), z2 = zi + 1, z3 = Math.Min(zi + 2, mz - 1);
+            for (int c = 0; c < mx; c++)
+                row[c] = CatmullRom(source[z0 * mx + c], source[zi * mx + c], source[z2 * mx + c], source[z3 * mx + c], zt);
+            for (int x = 0; x < nx; x++)
             {
-                int xi = Math.Min(x / cell, m - 2);
+                int xi = Math.Min(x / cell, mx - 2);
                 long xt = (x - xi * cell) * One / cell;
-                long h = CatmullRom(row[Math.Max(xi - 1, 0)], row[xi], row[xi + 1], row[Math.Min(xi + 2, m - 1)], xt);
+                long h = CatmullRom(row[Math.Max(xi - 1, 0)], row[xi], row[xi + 1], row[Math.Min(xi + 2, mx - 1)], xt);
                 long detail = (IntNoise.Fbm(x, z, 60, 4, seeds.Detail) - OneHalf) * roughnessPermille * 10 / 3 >> Shift;
-                heights[z * n + x] = (int)Math.Max(0, h + detail);
+                heights[z * nx + x] = (int)Math.Max(0, h + detail);
             }
         }
         return heights;
@@ -179,7 +179,7 @@ public static class TerrainGenerator
     private static long MaskAt(byte[] mask, TerrainHeightmap map, int x, int z)
     {
         int m = map.Samples, cell = map.CellMeters;
-        int xi = Math.Min(x / cell, m - 2), zi = Math.Min(z / cell, m - 2);
+        int xi = Math.Min(x / cell, m - 2), zi = Math.Min(z / cell, map.Rows() - 2);
         long xt = (x - xi * cell) * One / cell, zt = (z - zi * cell) * One / cell;
         long top = Lerp(mask[zi * m + xi], mask[zi * m + xi + 1], xt);
         long bottom = Lerp(mask[(zi + 1) * m + xi], mask[(zi + 1) * m + xi + 1], xt);
@@ -199,30 +199,30 @@ public static class TerrainGenerator
 
     // ---------------------------------------------------------------- layers
 
-    internal static ushort[] ComputeSlopes(int[] heights, int n)
+    internal static ushort[] ComputeSlopes(int[] heights, int nx, int nz)
     {
-        var slopes = new ushort[n * n];
-        for (int z = 0; z < n; z++)
+        var slopes = new ushort[nx * nz];
+        for (int z = 0; z < nz; z++)
         {
-            int z0 = Math.Max(0, z - 1), z1 = Math.Min(n - 1, z + 1);
-            for (int x = 0; x < n; x++)
+            int z0 = Math.Max(0, z - 1), z1 = Math.Min(nz - 1, z + 1);
+            for (int x = 0; x < nx; x++)
             {
-                int x0 = Math.Max(0, x - 1), x1 = Math.Min(n - 1, x + 1);
+                int x0 = Math.Max(0, x - 1), x1 = Math.Min(nx - 1, x + 1);
                 // Gradient in cm per m, scaled by the (1 or 2 m) sample spacing.
-                long gx = (long)(heights[z * n + x1] - heights[z * n + x0]) * 1000 / (x1 - x0);
-                long gz = (long)(heights[z1 * n + x] - heights[z0 * n + x]) * 1000 / (z1 - z0);
+                long gx = (long)(heights[z * nx + x1] - heights[z * nx + x0]) * 1000 / (x1 - x0);
+                long gz = (long)(heights[z1 * nx + x] - heights[z0 * nx + x]) * 1000 / (z1 - z0);
                 // grade = |gradient| / 100 cm; permille = sqrt(gx² + gz²) * 1000 / 100 / 1000.
                 long grade = ISqrt(gx * gx + gz * gz) / 100;
-                slopes[z * n + x] = (ushort)Math.Min(ushort.MaxValue, grade);
+                slopes[z * nx + x] = (ushort)Math.Min(ushort.MaxValue, grade);
             }
         }
         return slopes;
     }
 
     private static (byte[] Trees, byte[] Rock, byte[] Roots) Layers(
-        TerrainSettings s, int[] heights, ushort[] slopes, int n, NoiseSeeds seeds)
+        TerrainSettings s, int[] heights, ushort[] slopes, int nx, int nz, NoiseSeeds seeds)
     {
-        int count = n * n;
+        int count = nx * nz;
         var trees = new byte[count];
         var rock = new byte[count];
         var roots = new byte[count];
@@ -234,23 +234,23 @@ public static class TerrainGenerator
         // Real terrain: the mask is the forest, the noise only frays its edge.
         var patch = new long[count];
         var histogram = new int[1 << 10];
-        for (int z = 0; z < n; z++)
-            for (int x = 0; x < n; x++)
+        for (int z = 0; z < nz; z++)
+            for (int x = 0; x < nx; x++)
             {
                 long v = forestMask is null
                     ? IntNoise.Fbm(x, z, 160, 4, seeds.Forest)
                     : Clamp01(MaskAt(forestMask, map!, x, z) + (IntNoise.Fbm(x, z, 30, 3, seeds.Forest) - OneHalf) / 2);
-                patch[z * n + x] = v;
+                patch[z * nx + x] = v;
                 if (forestMask is null) histogram[(int)(v >> (Shift - 10))]++;
             }
         long threshold = forestMask is null ? Quantile(histogram, count, 1000 - s.ForestCoveragePermille) << (Shift - 10) : OneHalf;
         long patchEdge = One / 20;
 
-        for (int z = 0; z < n; z++)
+        for (int z = 0; z < nz; z++)
         {
-            for (int x = 0; x < n; x++)
+            for (int x = 0; x < nx; x++)
             {
-                int i = z * n + x;
+                int i = z * nx + x;
                 long h = heights[i];
                 long slope = slopes[i];
 

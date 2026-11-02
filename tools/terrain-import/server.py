@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Map maker: pick a square of the real world on OpenStreetMap, see what really stands there, make it a career map.
+"""Map maker: pick a rectangle of the real world on OpenStreetMap, see what really stands there, make it a career map.
 
     python3 tools/terrain-import/server.py      # then open http://localhost:8767
 
@@ -34,11 +34,15 @@ editor = None  # the scenario editor this server started: (process, scenario id,
 editor_lock = threading.Lock()
 
 
+def frame_of(body):
+    return ti.frame_for(float(body["lat"]), float(body["lon"]), int(body["size"]), body.get("ratio", "1:1"), int(body.get("rotation", 0)))
+
+
 def preview(body):
-    """What the importer would take from this square, as lat/lon for the map."""
-    square = ti.Square(float(body["lat"]), float(body["lon"]), int(body["size"]))
-    elements = ti.fetch_infrastructure(square)
-    edges = ti.road_network(elements, square)
+    """What the importer would take from this frame, as lat/lon for the map."""
+    frame = frame_of(body)
+    elements = ti.fetch_infrastructure(frame)
+    edges = ti.road_network(elements, frame)
     minor = []
     for el in elements:
         tags = el.get("tags", {})
@@ -49,25 +53,25 @@ def preview(body):
         junctions.setdefault(e[0], e[2][0])
         junctions.setdefault(e[1], e[2][-1])
     elevation = ti.Elevation()
-    lifts, parking = ti.real_structures(elements, square, elevation)
-    relief, median = ti.suggest_relief(square, elevation)
-    scenery = ti.scenery_from(elements, square)
-    ll = lambda p: list(square.latlon(p["x"] / 100, p["z"] / 100))
+    lifts, parking = ti.real_structures(elements, frame, elevation)
+    relief, median = ti.suggest_relief(frame, elevation)
+    scenery = ti.scenery_from(elements, frame)
+    ll = lambda p: list(frame.latlon(p["x"] / 100, p["z"] / 100))
     corners = []
     for b in scenery["buildings"]:
         lx, lz = b["halfLengthCm"] / 100 * b["dirX"] / 1000, b["halfLengthCm"] / 100 * b["dirZ"] / 1000
         wx, wz = -b["halfWidthCm"] / 100 * b["dirZ"] / 1000, b["halfWidthCm"] / 100 * b["dirX"] / 1000
         cx, cz = b["centerX"] / 100, b["centerZ"] / 100
-        corners.append([list(square.latlon(cx + sl * lx + sw * wx, cz + sl * lz + sw * wz)) for sl, sw in ((1, 1), (1, -1), (-1, -1), (-1, 1))])
+        corners.append([list(frame.latlon(cx + sl * lx + sw * wx, cz + sl * lz + sw * wz)) for sl, sw in ((1, 1), (1, -1), (-1, -1), (-1, 1))])
     return {
         "relief": relief,
         "medianDegrees": round(median, 1),
-        "routes": [{"edge": i, "line": [list(square.latlon(*p)) for p in e[2]]} for i, e in enumerate(edges) if e[3] == "gravel"],
-        "roads": [{"edge": i, "line": [list(square.latlon(*p)) for p in e[2]]} for i, e in enumerate(edges) if e[3] == "tarmac"],
+        "routes": [{"edge": i, "line": [list(frame.latlon(*p)) for p in e[2]]} for i, e in enumerate(edges) if e[3] == "gravel"],
+        "roads": [{"edge": i, "line": [list(frame.latlon(*p)) for p in e[2]]} for i, e in enumerate(edges) if e[3] == "tarmac"],
         "minor": minor,
-        "junctions": [list(square.latlon(*p)) for p in junctions.values()],
-        "lifts": [{"name": l["name"], "type": l["typeId"], "line": [list(square.latlon(*l["valley"])), list(square.latlon(*l["mountain"]))]} for l in lifts],
-        "parking": [{"name": p["name"], "at": list(square.latlon(*p["center"]))} for p in parking],
+        "junctions": [list(frame.latlon(*p)) for p in junctions.values()],
+        "lifts": [{"name": l["name"], "type": l["typeId"], "line": [list(frame.latlon(*l["valley"])), list(frame.latlon(*l["mountain"]))]} for l in lifts],
+        "parking": [{"name": p["name"], "at": list(frame.latlon(*p["center"]))} for p in parking],
         "streams": [{"line": [ll(p) for p in s["points"]], "width": s["widthCm"]} for s in scenery["streams"]],
         "lakes": [[ll(p) for p in l["outline"]] for l in scenery["lakes"]],
         "buildings": corners,
@@ -82,11 +86,11 @@ def create(body):
         raise ValueError("That id belongs to a built-in map.")
     if (ROOT / "data" / "scenarios" / f"{map_id}.json").exists() and not body.get("overwrite"):
         return {"exists": True}
-    square = ti.Square(float(body["lat"]), float(body["lon"]), int(body["size"]))
-    arrival = square.xz(*body["arrival"]) if body.get("arrival") else (square.size / 2, square.size / 2)
+    frame = frame_of(body)
+    arrival = frame.xz(*body["arrival"]) if body.get("arrival") else (frame.width / 2, frame.depth / 2)
     log = io.StringIO()
     with contextlib.redirect_stdout(log):
-        stats = ti.make_map(square, 5, map_id, body["title"], body.get("place") or body["title"], arrival, body.get("land") != "none", float(body["relief"]) if body.get("relief") else None, body.get("leaveOut") or ())
+        stats = ti.make_map(frame, 5, map_id, body["title"], body.get("place") or body["title"], arrival, body.get("land") != "none", float(body["relief"]) if body.get("relief") else None, body.get("leaveOut") or ())
     # The scenario editor caches its terrain per map id.
     for cached in (ROOT / "out" / "editor").glob(f"{map_id}_*"):
         cached.unlink()

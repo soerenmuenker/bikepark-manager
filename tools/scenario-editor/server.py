@@ -266,13 +266,14 @@ class Handler(BaseHTTPRequestHandler):
                     "back": self.back,
                     "path": str(self.scenario.relative_to(ROOT)),
                     "sizeMeters": data.get("terrain", {}).get("sizeMeters", 1000),
+                    "depthMeters": data.get("terrain", {}).get("depthMeters", 0),
                     "parcels": data.get("parcels", []),
                     "commands": data.get("commands", []),
                     "terrainSculpt": data.get("terrainSculpt", []),
                     "liftTypes": lift_types,
                 })
             elif url.path == "/api/raw":
-                raw = OUT / f"{self.scenario.stem}_raw.bin"
+                raw = OUT / f"{self.scenario.stem}_grid.bin"
                 with lock:
                     if not raw.exists() or "fresh" in q:
                         OUT.mkdir(parents=True, exist_ok=True)

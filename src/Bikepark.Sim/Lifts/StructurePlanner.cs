@@ -252,7 +252,7 @@ public static class StructurePlanner
     /// <summary>Calls <paramref name="visit"/> for every 1 m terrain sample inside the pad's flat area.</summary>
     private static void ForEachSampleInside(TerrainGrid grid, TerrainPad pad, Action<int, int> visit)
     {
-        var (x0, z0, x1, z1) = TerrainEditor.Bounds(pad, grid.SizeMeters, 0);
+        var (x0, z0, x1, z1) = TerrainEditor.Bounds(pad, grid.WidthMeters, grid.DepthMeters, 0);
         for (int z = z0; z <= z1; z++)
             for (int x = x0; x <= x1; x++)
                 if (pad.Contains(x * 100L, z * 100L))

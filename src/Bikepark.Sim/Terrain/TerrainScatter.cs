@@ -54,7 +54,7 @@ public static class TerrainScatter
     public static List<ScatterInstance> CollectAll(TerrainGrid grid)
     {
         var all = new List<ScatterInstance>();
-        Collect(grid, 0, 0, grid.SizeMeters + 1, grid.SizeMeters + 1, all);
+        Collect(grid, 0, 0, grid.WidthMeters + 1, grid.DepthMeters + 1, all);
         return all;
     }
 
@@ -66,7 +66,7 @@ public static class TerrainScatter
         int minXM, int minZM, int maxXM, int maxZM, List<ScatterInstance> output)
     {
         int cellCm = cell * 100;
-        int limitCm = grid.SizeMeters * 100;
+        int limitXCm = grid.WidthMeters * 100, limitZCm = grid.DepthMeters * 100;
         for (int cz = CeilDiv(Math.Max(0, minZM), cell); cz * cell < maxZM; cz++)
         {
             for (int cx = CeilDiv(Math.Max(0, minXM), cell); cx * cell < maxXM; cx++)
@@ -74,7 +74,7 @@ public static class TerrainScatter
                 uint h = IntNoise.Hash(cx, cz, seed);
                 int xCm = cx * cellCm + (int)(h % (uint)cellCm);
                 int zCm = cz * cellCm + (int)((h >> 16) % (uint)cellCm);
-                if (xCm > limitCm || zCm > limitCm) continue;
+                if (xCm > limitXCm || zCm > limitZCm) continue;
 
                 var sample = grid.Sample(xCm, zCm);
                 if (sample.WaterDepthCm > 0) continue;

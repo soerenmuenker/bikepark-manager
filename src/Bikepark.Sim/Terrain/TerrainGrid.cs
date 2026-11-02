@@ -50,9 +50,11 @@ public sealed class TerrainGrid
     {
         Settings = settings with { };
         Seed = seed;
-        SizeMeters = settings.SizeMeters;
-        Samples = SizeMeters + 1;
-        int count = Samples * Samples;
+        WidthMeters = settings.SizeMeters;
+        DepthMeters = settings.Depth();
+        SamplesX = WidthMeters + 1;
+        SamplesZ = DepthMeters + 1;
+        int count = SamplesX * SamplesZ;
         if (heights.Length != count || slopes.Length != count || trees.Length != count ||
             rock.Length != count || roots.Length != count || water.Length != count)
             throw new ArgumentException("Layer sizes do not match the grid size.");
@@ -74,15 +76,23 @@ public sealed class TerrainGrid
         }
         MinHeightCm = min;
         MaxHeightCm = max;
-        Peak = new GridPoint(peak % Samples, peak / Samples);
+        Peak = new GridPoint(peak % SamplesX, peak / SamplesX);
     }
 
     public TerrainSettings Settings { get; }
     public ulong Seed { get; }
-    public int SizeMeters { get; }
 
-    /// <summary>Samples per side (SizeMeters + 1).</summary>
-    public int Samples { get; }
+    /// <summary>East-west length.</summary>
+    public int WidthMeters { get; }
+
+    /// <summary>North-south length.</summary>
+    public int DepthMeters { get; }
+
+    /// <summary>Samples per row (WidthMeters + 1).</summary>
+    public int SamplesX { get; }
+
+    /// <summary>Rows (DepthMeters + 1).</summary>
+    public int SamplesZ { get; }
 
     public int MinHeightCm { get; }
     public int MaxHeightCm { get; }
@@ -113,7 +123,7 @@ public sealed class TerrainGrid
     /// <summary>A lake or a building stands here (<see cref="TerrainSceneryData"/>), 0 = free.</summary>
     public byte BlockedAt(long xCm, long zCm) => Scenery?.Blocked[NearestIndex(xCm, zCm)] ?? 0;
 
-    public int Index(int x, int z) => z * Samples + x;
+    public int Index(int x, int z) => z * SamplesX + x;
 
     // ---- Per-sample queries (indices are clamped) ----
 
@@ -149,7 +159,7 @@ public sealed class TerrainGrid
     }
 
     public bool Contains(long xCm, long zCm) =>
-        xCm >= 0 && zCm >= 0 && xCm <= SizeMeters * 100L && zCm <= SizeMeters * 100L;
+        xCm >= 0 && zCm >= 0 && xCm <= WidthMeters * 100L && zCm <= DepthMeters * 100L;
 
     /// <summary>SHA-256 over all layers, for determinism checks.</summary>
     public string ComputeHash()
@@ -176,22 +186,22 @@ public sealed class TerrainGrid
     }
 
     private int ClampedIndex(int x, int z) =>
-        Index(Math.Clamp(x, 0, Samples - 1), Math.Clamp(z, 0, Samples - 1));
+        Index(Math.Clamp(x, 0, SamplesX - 1), Math.Clamp(z, 0, SamplesZ - 1));
 
     private int NearestIndex(long xCm, long zCm) =>
-        ClampedIndex((int)((Math.Clamp(xCm, 0, SizeMeters * 100L) + 50) / 100),
-                     (int)((Math.Clamp(zCm, 0, SizeMeters * 100L) + 50) / 100));
+        ClampedIndex((int)((Math.Clamp(xCm, 0, WidthMeters * 100L) + 50) / 100),
+                     (int)((Math.Clamp(zCm, 0, DepthMeters * 100L) + 50) / 100));
 
     private int Bilinear(int[] layer, long xCm, long zCm)
     {
         int i = CellIndex(xCm, zCm, out long fx, out long fz);
-        return Interpolate(layer[i], layer[i + 1], layer[i + Samples], layer[i + Samples + 1], fx, fz);
+        return Interpolate(layer[i], layer[i + 1], layer[i + SamplesX], layer[i + SamplesX + 1], fx, fz);
     }
 
     private int Bilinear(ushort[] layer, long xCm, long zCm)
     {
         int i = CellIndex(xCm, zCm, out long fx, out long fz);
-        return Interpolate(layer[i], layer[i + 1], layer[i + Samples], layer[i + Samples + 1], fx, fz);
+        return Interpolate(layer[i], layer[i + 1], layer[i + SamplesX], layer[i + SamplesX + 1], fx, fz);
     }
 
     private static int Interpolate(long v00, long v10, long v01, long v11, long fx, long fz)
@@ -205,19 +215,19 @@ public sealed class TerrainGrid
 
     private int CellIndex(long xCm, long zCm, out long fx, out long fz)
     {
-        Cell(xCm, out int ix, out fx);
-        Cell(zCm, out int iz, out fz);
+        Cell(xCm, WidthMeters, out int ix, out fx);
+        Cell(zCm, DepthMeters, out int iz, out fz);
         return Index(ix, iz);
     }
 
-    private void Cell(long cm, out int index, out long fraction)
+    private static void Cell(long cm, int meters, out int index, out long fraction)
     {
-        cm = Math.Clamp(cm, 0, SizeMeters * 100L);
+        cm = Math.Clamp(cm, 0, meters * 100L);
         index = (int)(cm / 100);
         fraction = cm % 100;
-        if (index == SizeMeters)
+        if (index == meters)
         {
-            index = SizeMeters - 1;
+            index = meters - 1;
             fraction = 100;
         }
     }

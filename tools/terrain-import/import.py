@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turns a square of the real world into a map: terrain content (data/terrain/<id>.json) and, with --scenario, a career
+"""Turns a rectangle of the real world into a map: terrain content (data/terrain/<id>.json) and, with --scenario, a career
 scenario (data/scenarios/<id>.json) whose only infrastructure is what really exists: gravel routes and roads (riders can use them all), lifts, parking, water, buildings.
 
 Elevation: AWS open terrain tiles (Terrarium PNG, no key). Everything else: OpenStreetMap via Overpass.
@@ -7,9 +7,12 @@ Python stdlib + curl. Downloads are cached in out/terrain-import/, so re-runs ar
 
   python3 tools/terrain-import/import.py --lat 47.74 --lon 12.04 --size 1500 --id farrenpoint
   python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --scenario --arrival 987,1244
+  python3 tools/terrain-import/import.py --lat 47.74 --lon 12.04 --size 3000 --ratio 1:2 --rotation 30 --id farrenpoint --scenario
 
---offset moves the square's centre from the point, in meters east,south. --arrival: map meters x,z; guests arrive at the road
-junction nearest to it (a real parking lot wins). The map's +X is east, +Z is south.
+--size is the long side, which runs along the map's X; --ratio short:long (1:1, 2:3, 1:2 or 1:3). --rotation turns the map
+clockwise, in degrees: 0 has north at the top of the map, 30 has its top edge facing 30° east of north. So the map's +X is
+east and +Z is south only at 0. --offset moves the centre from the point, in meters east,south. --arrival: map meters x,z;
+guests arrive at the road junction nearest to it (a real parking lot wins).
 """
 import argparse
 import base64
@@ -37,6 +40,8 @@ GAP_METERS = 20  # track ends this close to another track join it
 MIN_LAKE_M2 = 100
 STARTER_MEDIAN_GRADE = 0.4536  # tan 24.4 deg, measured over 20 m
 STARTER_P90_GRADE = 0.8342  # tan 39.8 deg
+RATIOS = {"1:1": (1, 1), "2:3": (2, 3), "1:2": (1, 2), "1:3": (1, 3)}
+MAX_SQUARE_METERS, MAX_LONG_METERS = 3000, 4000  # the game takes 4000 m; four km frame would be a slow map
 MAX_PARKING = 3  # a village has dozens, and each needs its own pad
 LINK_METERS = 60  # a real lift or parking lot further from any route stays out: it couldn't be reached
 START_MONEY_CENTS = 7_500_000
@@ -187,7 +192,7 @@ def stitch(parts):
     return rings
 
 
-def spans(ring, to_cell, samples):
+def spans(ring, to_cell, nz):
     """Per grid row, the x crossings of this ring."""
     rows = {}
     pts = [to_cell(*p) for p in ring]
@@ -195,43 +200,43 @@ def spans(ring, to_cell, samples):
         if z0 == z1:
             continue
         lo, hi = min(z0, z1), max(z0, z1)
-        for z in range(max(0, math.ceil(lo)), min(samples - 1, math.ceil(hi) - 1) + 1):
+        for z in range(max(0, math.ceil(lo)), min(nz - 1, math.ceil(hi) - 1) + 1):
             rows.setdefault(z, []).append(x0 + (z - z0) * (x1 - x0) / (z1 - z0))
     return rows
 
 
-def fill(mask, ring, to_cell, samples, value):
-    for z, xs in spans(ring, to_cell, samples).items():
+def fill(mask, ring, to_cell, nx, nz, value):
+    for z, xs in spans(ring, to_cell, nz).items():
         xs.sort()
         for a, b in zip(xs[::2], xs[1::2]):
-            for x in range(max(0, math.ceil(a)), min(samples - 1, math.floor(b)) + 1):
-                mask[z * samples + x] = value
+            for x in range(max(0, math.ceil(a)), min(nx - 1, math.floor(b)) + 1):
+                mask[z * nx + x] = value
 
 
-def blur(mask, n):
-    out = bytearray(n * n)
-    for z in range(n):
-        for x in range(n):
+def blur(mask, nx, nz):
+    out = bytearray(nx * nz)
+    for z in range(nz):
+        for x in range(nx):
             total = count = 0
             for dz in (-1, 0, 1):
                 for dx in (-1, 0, 1):
                     xx, zz = x + dx, z + dz
-                    if 0 <= xx < n and 0 <= zz < n:
-                        total += mask[zz * n + xx]
+                    if 0 <= xx < nx and 0 <= zz < nz:
+                        total += mask[zz * nx + xx]
                         count += 1
-            out[z * n + x] = total // count
+            out[z * nx + x] = total // count
     return out
 
 
-def smooth(values, n, radius):
+def smooth(values, nx, nz, radius):
     """Three box blur passes (about a Gaussian): takes out the source's facets, which would read as steep streaks."""
     for _ in range(3):
-        out = [0.0] * (n * n)
-        for z in range(n):
-            for x in range(n):
-                z0, z1, x0, x1 = max(0, z - radius), min(n - 1, z + radius), max(0, x - radius), min(n - 1, x + radius)
-                total = sum(sum(values[zz * n + x0:zz * n + x1 + 1]) for zz in range(z0, z1 + 1))
-                out[z * n + x] = total / ((z1 - z0 + 1) * (x1 - x0 + 1))
+        out = [0.0] * (nx * nz)
+        for z in range(nz):
+            for x in range(nx):
+                z0, z1, x0, x1 = max(0, z - radius), min(nz - 1, z + radius), max(0, x - radius), min(nx - 1, x + radius)
+                total = sum(sum(values[zz * nx + x0:zz * nx + x1 + 1]) for zz in range(z0, z1 + 1))
+                out[z * nx + x] = total / ((z1 - z0 + 1) * (x1 - x0 + 1))
         values = out
     return values
 
@@ -250,64 +255,87 @@ def find_peak(name, near):
     return found[0]["lat"], found[0]["lon"]
 
 
-class Square:
-    """The map's square: lat/lon to map meters and back."""
+class Frame:
+    """The map's rectangle on the real world: lat/lon to map meters and back. Width is its X, depth its Z; rotation is how many
+    degrees clockwise from north its top edge (-Z) faces."""
 
-    def __init__(self, lat, lon, size):
-        self.lat, self.lon, self.size = lat, lon, size
+    def __init__(self, lat, lon, width, depth=None, rotation=0):
+        self.lat, self.lon, self.width, self.depth = lat, lon, width, depth or width
+        self.rotation = rotation % 360
         self.m_lon = M_PER_DEG_LAT * math.cos(math.radians(lat))
+        self.cos, self.sin = math.cos(math.radians(self.rotation)), math.sin(math.radians(self.rotation))
 
     def latlon(self, x, z):
-        return self.lat - (z - self.size / 2) / M_PER_DEG_LAT, self.lon + (x - self.size / 2) / self.m_lon
+        dx, dz = x - self.width / 2, z - self.depth / 2
+        east, south = dx * self.cos - dz * self.sin, dx * self.sin + dz * self.cos
+        return self.lat - south / M_PER_DEG_LAT, self.lon + east / self.m_lon
 
     def xz(self, la, lo):
-        return (lo - self.lon) * self.m_lon + self.size / 2, (self.lat - la) * M_PER_DEG_LAT + self.size / 2
+        east, south = (lo - self.lon) * self.m_lon, (self.lat - la) * M_PER_DEG_LAT
+        return east * self.cos + south * self.sin + self.width / 2, south * self.cos - east * self.sin + self.depth / 2
 
     def box(self):
-        s, w = self.latlon(0, self.size)
-        n, e = self.latlon(self.size, 0)
-        return f"{s},{w},{n},{e}"
+        """What to ask OpenStreetMap for: the rectangle around the turned map. Everything is clipped to the map afterwards."""
+        corners = [self.latlon(x, z) for x in (0, self.width) for z in (0, self.depth)]
+        return f"{min(c[0] for c in corners)},{min(c[1] for c in corners)},{max(c[0] for c in corners)},{max(c[1] for c in corners)}"
 
 
-def write_terrain(square, cell, map_id, scenery=None):
+def frame_for(lat, lon, long_side, ratio="1:1", rotation=0, cell=5):
+    """The long side runs along X; both sides are whole cells, as the height grid needs."""
+    if ratio not in RATIOS:
+        raise ValueError(f"The ratio must be one of {', '.join(RATIOS)}.")
+    short, long = RATIOS[ratio]
+    limit = MAX_SQUARE_METERS if short == long else MAX_LONG_METERS
+    if long_side > limit:
+        raise ValueError(f"The long side of a {ratio} map can be at most {limit} m.")
+    if long_side % cell:
+        raise ValueError("The size must be a multiple of the cell.")
+    return Frame(lat, lon, long_side, round(long_side * short / long / cell) * cell, rotation)
+
+
+def write_terrain(frame, cell, map_id, scenery=None):
     """Fetches heights and land cover, writes data/terrain/<id>.json. Returns a one-line summary."""
-    size, n = square.size, square.size // cell + 1
-    print(f"Elevation for {n}x{n} samples around {square.lat:.5f}, {square.lon:.5f}")
+    nx, nz = frame.width // cell + 1, frame.depth // cell + 1
+    print(f"Elevation for {nx}x{nz} samples around {frame.lat:.5f}, {frame.lon:.5f}")
     elevation = Elevation()
-    meters = [elevation.at(*square.latlon(x * cell, z * cell)) for z in range(n) for x in range(n)]
-    meters = smooth(meters, n, max(1, SMOOTH_METERS // cell))
+    meters = [elevation.at(*frame.latlon(x * cell, z * cell)) for z in range(nz) for x in range(nx)]
+    meters = smooth(meters, nx, nz, max(1, SMOOTH_METERS // cell))
     low = math.floor(min(meters))
     heights = bytearray()
     for m in meters:
         heights += struct.pack("<H", round((m - low) * 10))
 
     print("Land cover from OpenStreetMap")
-    box = square.box()
+    box = frame.box()
     osm = overpass(
         f'(way["landuse"="forest"]({box});way["natural"="wood"]({box});'
         f'relation["landuse"="forest"]({box});relation["natural"="wood"]({box});'
         f'way["natural"~"^(bare_rock|scree)$"]({box});relation["natural"~"^(bare_rock|scree)$"]({box}););out geom;')
-    to_cell = lambda la, lo: tuple(v / cell for v in square.xz(la, lo))
-    forest, rock = bytearray(n * n), bytearray(n * n)
+    to_cell = lambda la, lo: tuple(v / cell for v in frame.xz(la, lo))
+    forest, rock = bytearray(nx * nz), bytearray(nx * nz)
     for el in osm["elements"]:
         tags = el.get("tags", {})
         mask = rock if tags.get("natural") in ("bare_rock", "scree") else forest
         outer, inner = rings_of(el)
         for r in outer:
-            fill(mask, r, to_cell, n, 255)
+            fill(mask, r, to_cell, nx, nz, 255)
         for r in inner:
-            fill(mask, r, to_cell, n, 0)
+            fill(mask, r, to_cell, nx, nz, 0)
 
     out = {
         "cellMeters": cell,
-        "samples": n,
+        "samples": nx,
         "minElevationCm": low * 100,
         "heightsDm": pack(heights),
-        "forest": pack(blur(forest, n)),
-        "rock": pack(blur(rock, n)),
-        "origin": f"{square.lat:.6f},{square.lon:.6f}",
+        "forest": pack(blur(forest, nx, nz)),
+        "rock": pack(blur(rock, nx, nz)),
+        "origin": f"{frame.lat:.6f},{frame.lon:.6f}",
         "attribution": ATTRIBUTION,
     }
+    if nz != nx:
+        out["samplesZ"] = nz
+    if frame.rotation:
+        out["rotationDegrees"] = round(frame.rotation)
     if scenery:
         out["scenery"] = scenery
     path = ROOT / "data" / "terrain" / f"{map_id}.json"
@@ -315,7 +343,7 @@ def write_terrain(square, cell, map_id, scenery=None):
     path.write_text(json.dumps(out, indent=1) + "\n")
     counts = "" if not scenery else ", " + ", ".join(f"{len(v)} {k}" for k, v in scenery.items())
     summary = (f"{path.relative_to(ROOT)}: {path.stat().st_size // 1024} KB, {low} .. {max(meters):.0f} m, "
-               f"forest {sum(1 for v in forest if v) * 100 // (n * n)} %, rock {sum(1 for v in rock if v) * 100 // (n * n)} %{counts}")
+               f"forest {sum(1 for v in forest if v) * 100 // (nx * nz)} %, rock {sum(1 for v in rock if v) * 100 // (nx * nz)} %{counts}")
     print(summary)
     return elevation, summary
 
@@ -349,22 +377,22 @@ def is_major(tags):
     return road_kind(tags) is not None
 
 
-def fetch_infrastructure(square):
-    box = square.box()
+def fetch_infrastructure(frame):
+    box = frame.box()
     return overpass(f'(way["highway"]({box});way["aerialway"]({box});way["amenity"="parking"]({box});'
                     f'node["amenity"="parking"]({box});way["waterway"~"^(river|stream|canal)$"]({box});'
                     f'way["natural"="water"]({box});relation["natural"="water"]({box});way["building"]({box}););out body geom;')["elements"]
 
 
-def clip_runs(nodes, pts, size):
+def clip_runs(nodes, pts, width, depth):
     """Splits a polyline into its runs inside the map (inset 4 m); ends at the border get node id None."""
-    lo, hi, runs, run = 4.0, size - 4.0, [], []
-    inside = lambda p: lo <= p[0] <= hi and lo <= p[1] <= hi
+    lo, high, runs, run = 4.0, (width - 4.0, depth - 4.0), [], []
+    inside = lambda p: lo <= p[0] <= high[0] and lo <= p[1] <= high[1]
 
     def border(a, b):
         t = 1.0
         for i in (0, 1):
-            for edge in (lo, hi):
+            for edge in (lo, high[i]):
                 if (a[i] - edge) * (b[i] - edge) < 0:
                     t = min(t, (edge - a[i]) / (b[i] - a[i]))
         return a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
@@ -399,15 +427,15 @@ def simplify(pts, tolerance=3.0):
     return simplify(pts[:at + 1], tolerance)[:-1] + simplify(pts[at:], tolerance)
 
 
-def road_network(elements, square):
+def road_network(elements, frame):
     """The major routes as edges between junctions: (node a, node b, points). Nodes are OSM ids, or negative at the border."""
     runs = []
     for el in elements:
         if el["type"] == "way" and is_major(el.get("tags", {})) and el.get("geometry"):
-            pts = [square.xz(p["lat"], p["lon"]) for p in el["geometry"]]
+            pts = [frame.xz(p["lat"], p["lon"]) for p in el["geometry"]]
             tags = el["tags"]
             width = ROAD_WIDTH_CM.get(tags.get("highway", "").replace("_link", ""), 350)
-            runs += [(r, road_kind(tags), width) for r in clip_runs(el["nodes"], pts, square.size)]
+            runs += [(r, road_kind(tags), width) for r in clip_runs(el["nodes"], pts, frame.width, frame.depth)]
 
     uses = {}
     for run, _, _ in runs:
@@ -578,22 +606,22 @@ LIFT_TYPES = {"t-bar": "tbar", "j-bar": "tbar", "platter": "tbar", "drag_lift": 
               "chair_lift": "chairlift_4", "mixed_lift": "chairlift_4", "gondola": "gondola_8", "cable_car": "gondola_8"}
 
 
-def real_structures(elements, square, elevation):
+def real_structures(elements, frame, elevation):
     """Lifts and parking lots on the map: (lifts, parking), in map meters."""
     lifts, parking = [], []
-    on_map = lambda p: 15 <= p[0] <= square.size - 15 and 15 <= p[1] <= square.size - 15
+    on_map = lambda p: 15 <= p[0] <= frame.width - 15 and 15 <= p[1] <= frame.depth - 15
     for el in elements:
         tags = el.get("tags", {})
         if el["type"] == "way" and tags.get("aerialway") in LIFT_TYPES and el.get("geometry"):
             a, b = el["geometry"][0], el["geometry"][-1]
             if elevation.at(a["lat"], a["lon"]) > elevation.at(b["lat"], b["lon"]):
                 a, b = b, a
-            valley, mountain = square.xz(a["lat"], a["lon"]), square.xz(b["lat"], b["lon"])
+            valley, mountain = frame.xz(a["lat"], a["lon"]), frame.xz(b["lat"], b["lon"])
             if on_map(valley) and on_map(mountain):
                 lifts.append({"typeId": LIFT_TYPES[tags["aerialway"]], "name": tags.get("name") or "Old lift",
                               "valley": valley, "mountain": mountain})
         elif tags.get("amenity") == "parking" and tags.get("parking") not in ("underground", "multi-storey", "rooftop"):
-            pts = [square.xz(p["lat"], p["lon"]) for p in el["geometry"]] if el.get("geometry") else [square.xz(el["lat"], el["lon"])]
+            pts = [frame.xz(p["lat"], p["lon"]) for p in el["geometry"]] if el.get("geometry") else [frame.xz(el["lat"], el["lon"])]
             center = (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
             if on_map(center):
                 capacity = tags.get("capacity", "")
@@ -602,9 +630,9 @@ def real_structures(elements, square, elevation):
     return lifts, parking
 
 
-def clip_polygon(pts, size):
+def clip_polygon(pts, width, depth):
     """Sutherland-Hodgman against the map."""
-    for axis, edge, keep_low in ((0, 0.0, False), (0, float(size), True), (1, 0.0, False), (1, float(size), True)):
+    for axis, edge, keep_low in ((0, 0.0, False), (0, float(width), True), (1, 0.0, False), (1, float(depth), True)):
         out = []
         for a, b in zip(pts, pts[1:] + pts[:1]):
             a_in = a[axis] <= edge if keep_low else a[axis] >= edge
@@ -649,37 +677,37 @@ def number(text):
         return None
 
 
-def scenery_from(elements, square):
+def scenery_from(elements, frame):
     """The scenery block of the terrain file: what stands here, nothing made up."""
-    size = square.size
-    xz = lambda ring: [square.xz(*p) for p in ring]
+    map_x, map_z = frame.width, frame.depth
+    xz = lambda ring: [frame.xz(*p) for p in ring]
     streams, lakes, buildings = [], [], []
     for el in elements:
         tags = el.get("tags", {})
         if el["type"] == "way" and tags.get("waterway") in ("river", "stream", "canal") and el.get("geometry"):
             if tags.get("tunnel") or tags.get("culvert") or tags.get("location") == "underground":
                 continue
-            pts = [square.xz(p["lat"], p["lon"]) for p in el["geometry"]]
+            pts = [frame.xz(p["lat"], p["lon"]) for p in el["geometry"]]
             width = number(tags.get("width"))
             width_cm = round(width * 100) if width else (150 if tags["waterway"] == "stream" else 800)
-            for run in clip_runs(el["nodes"], pts, size):
+            for run in clip_runs(el["nodes"], pts, map_x, map_z):
                 line = simplify([p for _, p in run], 2.0)
                 streams.append({"points": [cm(p) for p in line], "widthCm": max(60, min(4000, width_cm))})
         elif tags.get("natural") == "water" and tags.get("water") not in ("river", "stream", "canal"):
             outer, inner = rings_of(el)
             for ring in outer:
                 ring = ring[:-1] if ring and ring[0] == ring[-1] else ring
-                clipped = clip_polygon(xz(ring), size)
+                clipped = clip_polygon(xz(ring), map_x, map_z)
                 if len(clipped) < 3 or area(clipped) < MIN_LAKE_M2:
                     continue
                 lake = {"outline": [cm(p) for p in simplify_ring(clipped)]}
-                holes = [clip_polygon(xz(h[:-1]), size) for h in inner if len(h) > 3]
+                holes = [clip_polygon(xz(h[:-1]), map_x, map_z) for h in inner if len(h) > 3]
                 if holes:
                     lake["holes"] = [[cm(p) for p in simplify_ring(h)] for h in holes if len(h) >= 3]
                 lakes.append(lake)
         elif el["type"] == "way" and tags.get("building") and el.get("geometry"):
-            pts = [square.xz(p["lat"], p["lon"]) for p in el["geometry"]][:-1]
-            if len(pts) < 3 or not all(4 <= v <= size - 4 for p in pts for v in p):
+            pts = [frame.xz(p["lat"], p["lon"]) for p in el["geometry"]][:-1]
+            if len(pts) < 3 or not all(4 <= p[0] <= map_x - 4 and 4 <= p[1] <= map_z - 4 for p in pts):
                 continue
             box = building_box(pts)
             if box is None:
@@ -775,12 +803,12 @@ def scenario_commands(edges, lifts, parking, arrival, operator, height):
     return commands, {"routes": len(ways), "routesStandingAlone": left_out, "skipped": skipped, "arrival": start}
 
 
-def default_parcels(size, arrival):
+def default_parcels(width, depth, arrival):
     """Three by three, the middle one centred on the arrival as far as the map allows: that one is yours, the rest for
     sale, dearer further out. Meant to be redrawn in the scenario editor."""
-    third = size / 3
     cuts = []
-    for v in arrival:
+    for v, size in zip(arrival, (width, depth)):
+        third = size / 3
         low = max(size / 6, min(size * 5 / 6 - third, v - third / 2))
         cuts.append([0, low, low + third, size])
     parcels, counter = [], 0
@@ -802,7 +830,7 @@ def default_parcels(size, arrival):
     return parcels
 
 
-def write_scenario(map_id, title, place, square, arrival, commands, parcels, relief, has_lifts):
+def write_scenario(map_id, title, place, frame, arrival, commands, parcels, relief, has_lifts):
     """data/scenarios/<id>.json: the Starter Valley career's rules (comments kept) with this place's map."""
     text = (ROOT / "data" / "scenarios" / "starter_valley.json").read_text()
 
@@ -823,7 +851,7 @@ def write_scenario(map_id, title, place, square, arrival, commands, parcels, rel
     between('  // Terrain is regenerated', '  "reputationRules"',
             '  // Real terrain from tools/terrain-import; roughness is the fine detail on top.\n'
             '  // The tree line is out of reach: forest and meadows come from OpenStreetMap.\n'
-            f'  "terrain": {{\n    "sizeMeters": {square.size},\n    "heightmapFile": "../terrain/{map_id}.json",\n'
+            f'  "terrain": {{\n    "sizeMeters": {frame.width},\n' + (f'    "depthMeters": {frame.depth},\n' if frame.depth != frame.width else '') + f'    "heightmapFile": "../terrain/{map_id}.json",\n'
             '    "reliefScalePermille": ' + str(round(relief * 1000)) + ',\n    "rockFormations": true,\n    "roughnessPermille": 90,\n    "treeLineCm": 900000\n  },\n  "terrainSculpt": [],\n')
     between('  "parcels": [', '  "welcome": {',
             '  "parcels": [\n' + ",\n".join("    " + json.dumps(p, ensure_ascii=False) for p in parcels) + "\n  ],\n")
@@ -841,9 +869,9 @@ def write_scenario(map_id, title, place, square, arrival, commands, parcels, rel
     return path
 
 
-def refresh_scenery(square, cell, map_id):
+def refresh_scenery(frame, cell, map_id):
     """Rewrites only the terrain file: hand-drawn parcels and commands stay, and so do the roads, which are commands."""
-    return write_terrain(square, cell, map_id, scenery_from(fetch_infrastructure(square), square))[1]
+    return write_terrain(frame, cell, map_id, scenery_from(fetch_infrastructure(frame), frame))[1]
 
 
 def nearest_edge(edges, p):
@@ -857,18 +885,18 @@ def dense(way):
             yield a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps
 
 
-def suggest_relief(square, elevation=None):
+def suggest_relief(frame, elevation=None):
     """(multiplier, median slope in degrees): how much taller this place must be to look like Starter Valley, whose steepness the
     trail grading is tuned to. Blends the median and the 90th percentile, because a map should match both its slopes and its steep
     sections; kept within 1.0 to 2.0 and rounded to 0.05. Slopes over 20 m, as the game's terrain has them."""
     elevation = elevation or Elevation()
-    step = max(40, square.size // 40)
+    step = max(40, max(frame.width, frame.depth) // 40)
     half = 10
     grades = []
-    for z in range(half, square.size - half, step):
-        for x in range(half, square.size - half, step):
-            gx = (elevation.at(*square.latlon(x + half, z)) - elevation.at(*square.latlon(x - half, z))) / (2 * half)
-            gz = (elevation.at(*square.latlon(x, z + half)) - elevation.at(*square.latlon(x, z - half))) / (2 * half)
+    for z in range(half, frame.depth - half, step):
+        for x in range(half, frame.width - half, step):
+            gx = (elevation.at(*frame.latlon(x + half, z)) - elevation.at(*frame.latlon(x - half, z))) / (2 * half)
+            gz = (elevation.at(*frame.latlon(x, z + half)) - elevation.at(*frame.latlon(x, z - half))) / (2 * half)
             grades.append(math.hypot(gx, gz))
     grades.sort()
     median, steep = grades[len(grades) // 2], grades[len(grades) * 9 // 10]
@@ -876,26 +904,26 @@ def suggest_relief(square, elevation=None):
     return max(1.0, min(2.0, round(wanted * 20) / 20)), math.degrees(math.atan(median))
 
 
-def make_map(square, cell, map_id, title, place, arrival, split_land=True, relief=None, leave_out=()):
-    """Terrain and scenario for this square; leave_out: indices into road_network the player unticked. Returns what happened,
+def make_map(frame, cell, map_id, title, place, arrival, split_land=True, relief=None, leave_out=()):
+    """Terrain and scenario for this map; leave_out: indices into road_network the player unticked. Returns what happened,
     for the command line and the browser tool."""
-    elements = fetch_infrastructure(square)
-    edges = [e for i, e in enumerate(road_network(elements, square)) if i not in set(leave_out)]
-    lifts, parking = real_structures(elements, square, Elevation())
+    elements = fetch_infrastructure(frame)
+    edges = [e for i, e in enumerate(road_network(elements, frame)) if i not in set(leave_out)]
+    lifts, parking = real_structures(elements, frame, Elevation())
     # A real parking lot is where guests arrive: scenario_commands starts there, so the road links must too.
     near = [lot["center"] for lot in parking if nearest_edge(edges, lot["center"]) <= LINK_METERS]
     near = sorted(near, key=lambda p: math.dist(p, arrival))[:MAX_PARKING]
     left_out = len(parking) - len(near)
     parking = [lot for p in near for lot in parking if lot["center"] == p]
-    elevation, summary = write_terrain(square, cell, map_id, scenery_from(elements, square))
+    elevation, summary = write_terrain(frame, cell, map_id, scenery_from(elements, frame))
     commands, stats = scenario_commands(edges, lifts, parking, arrival, "alpine_lifts",
-                                        lambda p: elevation.at(*square.latlon(*p)))
+                                        lambda p: elevation.at(*frame.latlon(*p)))
     if left_out:
         stats["skipped"].append(f"{left_out} parking lots further from the arrival")
     home = stats["arrival"] or arrival
-    relief = relief or suggest_relief(square, elevation)[0]
+    relief = relief or suggest_relief(frame, elevation)[0]
     stats["relief"] = relief
-    write_scenario(map_id, title, place, square, home, commands, default_parcels(square.size, home) if split_land else [], relief,
+    write_scenario(map_id, title, place, frame, home, commands, default_parcels(frame.width, frame.depth, home) if split_land else [], relief,
                    any(c["type"] == "buildLift" for c in commands))
     stats.update({"terrain": summary, "lifts": sum(c["type"] == "buildLift" for c in commands),
                   "parking": sum(c["type"] == "buildParkingLot" for c in commands)})
@@ -909,7 +937,9 @@ def main():
     ap.add_argument("--peak", help="centre on this OSM peak (needs --near lat,lon)")
     ap.add_argument("--near")
     ap.add_argument("--offset", default="0,0", help="move the centre, meters east,south")
-    ap.add_argument("--size", type=int, default=1500)
+    ap.add_argument("--size", type=int, default=1500, help="the long side in meters")
+    ap.add_argument("--ratio", default="1:1", help="short:long: 1:1, 2:3, 1:2 or 1:3")
+    ap.add_argument("--rotation", type=int, default=0, help="degrees clockwise from north that the map's top edge faces")
     ap.add_argument("--cell", type=int, default=5)
     ap.add_argument("--id", required=True)
     ap.add_argument("--scenario", action="store_true", help="also write data/scenarios/<id>.json")
@@ -920,9 +950,6 @@ def main():
     ap.add_argument("--place", help="what the place is, for the texts")
     ap.add_argument("--arrival", default=None, help="map meters x,z near where guests should arrive (default: the centre)")
     args = ap.parse_args()
-    if args.size % args.cell:
-        sys.exit("--size must be a multiple of --cell")
-
     if args.peak:
         if not args.near:
             sys.exit("--peak needs --near lat,lon")
@@ -934,16 +961,19 @@ def main():
         sys.exit("Give --lat and --lon, or --peak and --near")
 
     east, south = (float(v) for v in args.offset.split(","))
-    square = Square(lat - south / M_PER_DEG_LAT, lon + east / (M_PER_DEG_LAT * math.cos(math.radians(lat))), args.size)
+    try:
+        frame = frame_for(lat - south / M_PER_DEG_LAT, lon + east / (M_PER_DEG_LAT * math.cos(math.radians(lat))), args.size, args.ratio, args.rotation, args.cell)
+    except ValueError as e:
+        sys.exit(str(e))
     if args.refresh_scenery:
-        print(refresh_scenery(square, args.cell, args.id))
+        print(refresh_scenery(frame, args.cell, args.id))
         return
     if not args.scenario:
-        write_terrain(square, args.cell, args.id)
+        write_terrain(frame, args.cell, args.id)
         return
-    arrival = tuple(float(v) for v in args.arrival.split(",")) if args.arrival else (args.size / 2, args.size / 2)
+    arrival = tuple(float(v) for v in args.arrival.split(",")) if args.arrival else (frame.width / 2, frame.depth / 2)
     title = args.title or args.id.replace("_", " ").title()
-    print(json.dumps(make_map(square, args.cell, args.id, title, args.place or title, arrival, not args.no_parcels, args.relief_scale), indent=1))
+    print(json.dumps(make_map(frame, args.cell, args.id, title, args.place or title, arrival, not args.no_parcels, args.relief_scale), indent=1))
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ render_mode cull_disabled;
 uniform int overlay_mode = 0; // 0 natural, 1 slope, 2 surface
 uniform float tree_line_m = 1080.0;
 uniform sampler2D own_mask : filter_linear, repeat_disable; // R: 1 on land the park owns (TerrainView.UpdateOwnership)
-uniform float map_size_m = 1000.0;
+uniform vec2 map_size_m = vec2(1000.0);
 uniform float land_dim = 0.0; // 1: grey out land the park doesn't own (play view)
 
 varying vec4 layers;

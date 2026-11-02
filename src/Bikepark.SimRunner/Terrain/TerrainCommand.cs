@@ -64,7 +64,7 @@ internal static class TerrainCommand
                 byte[] pixels = options.Bare
                     ? TerrainMapRenderer.Render(grid, mode, options.Scatter ? scatter : null)
                     : TerrainMapRenderer.Render(grid, mode, options.Scatter ? scatter : null, network, state);
-                PngWriter.WriteRgb(path, grid.Samples, grid.Samples, pixels);
+                PngWriter.WriteRgb(path, grid.SamplesX, grid.SamplesZ, pixels);
                 images.Add(path);
             }
         }
@@ -77,12 +77,12 @@ internal static class TerrainCommand
         string scenarioId, TerrainGrid grid, List<ScatterInstance> scatter, long generationMs, List<string> images,
         WayNetwork network, List<string> rejected)
     {
-        int count = grid.Samples * grid.Samples;
+        int count = grid.SamplesX * grid.SamplesZ;
         var surfaces = new int[Enum.GetValues<TerrainSurface>().Length];
         long slopeSum = 0;
         int steep = 0;
-        for (int z = 0; z < grid.Samples; z++)
-            for (int x = 0; x < grid.Samples; x++)
+        for (int z = 0; z < grid.SamplesZ; z++)
+            for (int x = 0; x < grid.SamplesX; x++)
             {
                 surfaces[(int)grid.SurfaceAtSample(x, z)]++;
                 int slope = grid.SlopeAtSample(x, z);
@@ -95,7 +95,8 @@ internal static class TerrainCommand
         {
             scenarioId,
             seed = grid.Seed,
-            sizeMeters = grid.SizeMeters,
+            sizeMeters = grid.WidthMeters,
+            depthMeters = grid.DepthMeters,
             minHeightCm = grid.MinHeightCm,
             maxHeightCm = grid.MaxHeightCm,
             peak = new { x = grid.Peak.X, z = grid.Peak.Z, heightCm = grid.MaxHeightCm },
@@ -135,7 +136,8 @@ internal static class TerrainCommand
     private static void WriteRaw(string path, TerrainGrid grid)
     {
         using var writer = new BinaryWriter(File.Create(path));
-        writer.Write(grid.Samples);
+        writer.Write(grid.SamplesX);
+        writer.Write(grid.SamplesZ);
         foreach (int h in grid.Heights) writer.Write(h);
         writer.Write(grid.TreeDensity);
         writer.Write(grid.Rock);

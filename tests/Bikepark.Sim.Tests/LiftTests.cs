@@ -26,7 +26,7 @@ public class LiftTests
         foreach (var edit in sim.State.TerrainEdits)
         {
             var pad = edit.Pad;
-            var (x0, z0, x1, z1) = TerrainEditor.Bounds(pad, grid.SizeMeters, 0);
+            var (x0, z0, x1, z1) = TerrainEditor.Bounds(pad, grid.WidthMeters, grid.DepthMeters, 0);
             for (int z = z0; z <= z1; z++)
                 for (int x = x0; x <= x1; x++)
                 {

@@ -16,7 +16,7 @@ public class RockFormationTests
     private static TerrainGrid Band(RockFormation formation)
     {
         var plane = TestTerrain.Plane(100, Size);
-        int n = plane.Samples;
+        int n = plane.SamplesX;
         var layer = new byte[n * n];
         for (int z = 0; z < n; z++)
             for (int x = 40; x <= 50; x++)
@@ -140,7 +140,7 @@ public class RockFormationTests
     private static TerrainGrid TwoBands(int between)
     {
         var plane = TestTerrain.Plane(100, Size);
-        int n = plane.Samples;
+        int n = plane.SamplesX;
         var layer = new byte[n * n];
         for (int z = 0; z < n; z++)
             for (int x = 40; x <= 44 + between + 4; x++)
@@ -268,7 +268,7 @@ public class RockFormationTests
     public void ClippingARockCorner_DoesNotCount()
     {
         var plane = TestTerrain.Plane(100, Size);
-        int n = plane.Samples;
+        int n = plane.SamplesX;
         var layer = new byte[n * n];
         layer[60 * n + 40] = (byte)RockFormation.DenseStones;
         var grid = new TerrainGrid(plane.Settings with { RockFormations = true }, plane.Seed, plane.Heights.ToArray(), plane.Slopes.ToArray(),

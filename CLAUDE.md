@@ -92,7 +92,7 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/demo_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json] [--bare] [--raw grid.bin]
 # (parcel borders are drawn too: owned at start teal, for sale yellow; --bare: terrain only)
-# Map maker (browser, http://localhost:8767): find a place, drag the square, see the real routes / lifts / parking, click where guests
+# Map maker (browser, http://localhost:8767): find a place, pick a shape (1:1, 2:3, 1:2, 1:3), drag the map and turn it (the arrow is the map's top), see the real routes / lifts / parking, click where guests
 # arrive, click tracks or roads to leave them out, create the map. Real maps build only what OpenStreetMap has (no made-up infrastructure); the game's validators report refusals.
 # Land: a 3 x 3 grid of parcels to redraw, or don't split (no parcels: the whole map is owned, also --no-parcels on the command line).
 # After creating, its button starts the scenario editor on that map (first free port from 8765; stopped with the map maker, one at a time).
@@ -100,7 +100,8 @@ dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios
 python3 tools/terrain-import/server.py
 # The same from the command line (--offset: meters east,south of the peak; --arrival: map meters x,z)
 python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --scenario --title Farrenpoint --arrival 987,1244
-# Refresh only the terrain file (water, buildings, streets) of an existing map; its parcels and commands stay
+# --size is the long side (along the map's X), --ratio 1:1|2:3|1:2|1:3 short:long, --rotation degrees clockwise from north that the map's top edge faces
+# Refresh only the terrain file (water, buildings, streets) of an existing map, with the same --size, --ratio and --rotation; its parcels and commands stay
 python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --refresh-scenery
 # Scenario map editor (browser, http://localhost:8765): drag/split/draw land parcels and move the tick-0 structures
 # (lift stations, parking lots, way points) on the terrain map; Terrain tab: raise / lower / paint-surface brushes
@@ -166,7 +167,7 @@ tools/release/export.sh 0.1.0
    `Simulation.Terrain` (lazy, cached in `TerrainCache`). Anything derived must be a pure function of `WorldState`;
    future terrain edits must be stored as changes in `WorldState`, not by mutating the grid. Order: generated →
    `WorldState.TerrainSculpt` (scenario content; = `BaseTerrain`) → `TerrainEdits` (pads) = `Simulation.Terrain`.
-9a. **Real terrain:** `TerrainSettings.Heightmap` (coarse heights + forest and rock masks, deflated base64, loaded from the
+9a. **Real terrain:** A map may be a rectangle (`TerrainSettings.DepthMeters`, 0 = square; `TerrainHeightmap.SamplesZ`; `TerrainGrid.WidthMeters`/`DepthMeters`, `SamplesX`/`SamplesZ`). Turning a map happens only in the importer (`Frame`): for the sim its +X and +Z are just the map's axes. `TerrainSettings.Heightmap` (coarse heights + forest and rock masks, deflated base64, loaded from the
     scenario's `heightmapFile`, so it lives in `WorldState` and every save) replaces the generated shape and forest patches:
     Catmull-Rom to 1 m (exact at every sample) plus `RoughnessPermille` detail; rock = the usual slope rules + the mask. Peak,
     ridge, relief and coverage settings are ignored. `TerrainSettings.ReliefScalePermille` multiplies the height above the lowest point

@@ -20,14 +20,14 @@ internal static class TerrainMeshBuilder
     private static int CoarseHeight(TerrainGrid grid, int x, int z, int step)
     {
         const int LakeDepthCm = 150;
-        int n = grid.Samples, reach = step / 2, best = int.MaxValue, height = grid.HeightAtSample(x, z);
+        int n = grid.SamplesX, rows = grid.SamplesZ, reach = step / 2, best = int.MaxValue, height = grid.HeightAtSample(x, z);
         if (grid.Scenery is null) return height;
         var water = grid.WaterDepth;
         for (int dz = -reach; dz <= reach; dz++)
             for (int dx = -reach; dx <= reach; dx++)
             {
                 int sx = x + dx, sz = z + dz;
-                if (sx < 0 || sz < 0 || sx >= n || sz >= n) continue;
+                if (sx < 0 || sz < 0 || sx >= n || sz >= rows) continue;
                 int depth = water[sz * n + sx], distance = dx * dx + dz * dz;
                 if (depth is 0 or >= LakeDepthCm || distance >= best) continue;
                 best = distance;
@@ -119,8 +119,8 @@ internal static class TerrainMeshBuilder
     /// <summary>Normal from central differences on the full-resolution grid, so chunk borders match.</summary>
     private static Vector3 Normal(TerrainGrid grid, int x, int z)
     {
-        int x0 = Math.Max(0, x - 1), x1 = Math.Min(grid.SizeMeters, x + 1);
-        int z0 = Math.Max(0, z - 1), z1 = Math.Min(grid.SizeMeters, z + 1);
+        int x0 = Math.Max(0, x - 1), x1 = Math.Min(grid.WidthMeters, x + 1);
+        int z0 = Math.Max(0, z - 1), z1 = Math.Min(grid.DepthMeters, z + 1);
         float dx = (grid.HeightAtSample(x1, z) - grid.HeightAtSample(x0, z)) / 100f / (x1 - x0);
         float dz = (grid.HeightAtSample(x, z1) - grid.HeightAtSample(x, z0)) / 100f / (z1 - z0);
         return new Vector3(-dx, 1f, -dz).Normalized();
