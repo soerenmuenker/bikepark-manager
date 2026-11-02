@@ -2,13 +2,13 @@ using Bikepark.Sim.Terrain;
 
 namespace Bikepark.Sim.Trails;
 
-/// <summary>A medium rock or rock face on a trail's line: only a wooden feature gets across it.</summary>
+/// <summary>A medium rock or rock face on a trail's line: only a flat drop gets across it.</summary>
 public sealed record RockCrossing(RockFormation Kind, long FromCm, long ToCm, long DropCm)
 {
     public long SpanCm => ToCm - FromCm;
 }
 
-/// <summary>A wooden feature over rock, chosen while drawing the trail: its type and the stretch it covers.</summary>
+/// <summary>A flat drop over rock, placed while drawing the trail: its type and the stretch it covers.</summary>
 /// <remarks><paramref name="RampCm"/>: a flat drop's level deck, from where it leaves the hillside to its lip.</remarks>
 public sealed record RockFeaturePlacement(string TypeId, long StartCm, long LengthCm, long RampCm = 0);
 
@@ -16,16 +16,13 @@ public sealed record RockFeaturePlacement(string TypeId, long StartCm, long Leng
 public sealed record RockFeatureChoice(IReadOnlyList<TrailFeatureType> Types, Func<TrailFeatureType, bool> Unlocked);
 
 /// <summary>
-/// The rules for wooden features over rock. Pure and read-only: the build command and the trail tool use the same checks. A flat
+/// The rules for flat drops over rock. Pure and read-only: the build command and the trail tool use the same checks. A flat
 /// drop is a level deck resting on top of the rock, reaching back until it meets the hillside, then a gap and a landing below the
-/// rock; a wooden roller covers the rock.
+/// rock. Older saves may hold other wooden features: those stay, but no new ones are placed.
 /// </summary>
 public static class RockFeatures
 {
     private const long MarginCm = 100;
-
-    /// <summary>The gap may be this much wider than the rock limit: ramp and landing stand clear of the rock.</summary>
-    private const long GapSlackCm = 400;
 
     private const long MinFlatDropCm = 50;
 
@@ -82,11 +79,9 @@ public static class RockFeatures
         return new RockFeaturePlacement(type.Id, start, landingCm + type.LandingDeckMeters * 100L - start, lipCm - start);
     }
 
-    /// <summary>Where the feature goes unless the player says otherwise: tight around the rock (a flat drop's deck over all of it).</summary>
+    /// <summary>Where the drop goes unless the player says otherwise: tight around the rock, its deck over all of it.</summary>
     public static RockFeaturePlacement DefaultPlacement(TerrainGrid grid, WayGeometry geometry, TrailFeatureType type, RockCrossing crossing) =>
-        IsFlatDrop(type)
-            ? FlatDropAt(grid, geometry, type, crossing, crossing.ToCm, crossing.ToCm + MarginCm)
-            : new RockFeaturePlacement(type.Id, crossing.FromCm - MarginCm, crossing.SpanCm + 2 * MarginCm);
+        FlatDropAt(grid, geometry, type, crossing, crossing.ToCm, crossing.ToCm + MarginCm);
 
     public static bool IsFlatDrop(TrailFeatureType type) => type.Kind == FeatureKind.FlatDrop;
 
@@ -94,15 +89,11 @@ public static class RockFeatures
     public static string? CannotPlace(TerrainGrid grid, WayGeometry geometry, TrailRules rules, TrailFeatureType type, RockFeaturePlacement placement)
     {
         string name = type.Name.ToLowerInvariant();
-        if (type.CrossesRock == RockFormation.None) return $"A {name} doesn't go over rock.";
+        if (!IsFlatDrop(type) || type.CrossesRock == RockFormation.None) return $"A {name} doesn't go over rock.";
         long start = placement.StartCm, end = start + placement.LengthCm;
-        bool drop = IsFlatDrop(type);
         long open = start + placement.RampCm, close = end - type.LandingDeckMeters * 100L;
         var crossings = Crossings(geometry);
-        if (drop)
-        {
-            if (crossings.FirstOrDefault(c => c.FromCm <= open && open <= c.ToCm) is null) return "The deck must end on top of the rock.";
-        }
+        if (crossings.FirstOrDefault(c => c.FromCm <= open && open <= c.ToCm) is not { } onRock) return "The deck must end on top of the rock.";
         if (start < rules.FeatureStartMarginMeters * 100L) return $"Too close to the trail start for a {name}: leave {rules.FeatureStartMarginMeters} m.";
         if (end > geometry.LengthCm - rules.FeatureEndMarginMeters * 100L) return $"Too close to the trail end for a {name}: leave {rules.FeatureEndMarginMeters} m.";
 
@@ -111,30 +102,24 @@ public static class RockFeatures
         {
             if (crossing.ToCm <= start || crossing.FromCm >= end) continue;
             if (crossing.Kind > type.CrossesRock) return $"A {name} can't cross a rock face.";
-            if (!drop && crossing.FromCm < open) return $"The {name} must start above the rock.";
-            if (crossing.ToCm > close) return drop ? "The landing must start below the rock." : $"The {name} must end below the rock.";
+            if (crossing.ToCm > close) return "The landing must start below the rock.";
             if (crossing.SpanCm > type.MaxSpanMeters * 100L) return $"The rock is {crossing.SpanCm / 100} m wide: a {name} crosses at most {type.MaxSpanMeters} m.";
         }
-        if (close - open > type.MaxSpanMeters * 100L + GapSlackCm) return $"Too long for a {name}: at most {type.MaxSpanMeters + GapSlackCm / 100} m over the rock.";
+        if (close - open > type.MaxSpanMeters * 100L) return $"Too long for a {name}: at most {type.MaxSpanMeters} m from the lip to the landing.";
 
-        long fall = geometry.HeightAt(drop ? start : open) - geometry.HeightAt(close);
+        long fall = geometry.HeightAt(start) - geometry.HeightAt(close);
         if (fall > type.MaxRockDropMeters * 100L) return $"{fall / 100.0:0.0} m down: a {name} takes at most {type.MaxRockDropMeters} m.";
-        if (drop)
-        {
-            if (fall < MinFlatDropCm) return $"A {name} must go down: at least {MinFlatDropCm / 100.0:0.0} m here.";
-            if (DeckStart(grid, geometry, type, crossings.First(c => c.FromCm <= open && open <= c.ToCm), open) != start)
-                return $"The rock stands too high: the deck doesn't meet the hillside within {type.RampMeters} m.";
-        }
-        else if (Gradient.FromPermille((int)(-Math.Max(0, fall) * 1000 / Math.Max(1, close - open))) < type.MinGradient)
-            return $"Too steep for a {name} (limit {Gradient.Format(type.MinGradient)}).";
+        if (fall < MinFlatDropCm) return $"A {name} must go down: at least {MinFlatDropCm / 100.0:0.0} m here.";
+        if (DeckStart(grid, geometry, type, onRock, open) != start)
+            return $"The rock stands too high: the deck doesn't meet the hillside within {type.RampMeters} m.";
         return null;
     }
 
-    /// <summary>The types that fit a crossing with their default placement: the reason is null if it does, else why not.</summary>
+    /// <summary>The flat drops that fit a crossing with their default placement: the reason is null if it does, else why not.</summary>
     public static List<(TrailFeatureType Type, RockFeaturePlacement Placement, string? Reason)> Options(TerrainGrid grid, WayGeometry geometry, TrailRules rules, RockFeatureChoice choice, RockCrossing crossing)
     {
         var options = new List<(TrailFeatureType, RockFeaturePlacement, string?)>();
-        foreach (var type in choice.Types.Where(t => t.CrossesRock != RockFormation.None))
+        foreach (var type in choice.Types.Where(t => IsFlatDrop(t) && t.CrossesRock != RockFormation.None))
         {
             var placement = DefaultPlacement(grid, geometry, type, crossing);
             string? reason = CannotPlace(grid, geometry, rules, type, placement);
@@ -159,7 +144,7 @@ public static class RockFeatures
         }
         foreach (var crossing in Crossings(geometry))
             if (!placed.Any(p => p.StartCm <= crossing.FromCm && p.StartCm + p.LengthCm >= crossing.ToCm))
-                return $"Rock at {crossing.FromCm / 100} m: choose a wooden feature to cross it.";
+                return $"Rock at {crossing.FromCm / 100} m: it needs a flat drop to cross it.";
         return null;
     }
 }

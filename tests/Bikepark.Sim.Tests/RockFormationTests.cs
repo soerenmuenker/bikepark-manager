@@ -83,7 +83,7 @@ public class RockFormationTests
         MaxSpanMeters = 20, MaxRockDropMeters = 3, MinGradient = -40, RequiredLevel = 3, Wood = 5, WoodPerMeter = 2, WorkMinutes = 120, WorkPerMeter = 12,
     };
 
-    private static RockFeatureChoice All => new([Drop, Roller], _ => true);
+    private static RockFeatureChoice All => new([Drop], _ => true);
 
     private static readonly TrailRules Rules = new() { FeatureStartMarginMeters = 5, FeatureEndMarginMeters = 5 };
 
@@ -94,20 +94,22 @@ public class RockFormationTests
     }
 
     [Fact]
-    public void MediumRock_TakesADropOrARoller_PathsGoAround()
+    public void MediumRock_TakesADrop_NotARoller_PathsGoAround()
     {
         var grid = Band(RockFormation.MediumRock);
         Assert.All(Reasons(grid, All), r => Assert.Null(r));
+        Assert.Single(Reasons(grid, new RockFeatureChoice([Drop, Roller], _ => true))); // an older save's roller type isn't offered
+        var g = Geometry(grid, WayKind.Trail);
+        var crossing = Assert.Single(RockFeatures.Crossings(g));
+        Assert.Contains("doesn't go over rock", RockFeatures.CannotPlace(grid, g, Rules, Roller, new RockFeaturePlacement(Roller.Id, crossing.FromCm - 100, crossing.SpanCm + 200)));
         Assert.True(IsError(grid, WayKind.AccessPath, "mediumRock"));
         Assert.All(Geometry(grid, WayKind.Trail).Rocks, r => Assert.Equal(RockFormation.MediumRock, r.Kind));
     }
 
     [Fact]
-    public void RockFace_OnlyTakesADrop_WithinItsLimits()
+    public void RockFace_TakesADrop_WithinItsLimits()
     {
         var grid = Band(RockFormation.RockFace);
-        var reasons = Reasons(grid, All);
-        Assert.Contains("rock face", reasons[1]);
         Assert.True(IsError(grid, WayKind.AccessPath, "rockFace"));
 
         // No option at all without the types: refused.
@@ -124,14 +126,29 @@ public class RockFormationTests
     {
         var grid = Band(RockFormation.MediumRock);
         var g = Geometry(grid, WayKind.Trail);
-        Assert.All(Reasons(grid, new RockFeatureChoice([Drop, Roller], _ => false)), r => Assert.Contains("level", r));
+        Assert.All(Reasons(grid, new RockFeatureChoice([Drop], _ => false)), r => Assert.Contains("level", r));
 
         var crossing = Assert.Single(RockFeatures.Crossings(g));
         Assert.Contains("must end on top of the rock", RockFeatures.CannotPlace(grid, g, Rules, Drop, new RockFeaturePlacement("flat_drop", crossing.FromCm - 500, 2500, 100)));
         Assert.Contains("landing must start below", RockFeatures.CannotPlace(grid, g, Rules, Drop, RockFeatures.FlatDropAt(grid, g, Drop, crossing, crossing.FromCm, crossing.FromCm + 100)));
-        Assert.Contains("choose a wooden feature", RockFeatures.CannotCross(grid, g, Rules, All, null));
-        var fit = RockFeatures.DefaultPlacement(grid, g, Roller, crossing);
+        Assert.Contains("needs a flat drop", RockFeatures.CannotCross(grid, g, Rules, All, null));
+        var fit = RockFeatures.DefaultPlacement(grid, g, Drop, crossing);
         Assert.Null(RockFeatures.CannotCross(grid, g, Rules, All, [fit]));
+    }
+
+    [Fact]
+    public void FlatDrop_ShippedLimits_Reach20MetersOfGapAndDrop()
+    {
+        var shipped = TestWorlds.FeatureCatalog().Single(t => t.Id == "flat_drop");
+        Assert.Equal(20, shipped.MaxSpanMeters);
+        Assert.Equal(20, shipped.MaxRockDropMeters);
+
+        var grid = Band(RockFormation.MediumRock);
+        var g = Geometry(grid, WayKind.Trail);
+        var crossing = Assert.Single(RockFeatures.Crossings(g));
+        var type = new TrailFeatureType { Id = Drop.Id, Name = Drop.Name, Kind = FeatureKind.FlatDrop, CrossesRock = RockFormation.RockFace, MaxSpanMeters = shipped.MaxSpanMeters, MaxRockDropMeters = shipped.MaxRockDropMeters, RampMeters = 40, LandingDeckMeters = 6 };
+        Assert.Null(RockFeatures.CannotPlace(grid, g, Rules, type, RockFeatures.FlatDropAt(grid, g, type, crossing, crossing.ToCm, crossing.ToCm + 2000)));
+        Assert.Contains("at most 20 m", RockFeatures.CannotPlace(grid, g, Rules, type, RockFeatures.FlatDropAt(grid, g, type, crossing, crossing.ToCm, crossing.ToCm + 2100)));
     }
 
     [Fact]
@@ -160,20 +177,17 @@ public class RockFormationTests
         var grid = Band(RockFormation.MediumRock);
         var g = Geometry(grid, WayKind.Trail);
         var crossing = Assert.Single(RockFeatures.Crossings(g));
-        var placement = RockFeatures.DefaultPlacement(grid, g, Roller, crossing);
-        var feature = new TrailFeature { Id = 2, TypeId = "wood_roller", DistanceCm = placement.StartCm, LengthCm = placement.LengthCm, Built = false };
+        var placement = RockFeatures.DefaultPlacement(grid, g, Drop, crossing);
+        var feature = new TrailFeature { Id = 2, TypeId = "flat_drop", DistanceCm = placement.StartCm, LengthCm = placement.LengthCm, RampCm = placement.RampCm, Built = false };
         var trail = new Way { Id = 1, Kind = WayKind.Trail, Built = true, Points = [M(10, 60), M(90, 60)], Features = [feature] };
         var rules = new TrailRules();
-        Assert.True(WayNetwork.Build([trail], [], [], grid, rules, [Roller, Drop]).IsBlockedByRock(trail));
+        Assert.True(WayNetwork.Build([trail], [], [], grid, rules, [Drop]).IsBlockedByRock(trail));
         feature.Built = true;
-        var network = WayNetwork.Build([trail], [], [], grid, rules, [Roller, Drop]);
+        var network = WayNetwork.Build([trail], [], [], grid, rules, [Drop]);
         Assert.False(network.IsBlockedByRock(trail));
-        Assert.Equal(TrailRating.Red, network.Geometry(1).Rating);
-
-        feature.TypeId = "flat_drop";
-        Assert.Equal(TrailRating.Black, WayNetwork.Build([trail], [], [], grid, rules, [Roller, Drop]).Geometry(1).Rating);
-        Assert.True(WorkCosts.FeatureWood(Roller, 2000) > WorkCosts.FeatureWood(Roller, 1000));
-        Assert.True(WorkCosts.FeatureMinutes(Roller, 2000) > WorkCosts.FeatureMinutes(Roller, 1000));
+        Assert.Equal(TrailRating.Black, network.Geometry(1).Rating);
+        Assert.True(WorkCosts.FeatureWood(Drop, 2000) > WorkCosts.FeatureWood(Drop, 1000));
+        Assert.True(WorkCosts.FeatureMinutes(Drop, 2000) > WorkCosts.FeatureMinutes(Drop, 1000));
     }
 
     [Theory]

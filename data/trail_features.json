@@ -193,8 +193,8 @@
     "minGradient": -100,
     "maxGradient": 0,
     "crossesRock": "rockFace",
-    "maxSpanMeters": 10,
-    "maxRockDropMeters": 7,
+    "maxSpanMeters": 20,
+    "maxRockDropMeters": 20,
     "rampMeters": 15,
     "landingDeckMeters": 6,
     "flowAffinity": 400,
@@ -205,26 +205,5 @@
     "workPerMeter": 6,
     "woodPerMeter": 1,
     "requiredLevel": 7
-  },
-  {
-    "id": "wood_roller",
-    "name": "Wooden roller",
-    "material": "wood",
-    "kind": "woodRoller",
-    "difficulty": 520,
-    "lengthMeters": 12,
-    "minGradient": -40,
-    "maxGradient": 0,
-    "crossesRock": "mediumRock",
-    "maxSpanMeters": 20,
-    "maxRockDropMeters": 10,
-    "flowAffinity": 800,
-    "techAffinity": 700,
-    "funWeight": 3,
-    "workMinutes": 120,
-    "wood": 5,
-    "workPerMeter": 12,
-    "woodPerMeter": 2,
-    "requiredLevel": 3
   }
 ]

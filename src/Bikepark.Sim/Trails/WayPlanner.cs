@@ -31,7 +31,7 @@ public sealed class WayPlan
     /// <summary>True if the input was drawn the other way round and has been flipped.</summary>
     public bool Reversed { get; init; }
 
-    /// <summary>Rock on a trail's line that needs a wooden feature, and what fits (see <see cref="RockFeatures"/>).</summary>
+    /// <summary>Rock on a trail's line that needs a flat drop, and what fits (see <see cref="RockFeatures"/>).</summary>
     public IReadOnlyList<RockCrossing> RockCrossings { get; init; } = [];
 
     public int TreesToClear { get; init; }
@@ -277,7 +277,7 @@ public static class WayPlanner
         {
             var options = choice is null ? [] : RockFeatures.Options(grid, geometry, rules, choice, crossing);
             if (options.Any(o => o.Reason is null))
-                issues.Add(new WayIssue(IssueSeverity.Warning, "rockCrossing", $"Rock at {crossing.FromCm / 100} m: you choose a wooden feature when you finish the trail.", crossing.FromCm, crossing.ToCm));
+                issues.Add(new WayIssue(IssueSeverity.Warning, "rockCrossing", $"Rock at {crossing.FromCm / 100} m: you place a flat drop when you finish the trail.", crossing.FromCm, crossing.ToCm));
             else
             {
                 string code = crossing.Kind == RockFormation.RockFace ? "rockFace" : "rockTooBig";

@@ -9,8 +9,6 @@ using Godot;
 
 namespace Bikepark.Game.Ways;
 
-/// <summary>A wooden feature the player can pick for a rock on the trail being drawn.</summary>
-public readonly record struct WayToolRockOption(TrailFeatureType Type, long LengthCm, string? Reason, Action Pick);
 
 /// <summary>
 /// Drawing tool for access paths (P) and trails (T). Left-click places a point; holding the button and dragging
@@ -224,7 +222,7 @@ public partial class WayTool : Node3D
         Finish(plan, null);
     }
 
-    // ---- Rock on the line: a wooden feature for each crossing, one at a time, then the trail is ordered.
+    // ---- Rock on the line: a flat drop for each crossing, one at a time, then the trail is ordered.
 
     private WayPlan? _rockPlan;
     private readonly List<RockFeaturePlacement> _placements = [];
@@ -233,9 +231,6 @@ public partial class WayTool : Node3D
     private TrailFeatureType? _dropType;
     private long? _dropLip;
     private MeshInstance3D? _dropGhost;
-
-    /// <summary>Asks which wooden feature crosses a rock (set by the HUD): title, options, keep drawing.</summary>
-    public Action<string, IReadOnlyList<WayToolRockOption>, Action>? AskRock { get; set; }
 
     private RockFeatureChoice RockChoice()
     {
@@ -268,25 +263,20 @@ public partial class WayTool : Node3D
         }
         var crossing = plan.RockCrossings[index];
         ShowRock(crossing);
-        var options = RockFeatures.Options(_terrain.Grid!, plan.Geometry!, _host.Sim.State.TrailRules, RockChoice(), crossing)
-            .Select(o => new WayToolRockOption(o.Type, o.Placement.LengthCm, o.Reason, () =>
-            {
-                if (RockFeatures.IsFlatDrop(o.Type))
-                {
-                    _dropIndex = index;
-                    _dropCrossing = crossing;
-                    _dropType = o.Type;
-                    _dropLip = null;
-                    Status = "Flat drop: click on the red rock where the deck ends (its lip). Esc goes back to drawing.";
-                    return;
-                }
-                _placements.Add(o.Placement);
-                NextCrossing(index + 1);
-            })).ToList();
-        string count = plan.RockCrossings.Count > 1 ? $"Rock {index + 1} of {plan.RockCrossings.Count}, in red, at" : "The rock in red, at";
-        string title = $"{count} {crossing.FromCm / 100} m: {crossing.SpanCm / 100} m wide, {crossing.DropCm / 100} m down. How does the trail cross it?";
-        if (AskRock is { } ask) ask(title, options, EndRock);
-        else EndRock();
+        var option = RockFeatures.Options(_terrain.Grid!, plan.Geometry!, _host.Sim.State.TrailRules, RockChoice(), crossing).FirstOrDefault(o => o.Reason is null);
+        if (option.Type is not { } type)
+        {
+            EndRock();
+            Status = "No flat drop fits this rock. Keep drawing, then Enter.";
+            return;
+        }
+        _dropIndex = index;
+        _dropCrossing = crossing;
+        _dropType = type;
+        _dropLip = null;
+        string which = plan.RockCrossings.Count > 1 ? $"Rock {index + 1} of {plan.RockCrossings.Count}" : "Rock";
+        string cost = $"{WorkCosts.FeatureWood(type, option.Placement.LengthCm)} wood, {Bikepark.Game.Ui.HudContext.CrewTime(WorkCosts.FeatureMinutes(type, option.Placement.LengthCm))}";
+        Status = $"{which} in red: flat drop ({type.Rating}, about {cost}). Click on the rock where the deck ends (its lip). Esc goes back to drawing.";
     }
 
     /// <summary>The spot on the drawn trail closest to the cursor.</summary>
