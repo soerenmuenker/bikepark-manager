@@ -33,9 +33,7 @@ public partial class TerrainView : Node3D
 
     private ShaderMaterial _terrainMaterial = null!;
     private ArrayMesh _treeMesh = null!;
-    private ArrayMesh _rockMesh = null!;
-    private ArrayMesh[] _faceMeshes = [];
-    private ArrayMesh _boulderMesh = null!;
+    private ArrayMesh[] _rockMeshes = [], _stoneMeshes = [];
     private StandardMaterial3D _scatterMaterial = null!;
     private Node3D? _chunks;
     private readonly List<(Node3D Node, int X0, int Z0, int SizeX, int SizeZ)> _chunkInfo = [];
@@ -78,9 +76,8 @@ public partial class TerrainView : Node3D
     {
         _terrainMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/terrain.gdshader") };
         _treeMesh = ScatterMeshes.CreateTree();
-        _rockMesh = ScatterMeshes.CreateRock();
-        _boulderMesh = ScatterMeshes.CreateFace(3, ledges: false, detail: 2);
-        _faceMeshes = [ScatterMeshes.CreateFace(0), ScatterMeshes.CreateFace(1), ScatterMeshes.CreateFace(2)];
+        _rockMeshes = Enum.GetValues<RockShape>().Select(shape => ScatterMeshes.CreateRock(shape, detail: 2)).ToArray();
+        _stoneMeshes = Enum.GetValues<RockShape>().Select(shape => ScatterMeshes.CreateRock(shape, detail: 1)).ToArray();
         _scatterMaterial = ScatterMeshes.CreateMaterial();
 
         _host = GetNode<SimHost>(SimHostPath);
@@ -294,16 +291,14 @@ public partial class TerrainView : Node3D
         if (_cleared is { } cleared)
             scatter.RemoveAll(s => cleared(s.XCm, s.ZCm) && !DenseFieldOnTrail(grid, s) && !UnderFlatDrop(s));
         var treeItems = scatter.Where(s => s.Kind == ScatterKind.Tree).ToList();
-        var rockItems = scatter.Where(s => s.Kind is ScatterKind.Rock or ScatterKind.Stone).ToList();
-        var boulderItems = scatter.Where(s => s.Kind == ScatterKind.Boulder).ToList();
-        var faceItems = scatter.Where(s => s.Kind == ScatterKind.Face).ToList();
+        var rockItems = scatter.Where(s => s.Kind == ScatterKind.Rock).ToList();
         if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
-        if (rockItems.Count > 0) chunk.AddChild(BuildInstances("Rocks", _rockMesh, rockItems, center, RockDrawDistance, RockTint));
-        if (boulderItems.Count > 0) chunk.AddChild(BuildInstances("Boulders", _boulderMesh, boulderItems, center, RockDrawDistance, RockTint));
-        for (int m = 0; m < _faceMeshes.Length; m++)
+        foreach (var shape in Enum.GetValues<RockShape>())
         {
-            var items = faceItems.Where(s => s.Variant % _faceMeshes.Length == m).ToList();
-            if (items.Count > 0) chunk.AddChild(BuildInstances($"Faces{m}", _faceMeshes[m], items, center, TreeDrawDistance, RockTint));
+            var big = rockItems.Where(s => s.Shape == shape && s.ScalePermille >= StoneMaxScale).ToList();
+            var small = rockItems.Where(s => s.Shape == shape && s.ScalePermille < StoneMaxScale).ToList();
+            if (big.Count > 0) chunk.AddChild(BuildInstances($"Rocks {shape}", _rockMeshes[(int)shape], big, center, TreeDrawDistance, RockTint));
+            if (small.Count > 0) chunk.AddChild(BuildInstances($"Stones {shape}", _stoneMeshes[(int)shape], small, center, RockDrawDistance, RockTint));
         }
         _treeCount += treeItems.Count;
         _rockCount += rockItems.Count;
@@ -312,7 +307,7 @@ public partial class TerrainView : Node3D
     /// <summary>A dense stone field stays on a trail: it is what makes the trail black. A gravel path clears it.</summary>
     private bool DenseFieldOnTrail(TerrainGrid grid, ScatterInstance item)
     {
-        if (item.Kind != ScatterKind.Stone || grid.RockFormationAt(item.XCm, item.ZCm) != RockFormation.DenseStones) return false;
+        if (item.Kind != ScatterKind.Rock || grid.RockFormationAt(item.XCm, item.ZCm) != RockFormation.DenseStones) return false;
         var network = _host.Sim.Network;
         return network.Nearest(item.XCm, item.ZCm, 300) is { } near && network.FindWay(near.WayId) is { Kind: WayKind.Trail };
     }
@@ -320,13 +315,16 @@ public partial class TerrainView : Node3D
     /// <summary>A flat drop's deck rests on the rock: it stays, also while the drop is only planned.</summary>
     private bool UnderFlatDrop(ScatterInstance item)
     {
-        if (item.Kind is not (ScatterKind.Boulder or ScatterKind.Face)) return false;
+        if (item.Kind != ScatterKind.Rock || _host.Sim.Terrain.RockFormationAt(item.XCm, item.ZCm) < RockFormation.MediumRock) return false;
         var network = _host.Sim.Network;
         return network.NearestTrail(item.XCm, item.ZCm, RockKeepRadiusCm) is { } near
             && network.FeaturesOn(near.WayId).Any(f => f.Type.Kind == FeatureKind.FlatDrop && near.DistanceCm >= f.StartCm && near.DistanceCm <= f.EndCm);
     }
 
     private const int RockKeepRadiusCm = 800;
+
+    /// <summary>Smaller rocks are the many small stones: a coarser mesh, and not drawn as far.</summary>
+    private const int StoneMaxScale = 1000;
 
     /// <summary>Red see-through copies of these rocks, on top of everything (the rock the trail tool is asking about).</summary>
     public Node3D BuildRockHighlight(IEnumerable<ScatterInstance> rocks, Material material)
@@ -337,7 +335,7 @@ public partial class TerrainView : Node3D
             float scale = rock.ScalePermille / 1000f * 1.04f;
             root.AddChild(new MeshInstance3D
             {
-                Mesh = rock.Kind == ScatterKind.Face ? _faceMeshes[rock.Variant % _faceMeshes.Length] : _boulderMesh,
+                Mesh = (rock.ScalePermille >= StoneMaxScale ? _rockMeshes : _stoneMeshes)[(int)rock.Shape],
                 MaterialOverride = material,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 Transform = new Transform3D(new Basis(Vector3.Up, rock.YawPermille / 1000f * Mathf.Tau).Scaled(Vector3.One * scale),

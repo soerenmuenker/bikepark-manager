@@ -342,7 +342,7 @@ public static class WayPlanner
         foreach (var item in scatter)
         {
             if (!corridor.Contains(item.XCm, item.ZCm) || network.IsInCorridor(item.XCm, item.ZCm)) continue;
-            if (item.Kind == ScatterKind.Tree) trees++; else if (item.Kind == ScatterKind.Rock) rocks++;
+            if (item.Kind == ScatterKind.Tree) trees++; else if (grid.RockFormationAt(item.XCm, item.ZCm) == RockFormation.None) rocks++;
         }
         return (trees, rocks);
     }

@@ -190,9 +190,10 @@ public partial class WayView : Node3D
                 continue;
             }
 
-            AddRibbon(WayMeshes.Ribbon(grid, g, 1.4f, 0.06f, followGround: true, i => Planked(g, i, DirtAt(state, way, g, i))), way.Name);
+            var inTheAir = InTheAir(sim.Network, way);
+            AddRibbon(WayMeshes.Ribbon(grid, g, 1.4f, 0.06f, followGround: true, i => Planked(g, i, DirtAt(state, way, g, i)), inTheAir), way.Name);
             var stripe = way.IsRideable ? WayMeshes.RatingColor(g.Rating) : ClosedStripe;
-            AddRibbon(WayMeshes.Ribbon(grid, g, 0.35f, 0.09f, followGround: true, _ => stripe), way.Name + " stripe");
+            AddRibbon(WayMeshes.Ribbon(grid, g, 0.35f, 0.09f, followGround: true, _ => stripe, inTheAir), way.Name + " stripe");
             AddBridges(g, 2.0f);
             string status = way.WornOut ? "\nCLOSED · worn out" : way.Repairing ? "\nCLOSED · crew at work" : way.Closed ? "\nCLOSED" : "";
             AddLabel($"{way.Name}\n{g.Rating} · {g.LengthCm / 100} m{status}", WayMeshes.ToWorld(g.PositionAt(0)) + Vector3.Up * 4f,
@@ -276,7 +277,7 @@ public partial class WayView : Node3D
         Color ColorAt(int i) => distances[i] <= doneCm
             ? solid
             : WayMeshes.Blueprint with { A = i / 3 % 2 == 0 ? 0.7f : 0.3f }; // ~3 m dashes
-        var mesh = WayMeshes.Ribbon(sim.Terrain, g, path ? 3.0f : 1.4f, path ? 0.10f : 0.06f, followGround: !path, ColorAt);
+        var mesh = WayMeshes.Ribbon(sim.Terrain, g, path ? 3.0f : 1.4f, path ? 0.10f : 0.06f, followGround: !path, ColorAt, InTheAir(sim.Network, way));
         if (mesh is not null)
             _content!.AddChild(new MeshInstance3D { Name = $"Way {way.Id} (planned)", Mesh = mesh, MaterialOverride = _blueprintMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
 
@@ -287,6 +288,11 @@ public partial class WayView : Node3D
         if (way.Kind == WayKind.Trail)
             AddFeatures(state, sim.Terrain, sim.Network, way, g);
     }
+
+    /// <summary>Where riders are on a flat drop's deck or over its gap: no trail on the ground there.</summary>
+    private static List<(long From, long To)> InTheAir(WayNetwork network, Way way) =>
+        network.FeaturesOn(way.Id).Where(f => f.Type.Kind == FeatureKind.FlatDrop)
+            .Select(f => (f.StartCm, f.EndCm - f.Type.LandingDeckMeters * 100L)).ToList();
 
     private void AddFeatures(WorldState state, TerrainGrid grid, WayNetwork network, Way way, WayGeometry g)
     {

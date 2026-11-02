@@ -262,6 +262,11 @@ public partial class WayTool : Node3D
             return;
         }
         var crossing = plan.RockCrossings[index];
+        if (_placements.Any(p => p.StartCm <= crossing.FromCm && p.StartCm + p.LengthCm >= crossing.ToCm))
+        {
+            NextCrossing(index + 1); // the last drop already lands beyond this rock
+            return;
+        }
         ShowRock(crossing);
         var option = RockFeatures.Options(_terrain.Grid!, plan.Geometry!, _host.Sim.State.TrailRules, RockChoice(), crossing).FirstOrDefault(o => o.Reason is null);
         if (option.Type is not { } type)

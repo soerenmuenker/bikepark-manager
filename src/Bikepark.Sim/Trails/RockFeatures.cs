@@ -28,12 +28,30 @@ public static class RockFeatures
 
     private const long DeckHalfWidthCm = 90, DeckClearanceCm = 30;
 
-    /// <summary>The rock meshes' size at scale 1 m: how far they reach sideways and up from where they stand, in cm per 1000 of scale.</summary>
-    private const long RockReachPer1000 = 60, RockTopPer1000 = 95;
+    /// <summary>Rocks closer together than this count as one crossing: a landing wouldn't fit between them.</summary>
+    public const long NeighbourGapCm = 800;
 
-    public static List<RockCrossing> Crossings(WayGeometry geometry) =>
-        geometry.Kind != WayKind.Trail ? [] : geometry.Rocks.Where(r => r.Kind >= RockFormation.MediumRock)
-            .Select(r => new RockCrossing(r.Kind, geometry.Distances[r.From], geometry.Distances[r.To], Math.Max(0, (long)geometry.Ys[r.From] - geometry.Ys[r.To]))).ToList();
+    public static List<RockCrossing> Crossings(WayGeometry geometry)
+    {
+        var crossings = new List<RockCrossing>();
+        if (geometry.Kind != WayKind.Trail) return crossings;
+        foreach (var rock in geometry.Rocks.Where(r => r.Kind >= RockFormation.MediumRock))
+        {
+            long from = geometry.Distances[rock.From], to = geometry.Distances[rock.To];
+            var kind = rock.Kind;
+            long startHeight = geometry.Ys[rock.From];
+            if (crossings.Count > 0 && from - crossings[^1].ToCm < NeighbourGapCm)
+            {
+                var previous = crossings[^1];
+                from = previous.FromCm;
+                startHeight = geometry.HeightAt(from);
+                if (previous.Kind > kind) kind = previous.Kind;
+                crossings.RemoveAt(crossings.Count - 1);
+            }
+            crossings.Add(new RockCrossing(kind, from, to, Math.Max(0, startHeight - geometry.Ys[rock.To])));
+        }
+        return crossings;
+    }
 
     /// <summary>The big rocks standing on the trail between two distances, what a flat drop rests on.</summary>
     public static List<ScatterInstance> RocksOn(TerrainGrid grid, WayGeometry geometry, long fromCm, long toCm)
@@ -44,9 +62,9 @@ public static class RockFeatures
         var found = new List<ScatterInstance>();
         TerrainScatter.Collect(grid, samples.Min(i => geometry.Xs[i]) / 100 - Widen, samples.Min(i => geometry.Zs[i]) / 100 - Widen,
             samples.Max(i => geometry.Xs[i]) / 100 + Widen, samples.Max(i => geometry.Zs[i]) / 100 + Widen, found);
-        return found.Where(rock => rock.Kind is ScatterKind.Boulder or ScatterKind.Face && samples.Any(i =>
+        return found.Where(rock => rock.Kind == ScatterKind.Rock && grid.RockFormationAt(rock.XCm, rock.ZCm) >= RockFormation.MediumRock && samples.Any(i =>
         {
-            long dx = geometry.Xs[i] - rock.XCm, dz = geometry.Zs[i] - rock.ZCm, reach = DeckHalfWidthCm + rock.ScalePermille * RockReachPer1000 / 1000;
+            long dx = geometry.Xs[i] - rock.XCm, dz = geometry.Zs[i] - rock.ZCm, reach = DeckHalfWidthCm + RockShapes.RadiusCm(rock);
             return dx * dx + dz * dz <= reach * reach;
         })).ToList();
     }
@@ -57,7 +75,7 @@ public static class RockFeatures
         long top = geometry.HeightAt(fromCm) + DeckClearanceCm;
         for (long d = fromCm; d <= lipCm; d += 100) top = Math.Max(top, geometry.HeightAt(d) + DeckClearanceCm);
         foreach (var rock in RocksOn(grid, geometry, fromCm, lipCm))
-            top = Math.Max(top, rock.YCm + rock.ScalePermille * RockTopPer1000 / 1000);
+            top = Math.Max(top, rock.YCm + RockShapes.HeightCm(rock));
         return top;
     }
 

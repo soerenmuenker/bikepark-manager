@@ -138,11 +138,18 @@ internal static class FeatureMeshes
             if (i == planks - 1) Quad(st, At(cb, rb, -DeckHalfWidth, top), At(cb, rb, DeckHalfWidth, top), At(cb, rb, DeckHalfWidth, under), At(cb, rb, -DeckHalfWidth, under));
         }
         st.SetColor(dark);
+        var rocks = RockFeatures.RocksOn(grid, g, startCm, startCm + rampCm);
+        bool OnRock(Vector2 at) => rocks.Any(rock =>
+        {
+            float reach = RockShapes.RadiusCm(rock) / 100f;
+            return at.DistanceSquaredTo(new Vector2(rock.XCm / 100f, rock.ZCm / 100f)) <= reach * reach;
+        });
         for (float along = deckMeters; along > 0.2f; along -= PostEveryMeters)
         {
             var (c, r) = Frame(g, startCm + (long)(along * 100));
             foreach (float side in new[] { -DeckHalfWidth + 0.1f, DeckHalfWidth - 0.1f })
-                Post(st, grid, c + r * side, deck - DeckThickness);
+                if (!OnRock(c + r * side)) // on a rock the deck rests on it
+                    Post(st, grid, c + r * side, deck - DeckThickness);
         }
 
         // The landing: wooden, highest at its start.
