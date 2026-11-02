@@ -100,7 +100,7 @@ dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios
 python3 tools/terrain-import/server.py
 # The same from the command line (--offset: meters east,south of the peak; --arrival: map meters x,z)
 python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --scenario --title Farrenpoint --arrival 987,1244
-# --size is the long side (along the map's X), --ratio 1:1|2:3|1:2|1:3 short:long, --rotation degrees clockwise from north that the map's top edge faces
+# --size is the long side (along the map's X; at most 3 km for 1:1, 4 km for 2:3, 5 km for 1:2 and 1:3), --ratio 1:1|2:3|1:2|1:3 short:long, --rotation degrees clockwise from north that the map's top edge faces
 # Refresh only the terrain file (water, buildings, streets) of an existing map, with the same --size, --ratio and --rotation; its parcels and commands stay
 python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --refresh-scenery
 # Scenario map editor (browser, http://localhost:8765): drag/split/draw land parcels and move the tick-0 structures
@@ -174,6 +174,7 @@ tools/release/export.sh 0.1.0
     before upsampling (real mountains read flat against grading tuned to Starter Valley; the map maker suggests a value per map). Scenario tracks may stand alone (`WayPlanner` `mayStandAlone`: real routes not
     connected to the arrival). Every real road is a tarmac way (`Way.Surface`: looks only, behaves like a gravel path: riders use it, trails start and end on it; the Build menu's Tarmac road makes more); `SceneryStreet` remains only for older saves. Where scenario tracks exist and there is no parking lot, guests arrive at the low end of the first one,
     even after the player adds lifts (`WayNetwork` base: parking → scenario road → valley station → any path). A scenario's parking lot needs no valley station (`LiftId` 0; its ways connect it), a player's does.
+9d. **Real bridges** (`Way.DeckWidthCm`, `BuildWayCommand.DeckWidthCm`; scenario tarmac ways only, 0 = a way on the ground): the importer turns OSM bridges of at least `MIN_BRIDGE_METERS` that lie whole on the map into these (roads and paths, `bridge_ways`; a road's bridge wins over footways beside it; railways no). `WayGeometry.IsDeck`: level at the middle of the ground at its two ends, and the command adds a `TerrainPad` at each end so the ground meets it (`OwnerId` = the way). Ways don't cross a deck (`Crossings`), only join at its ends (`WayNetwork.DeckEndCm`), trees under it stand, it can't be renaturalized. View: `WayView.AddDeck`. To correct an end, drag it in the scenario editor, whose way panel shows the deck height and warns about mismatched ends or ground above the deck.
 9b. **Scenery** (`Terrain/TerrainScenery.cs`, `TerrainHeightmap.Scenery`; real maps only, generated maps are untouched): what really
     stands there, static, nothing simulated. `TerrainSceneryBuilder` (in the generator, integer-only, after the scenario's height strokes: `TerrainSculptor.Apply` regenerates, so water follows them) carves lakes (flat at the lowest
     shore) and streams (a never-rising fit to the ground, flow direction from the heights) and fills `WaterDepth`, clears vegetation

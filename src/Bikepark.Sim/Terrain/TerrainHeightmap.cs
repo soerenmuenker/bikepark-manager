@@ -50,9 +50,9 @@ public sealed record TerrainHeightmap
     {
         var errors = new List<string>();
         if (CellMeters is < 1 or > 30) errors.Add("terrain.heightmap.cellMeters must be within 1..30");
-        if (Samples is < 2 or > 801) errors.Add("terrain.heightmap.samples must be within 2..801");
+        if (Samples is < 2 or > 1001) errors.Add("terrain.heightmap.samples must be within 2..1001");
         if ((Samples - 1) * CellMeters != sizeMeters) errors.Add("terrain.sizeMeters must equal (heightmap.samples - 1) * cellMeters");
-        if (Rows() is < 2 or > 801) errors.Add("terrain.heightmap.samplesZ must be within 2..801");
+        if (Rows() is < 2 or > 1001) errors.Add("terrain.heightmap.samplesZ must be within 2..1001");
         if ((Rows() - 1) * CellMeters != depthMeters) errors.Add("terrain.depthMeters must equal (heightmap.samplesZ - 1) * cellMeters");
         if (MinElevationCm < 0) errors.Add("terrain.heightmap.minElevationCm must be >= 0");
         if (Scenery is not null) errors.AddRange(Scenery.Validate());

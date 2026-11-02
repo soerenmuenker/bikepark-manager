@@ -55,7 +55,7 @@ public static class WayPlanner
     /// <param name="rockChoice">The feature types over rock this park may use; null = none, so a trail can't cross medium rocks or faces.</param>
     /// <param name="mayStandAlone">A scenario's real tracks: they exist, so a gravel path needn't touch the network, may touch lakes and buildings and may be steeper than players may build.</param>
     public static WayPlan Plan(TerrainGrid grid, WayNetwork network, TrailRules rules, WayKind kind, IReadOnlyList<PointCm> input,
-        Func<long, long, bool>? onOwnLand = null, bool mayStandAlone = false, RockFeatureChoice? rockChoice = null)
+        Func<long, long, bool>? onOwnLand = null, bool mayStandAlone = false, RockFeatureChoice? rockChoice = null, bool deck = false)
     {
         var issues = new List<WayIssue>();
         var points = input.ToList();
@@ -110,7 +110,8 @@ public static class WayPlanner
         if (kind == WayKind.Trail)
             AlignWithTrailEnds(network, points, ref startJoin, ref endJoin);
 
-        var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, ignoreRocks: mayStandAlone);
+        var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, ignoreRocks: mayStandAlone, deck: deck);
+        if (deck) CheckDeckEnds(grid, geometry, issues);
 
         if (onOwnLand is not null)
             for (int i = 0; i < geometry.SampleCount; i++)
@@ -260,6 +261,16 @@ public static class WayPlanner
             }
         }
         Flush();
+    }
+
+    /// <summary>A bridge's ends stand on land: their pads flatten what is there.</summary>
+    private static void CheckDeckEnds(TerrainGrid grid, WayGeometry geometry, List<WayIssue> issues)
+    {
+        foreach (var (name, x, z) in new[] { ("start", geometry.Xs[0], geometry.Zs[0]), ("end", geometry.Xs[^1], geometry.Zs[^1]) })
+        {
+            if (grid.Sample(x, z).WaterDepthCm > 0) issues.Add(Error("deckInWater", $"The bridge's {name} is in water: move it onto the bank."));
+            else if (grid.BlockedAt(x, z) != 0) issues.Add(Error("deckOnBuilding", $"The bridge's {name} is on a building: move it."));
+        }
     }
 
     private static void CheckRocks(TerrainGrid grid, WayKind kind, WayGeometry geometry, TrailRules rules, RockFeatureChoice? choice, List<WayIssue> issues)

@@ -41,7 +41,10 @@ MIN_LAKE_M2 = 100
 STARTER_MEDIAN_GRADE = 0.4536  # tan 24.4 deg, measured over 20 m
 STARTER_P90_GRADE = 0.8342  # tan 39.8 deg
 RATIOS = {"1:1": (1, 1), "2:3": (2, 3), "1:2": (1, 2), "1:3": (1, 3)}
-MAX_SQUARE_METERS, MAX_LONG_METERS = 3000, 4000  # the game takes 4000 m; four km frame would be a slow map
+MAX_LONG_METERS = {"1:1": 3000, "2:3": 4000, "1:2": 5000, "1:3": 5000}  # the game takes 5000 m; a wide map that long would be slow
+MIN_BRIDGE_METERS = 40  # shorter ones stay ground roads: the importer's fords and the game's plank bridges do
+BRIDGE_PATHS = ("path", "footway", "cycleway", "track", "bridleway")  # not roads, but on a real bridge they are worth having
+BRIDGE_TWIN_METERS = 35  # a footway beside a road bridge is that bridge
 MAX_PARKING = 3  # a village has dozens, and each needs its own pad
 LINK_METERS = 60  # a real lift or parking lot further from any route stays out: it couldn't be reached
 START_MONEY_CENTS = 7_500_000
@@ -285,7 +288,7 @@ def frame_for(lat, lon, long_side, ratio="1:1", rotation=0, cell=5):
     if ratio not in RATIOS:
         raise ValueError(f"The ratio must be one of {', '.join(RATIOS)}.")
     short, long = RATIOS[ratio]
-    limit = MAX_SQUARE_METERS if short == long else MAX_LONG_METERS
+    limit = MAX_LONG_METERS[ratio]
     if long_side > limit:
         raise ValueError(f"The long side of a {ratio} map can be at most {limit} m.")
     if long_side % cell:
@@ -427,13 +430,72 @@ def simplify(pts, tolerance=3.0):
     return simplify(pts[:at + 1], tolerance)[:-1] + simplify(pts[at:], tolerance)
 
 
+def is_bridge_way(tags):
+    highway = tags.get("highway", "").replace("_link", "")
+    return tags.get("bridge", "no") != "no" and (highway in ROAD_WIDTH_CM or highway in BRIDGE_PATHS)
+
+
+def bridge_ways(elements, frame):
+    """The OSM ways that become bridges, {id: deck width in cm}: whole bridges on the map, of at least MIN_BRIDGE_METERS, however
+    many ways they are mapped in, and with a road's bridge winning over the footways beside it."""
+    ways = [el for el in elements if el["type"] == "way" and el.get("geometry") and is_bridge_way(el.get("tags", {}))]
+    group = {el["id"]: el["id"] for el in ways}
+
+    def root(i):
+        while group[i] != i:
+            i = group[i]
+        return i
+
+    ends = {}
+    for el in ways:
+        for node in (el["nodes"][0], el["nodes"][-1]):
+            if node in ends:
+                group[root(el["id"])] = root(ends[node])
+            ends[node] = el["id"]
+    groups = {}
+    for el in ways:
+        groups.setdefault(root(el["id"]), []).append(el)
+
+    def on_map(p):
+        return 4 <= p[0] <= frame.width - 4 and 4 <= p[1] <= frame.depth - 4
+
+    found = []
+    for members in groups.values():
+        lines = [[frame.xz(p["lat"], p["lon"]) for p in el["geometry"]] for el in members]
+        if not all(on_map(p) for line in lines for p in line):
+            continue
+        meters = sum(math.dist(a, b) for line in lines for a, b in zip(line, line[1:]))
+        if meters < MIN_BRIDGE_METERS:
+            continue
+        tags = members[0]["tags"]
+        road = tags.get("highway", "").replace("_link", "") in ROAD_WIDTH_CM
+        width = number(tags.get("width"))
+        width_cm = round(width * 100) if width else ROAD_WIDTH_CM.get(tags.get("highway", "").replace("_link", ""), 350)
+        found.append((not road, -width_cm, members, lines, max(300, min(3000, width_cm))))
+    kept, out = [], {}
+    for _, _, members, lines, width_cm in sorted(found, key=lambda f: f[:2]):
+        points = [p for line in lines for p in (line[0], line[-1])]
+        if any(all(min(math.dist(p, q) for q in other) < BRIDGE_TWIN_METERS for p in points) for other in kept):
+            continue
+        kept.append(points)
+        for el in members:
+            out[el["id"]] = width_cm
+    return out
+
+
 def road_network(elements, frame):
-    """The major routes as edges between junctions: (node a, node b, points). Nodes are OSM ids, or negative at the border."""
+    """The major routes and real bridges as edges between junctions: (node a, node b, points, kind, width). Nodes are OSM ids, or negative at the border."""
     runs = []
+    bridges = bridge_ways(elements, frame)
     for el in elements:
-        if el["type"] == "way" and is_major(el.get("tags", {})) and el.get("geometry"):
+        if el["type"] != "way" or not el.get("geometry"):
+            continue
+        tags = el.get("tags", {})
+        if el["id"] in bridges:
             pts = [frame.xz(p["lat"], p["lon"]) for p in el["geometry"]]
-            tags = el["tags"]
+            runs.append((list(zip(el["nodes"], pts)), "bridge", bridges[el["id"]]))
+        elif is_major(tags):
+            pts = [frame.xz(p["lat"], p["lon"]) for p in el["geometry"]]
             width = ROAD_WIDTH_CM.get(tags.get("highway", "").replace("_link", ""), 350)
             runs += [(r, road_kind(tags), width) for r in clip_runs(el["nodes"], pts, frame.width, frame.depth)]
 
@@ -463,7 +525,7 @@ def road_network(elements, frame):
         px, pz = e[2][0] if end_index == 0 else e[2][-1]
         best, target = GAP_METERS, None
         for other in edges:
-            if other is e:
+            if other is e or other[3] == "bridge":  # what ends near a deck stays on the ground
                 continue
             pts = other[2]
             for i, ((ax, az), (bx, bz)) in enumerate(zip(pts, pts[1:])):
@@ -592,7 +654,7 @@ def order_from(edges, arrival):
                 if i in used or node not in (e[0], e[1]):
                     continue
                 used.add(i)
-                ordered.append((e[2] if e[0] == node else e[2][::-1], e[3]))
+                ordered.append((e[2] if e[0] == node else e[2][::-1], e[3], e[4]))
                 other = e[1] if e[0] == node else e[0]
                 if other not in seen:
                     seen.add(other)
@@ -757,15 +819,17 @@ def scenario_commands(edges, lifts, parking, arrival, operator, height):
         arrival = parking[0]["center"]
     start, ordered, left_out = order_from(edges, arrival)
     # Guests arrive at the low end of the first path: start with a route that climbs away from the arrival.
-    for i, (pts, _) in enumerate(ordered):
+    for i, (pts, _, _) in enumerate(ordered):
         if pts[0] == start and height(pts[-1]) > height(start):
             ordered.insert(0, ordered.pop(i))
             break
-    ways = [simplify(pts) for pts, _ in ordered]
+    ways = [simplify(pts) for pts, _, _ in ordered]
     routes = [{"type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "points": [cm(p) for p in pts]} for pts in ways]
-    for route, (_, kind) in zip(routes, ordered):
-        if kind == "tarmac":
+    for route, (_, kind, width) in zip(routes, ordered):
+        if kind != "gravel":
             route["surface"] = "tarmac"
+        if kind == "bridge":
+            route["deckWidthCm"] = width
     commands, skipped = [], []
 
     def linked(what, name, hub):
@@ -925,7 +989,7 @@ def make_map(frame, cell, map_id, title, place, arrival, split_land=True, relief
     stats["relief"] = relief
     write_scenario(map_id, title, place, frame, home, commands, default_parcels(frame.width, frame.depth, home) if split_land else [], relief,
                    any(c["type"] == "buildLift" for c in commands))
-    stats.update({"terrain": summary, "lifts": sum(c["type"] == "buildLift" for c in commands),
+    stats.update({"terrain": summary, "bridges": sum("deckWidthCm" in c for c in commands), "lifts": sum(c["type"] == "buildLift" for c in commands),
                   "parking": sum(c["type"] == "buildParkingLot" for c in commands)})
     return stats
 

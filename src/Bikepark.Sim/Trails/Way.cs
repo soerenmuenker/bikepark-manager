@@ -58,6 +58,12 @@ public sealed class Way
 
     public WaySurface Surface { get; set; }
 
+    /// <summary>
+    /// A scenario's real bridge: its deck's width; 0 = a way on the ground. The deck runs level from end to end, at the middle of
+    /// the ground heights there, and <c>BuildWayCommand</c> makes the ground meet it with a pad at each end.
+    /// </summary>
+    public int DeckWidthCm { get; set; }
+
     /// <summary>Features placed on a trail (berms, jumps, wood features), sorted by distance. Empty on access paths.</summary>
     public List<TrailFeature> Features { get; set; } = [];
 

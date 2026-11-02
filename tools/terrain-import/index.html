@@ -28,7 +28,7 @@
 <h2>2 · What really stands there</h2>
 <div id="facts" class="dim">Nothing loaded yet.</div>
 <div class="dim">Click a gravel track or road to leave it out; click again to keep it. After creating, the editor can move, draw and delete them.</div><div id="leftOutText" class="dim"></div>
-<div class="key dim"><i style="background:#ffb000"></i>gravel &nbsp; <i style="background:#30343a"></i>road &nbsp; <i style="background:#1e88e5"></i>water &nbsp; <i style="background:#6d4c41"></i>house &nbsp; <i style="background:#e0218a"></i>lift &nbsp; <i style="background:#8a97a3"></i>not imported</div>
+<div class="key dim"><i style="background:#ffb000"></i>gravel &nbsp; <i style="background:#30343a"></i>road &nbsp; <i style="background:#7e57c2"></i>bridge &nbsp; <i style="background:#1e88e5"></i>water &nbsp; <i style="background:#6d4c41"></i>house &nbsp; <i style="background:#e0218a"></i>lift &nbsp; <i style="background:#8a97a3"></i>not imported</div>
 <h2>3 · Where guests arrive</h2>
 <div class="dim">Click a round junction on the map. A real parking lot wins over this. The editor can place the arrival and a starter parking lot anywhere.</div>
 <div id="arrivalText" class="dim"></div>
@@ -95,7 +95,7 @@ turn.on('drag', e => {
 function setRatio(r) {
   ratio = r;
   document.querySelectorAll('#ratios button').forEach(b => b.classList.toggle('on', b.dataset.ratio === r));
-  $('size').max = r === '1:1' ? 3000 : 4000; // as MAX_SQUARE_METERS and MAX_LONG_METERS
+  $('size').max = {'1:1': 3000, '2:3': 4000, '1:2': 5000, '1:3': 5000}[r]; // as MAX_LONG_METERS
   moved();
 }
 document.querySelectorAll('#ratios button').forEach(b => b.onclick = () => setRatio(b.dataset.ratio));
@@ -137,6 +137,7 @@ $('look').onclick = async () => {
     }).addTo(info); };
     d.roads.forEach(w => way(w, '#30343a'));
     d.routes.forEach(w => way(w, '#ffb000'));
+    d.bridges.forEach(w => way(w, '#7e57c2'));
     d.lakes.forEach(l => L.polygon(l, {color: '#1e88e5', weight: 1, fillOpacity: .55, interactive: false}).addTo(info));
     d.streams.forEach(s => L.polyline(s.line, {color: '#1e88e5', weight: s.width > 300 ? 4 : 2, interactive: false}).addTo(info));
     d.buildings.forEach(b => L.polygon(b, {color: '#6d4c41', weight: 1, fillOpacity: .8, interactive: false}).addTo(info));
@@ -144,7 +145,7 @@ $('look').onclick = async () => {
     d.parking.forEach(p => L.marker(p.at, {title: p.name}).addTo(info));
     d.junctions.forEach(j => L.circleMarker(j, {radius: 6, color: '#222', fillColor: '#ffb000', fillOpacity: 1})
       .on('click', e => { L.DomEvent.stopPropagation(e); setArrival(j); }).addTo(info));
-    $('facts').innerHTML = '<ul id="facts"><li>' + d.routes.length + ' gravel sections</li><li>' + d.lifts.length + ' lifts</li><li>' + d.parking.length + ' parking lots</li><li>' + d.roads.length + ' road sections</li><li>' + d.streams.length + ' streams, ' + d.lakes.length + ' lakes</li><li>' + d.buildings.length + ' buildings</li></ul>'
+    $('facts').innerHTML = '<ul id="facts"><li>' + d.routes.length + ' gravel sections</li><li>' + d.lifts.length + ' lifts</li><li>' + d.bridges.length + ' bridges</li><li>' + d.parking.length + ' parking lots</li><li>' + d.roads.length + ' road sections</li><li>' + d.streams.length + ' streams, ' + d.lakes.length + ' lakes</li><li>' + d.buildings.length + ' buildings</li></ul>'
       + (d.buildings.length > 1500 ? '<div class="bad">That is a lot of buildings: check the frame rate, or pick a smaller map.</div>' : '');
     realMedian = d.medianDegrees; $('relief').value = d.relief; showRelief();
     if (d.junctions.length) setArrival(d.junctions[0]);
@@ -168,7 +169,7 @@ async function make(overwrite) {
     if (d.exists) { $('result').textContent = ''; if (confirm('A map with this file id exists. Overwrite it?')) return make(true); return; }
     const box = $('result'); box.innerHTML = '';
     const add = (text, cls) => { const p = document.createElement('div'); p.textContent = text; p.className = cls || 'dim'; box.appendChild(p); };
-    add('Done: ' + d.scenario, ''); add(d.waysBuilt + ' routes, ' + (d.meters / 1000).toFixed(1) + ' km, ' + d.lifts + ' lifts, ' + d.parking + ' parking lots.');
+    add('Done: ' + d.scenario, ''); add(d.waysBuilt + ' routes, ' + (d.meters / 1000).toFixed(1) + ' km, ' + d.bridges + ' bridges, ' + d.lifts + ' lifts, ' + d.parking + ' parking lots.');
     if (d.routesStandingAlone) add(d.routesStandingAlone + ' routes don\'t connect to the arrival: players can link them.');
     (d.skipped || []).forEach(t => add('Left out: ' + t, 'bad'));
     (d.rejected || []).forEach(t => add('The game refused: ' + t, 'bad'));

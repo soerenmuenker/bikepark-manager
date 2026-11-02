@@ -67,6 +67,7 @@ def preview(body):
         "relief": relief,
         "medianDegrees": round(median, 1),
         "routes": [{"edge": i, "line": [list(frame.latlon(*p)) for p in e[2]]} for i, e in enumerate(edges) if e[3] == "gravel"],
+        "bridges": [{"edge": i, "line": [list(frame.latlon(*p)) for p in e[2]], "width": e[4]} for i, e in enumerate(edges) if e[3] == "bridge"],
         "roads": [{"edge": i, "line": [list(frame.latlon(*p)) for p in e[2]]} for i, e in enumerate(edges) if e[3] == "tarmac"],
         "minor": minor,
         "junctions": [list(frame.latlon(*p)) for p in junctions.values()],

@@ -257,7 +257,7 @@ function cmdHandles(ci) {
   return hs;
 }
 const editableCmd = ci => cmdHandles(ci).length > 0;
-const cmdLabel = c => c.name || (c.kind === 'accessPath' ? (c.surface === 'tarmac' ? 'Road' : 'Gravel track') : c.type);
+const cmdLabel = c => c.name || (c.deckWidthCm ? 'Bridge' : c.kind === 'accessPath' ? (c.surface === 'tarmac' ? 'Road' : 'Gravel track') : c.type);
 const liftType = c => liftTypes.find(t => t.id === c.typeId);
 function cmdLength(c) {
   if (c.valley && c.mountain) return Math.hypot(c.mountain.x - c.valley.x, c.mountain.z - c.valley.z);
@@ -379,7 +379,7 @@ function draw() {
       ctx.strokeStyle = '#fff8'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
       label(cmdLabel(c), a.x, a.y - r - 6);
     } else if (c.points) {
-      ctx.strokeStyle = c.surface === 'tarmac' ? '#30343a' : c.kind === 'accessPath' ? '#f4ede1' : '#1565c0';
+      ctx.strokeStyle = c.deckWidthCm ? '#7e57c2' : c.surface === 'tarmac' ? '#30343a' : c.kind === 'accessPath' ? '#f4ede1' : '#1565c0';
       ctx.beginPath(); c.points.forEach((p, k) => { const s = w2s(p); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.stroke();
     } else if (c.center) {
       const a = w2s(c.center); ctx.fillStyle = '#d7ccc8'; ctx.fillRect(a.x - 5, a.y - 5, 10, 10);
@@ -517,6 +517,7 @@ function toolClick(sp) {
   if (tool.name === 'cut') {
     const n = nearestWay(sp);
     if (!n || n.d > 12) return hintText('Click on a way.');
+    if (data.commands[n.ci].command.deckWidthCm) return hintText('A bridge is one piece: move its ends instead.');
     snapshot();
     const pieces = cutWay(n);
     if (!pieces) { undoStack.pop(); return hintText('That is the end of the way already.'); }
@@ -865,6 +866,19 @@ function renderSide() {
   $('strokeCount').textContent = `${data.terrainSculpt.length} stroke${data.terrainSculpt.length === 1 ? '' : 's'} in this scenario.`;
 }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// What the game makes of a bridge: level at the middle of its ends' ground, the ground meeting it there.
+function deckInfo(c) {
+  const a = c.points[0], b = c.points[c.points.length - 1], ha = heightAt(a), hb = heightAt(b), level = (ha + hb) / 2;
+  let above = 0;
+  for (let i = 1; i < c.points.length; i++) {
+    const p = c.points[i - 1], q = c.points[i], steps = Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / 100);
+    for (let k = 0; k < steps; k++) if (heightAt({ x: p.x + (q.x - p.x) * k / steps, z: p.z + (q.z - p.z) * k / steps }) > level) above++;
+  }
+  const gap = Math.abs(ha - hb) / 100;
+  return `<div class="small">Bridge: deck at ${(level / 100).toFixed(1)} m, ground at its ends ${(ha / 100).toFixed(1)} and ${(hb / 100).toFixed(1)} m.</div>`
+    + (gap > 3 ? `<div class="small" style="color:#ff9d8a">The ends are ${gap.toFixed(1)} m apart in height: the ground is reshaped by half of that at each. Drag an end to where the bank matches.</div>` : '')
+    + (above > 5 ? `<div class="small" style="color:#ff9d8a">The ground stands above the deck for ${above} m: it would run through the hill. Drag the ends onto higher ground, or closer together.</div>` : '');
+}
 function renderDetail() {
   const el = $('detail'), it = selected();
   if (document.activeElement && el.contains(document.activeElement)) return; // don't clobber typing
@@ -898,7 +912,8 @@ function renderDetail() {
     if (c.points) html += `<div class="small">${c.points.length} points (double-click the way to add, right-click to remove)</div>`;
     for (const [k, v] of Object.entries(c)) if (['name', 'spaces'].includes(k))
       html += `<div class="field"><label>${k}</label><input type="${typeof v === 'number' ? 'number' : 'text'}" data-k="${k}" value="${esc(v)}"></div>`;
-    if (c.kind === 'accessPath') html += `<div class="field"><label>surface</label><select id="surfacePick"><option value="gravel">gravel</option><option value="tarmac">tarmac</option></select></div>`;
+    if (c.deckWidthCm) html += deckInfo(c);
+    else if (c.kind === 'accessPath') html += `<div class="field"><label>surface</label><select id="surfacePick"><option value="gravel">gravel</option><option value="tarmac">tarmac</option></select></div>`;
     html += '<div class="row"><button id="delCmd">Delete</button></div>';
     el.innerHTML = html;
     $('delCmd').onclick = deleteCommand;

@@ -120,6 +120,9 @@ public sealed class WayGeometry
     /// <summary>Where the way crosses water (a real map's streams): sample ranges, each gets a bridge.</summary>
     public IReadOnlyList<WayBridge> Bridges { get; private init; } = [];
 
+    /// <summary>A real bridge (<see cref="Way.DeckWidthCm"/>): level, high above what lies below.</summary>
+    public bool IsDeck { get; private init; }
+
     /// <summary>Length of all <see cref="Bridges"/>, whole meters, at least 1 each.</summary>
     public int BridgeMeters => Bridges.Sum(b => (int)Math.Max(1, (_distance[b.To] - _distance[b.From] + 99) / 100));
 
@@ -205,7 +208,7 @@ public sealed class WayGeometry
     /// </summary>
     public static WayGeometry Build(
         TerrainGrid grid, WayKind kind, IReadOnlyList<PointCm> points, int segmentLengthCm, int gradingMeters = DefaultGradingMeters,
-        IReadOnlyList<PlacedFeature>? features = null, bool ignoreRocks = false)
+        IReadOnlyList<PlacedFeature>? features = null, bool ignoreRocks = false, bool deck = false)
     {
         if (points.Count < 2) throw new ArgumentException("A way needs at least two points.", nameof(points));
 
@@ -214,9 +217,11 @@ public sealed class WayGeometry
         var ground = new int[n];
         for (int i = 0; i < n; i++)
             ground[i] = grid.HeightAt(xs[i], zs[i]);
-        var bridges = FindBridges(grid, xs, zs);
+        // A deck runs over whatever lies below: level, and with no crossing of water of its own.
+        if (deck) Array.Fill(ground, (ground[0] + ground[^1]) / 2);
+        List<WayBridge> bridges = deck ? [] : FindBridges(grid, xs, zs);
         LevelBridges(ground, bridges);
-        var y = kind == WayKind.AccessPath ? Grade(ground, gradingMeters) : ground;
+        var y = kind == WayKind.AccessPath && !deck ? Grade(ground, gradingMeters) : ground;
 
         // Accumulate in 1/16 cm: rounding each ~1 m step to whole cm would lose the height component.
         var distance = new long[n];
@@ -231,11 +236,11 @@ public sealed class WayGeometry
         var x = xs.ToArray();
         var z = zs.ToArray();
         var segments = BuildSegments(grid, kind, x, y, z, distance, segmentLengthCm);
-        var rocks = ignoreRocks ? [] : FindRocks(grid, x, z);
+        var rocks = ignoreRocks || deck ? [] : FindRocks(grid, x, z);
         if (kind == WayKind.Trail) ApplyRocks(segments, rocks, distance);
         if (features is { Count: > 0 })
             ApplyFeatures(segments, features);
-        return new WayGeometry(kind, x, y, z, distance, segments) { Bridges = bridges, Rocks = rocks };
+        return new WayGeometry(kind, x, y, z, distance, segments) { Bridges = bridges, Rocks = rocks, IsDeck = deck };
     }
 
     /// <summary>Symmetric moving average that shrinks towards the ends, so the end heights stay unchanged.</summary>

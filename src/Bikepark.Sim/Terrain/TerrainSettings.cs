@@ -65,8 +65,8 @@ public sealed record TerrainSettings
     public List<string> Validate()
     {
         var errors = new List<string>();
-        if (SizeMeters < 32 || SizeMeters > 4000) errors.Add("terrain.sizeMeters must be within 32..4000");
-        if (DepthMeters != 0 && (DepthMeters < 32 || DepthMeters > 4000)) errors.Add("terrain.depthMeters must be within 32..4000");
+        if (SizeMeters < 32 || SizeMeters > 5000) errors.Add("terrain.sizeMeters must be within 32..5000");
+        if (DepthMeters != 0 && (DepthMeters < 32 || DepthMeters > 5000)) errors.Add("terrain.depthMeters must be within 32..5000");
         if (ReliefCm <= 0) errors.Add("terrain.reliefCm must be > 0");
         if (BaseElevationCm < 0) errors.Add("terrain.baseElevationCm must be >= 0");
         if (Heightmap is null && (PeakXMeters < 0 || PeakXMeters > SizeMeters || PeakZMeters < 0 || PeakZMeters > Depth()))
