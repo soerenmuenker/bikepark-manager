@@ -227,6 +227,13 @@ internal static class TerrainMapRenderer
         if (s.WaterDepthCm >= TerrainGrid.WaterSurfaceThresholdCm)
             return Rgb.Lerp(new Rgb(0.45, 0.65, 0.9), new Rgb(0.15, 0.35, 0.75), Math.Min(1, s.WaterDepthCm / 150.0));
 
+        if (grid.Settings.Biome == TerrainBiome.Desert)
+        {
+            Rgb soil = Rgb.Lerp(new Rgb(0.66, 0.50, 0.33), new Rgb(0.58, 0.36, 0.23), Math.Clamp((s.SlopePermille - 120) / 280.0, 0, 1));
+            soil = Rgb.Lerp(soil, new Rgb(0.42, 0.32, 0.22), s.TreeDensity / 255.0);
+            return Rgb.Lerp(soil, new Rgb(0.62, 0.36, 0.24), s.Rock / 255.0);
+        }
+
         // Hypsometric tint: valley green → alpine meadow → bare.
         double t = (s.HeightCm - grid.MinHeightCm) / (double)Math.Max(1, grid.MaxHeightCm - grid.MinHeightCm);
         Rgb c = t < 0.6

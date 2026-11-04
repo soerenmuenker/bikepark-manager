@@ -91,7 +91,7 @@ def create(body):
     arrival = frame.xz(*body["arrival"]) if body.get("arrival") else (frame.width / 2, frame.depth / 2)
     log = io.StringIO()
     with contextlib.redirect_stdout(log):
-        stats = ti.make_map(frame, 5, map_id, body["title"], body.get("place") or body["title"], arrival, body.get("land") != "none", float(body["relief"]) if body.get("relief") else None, body.get("leaveOut") or ())
+        stats = ti.make_map(frame, 5, map_id, body["title"], body.get("place") or body["title"], arrival, body.get("land") != "none", float(body["relief"]) if body.get("relief") else None, body.get("leaveOut") or (), body.get("biome", "alpine"))
     # The scenario editor caches its terrain per map id.
     for cached in (ROOT / "out" / "editor").glob(f"{map_id}_*"):
         cached.unlink()

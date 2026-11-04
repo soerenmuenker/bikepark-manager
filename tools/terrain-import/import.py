@@ -739,8 +739,8 @@ def number(text):
         return None
 
 
-def scenery_from(elements, frame):
-    """The scenery block of the terrain file: what stands here, nothing made up."""
+def scenery_from(elements, frame, biome="alpine"):
+    """The scenery block of the terrain file: what stands here, nothing made up. In a desert, intermittent streams are dry washes."""
     map_x, map_z = frame.width, frame.depth
     xz = lambda ring: [frame.xz(*p) for p in ring]
     streams, lakes, buildings = [], [], []
@@ -748,6 +748,8 @@ def scenery_from(elements, frame):
         tags = el.get("tags", {})
         if el["type"] == "way" and tags.get("waterway") in ("river", "stream", "canal") and el.get("geometry"):
             if tags.get("tunnel") or tags.get("culvert") or tags.get("location") == "underground":
+                continue
+            if biome == "desert" and tags.get("intermittent") == "yes":
                 continue
             pts = [frame.xz(p["lat"], p["lon"]) for p in el["geometry"]]
             width = number(tags.get("width"))
@@ -894,7 +896,7 @@ def default_parcels(width, depth, arrival):
     return parcels
 
 
-def write_scenario(map_id, title, place, frame, arrival, commands, parcels, relief, has_lifts):
+def write_scenario(map_id, title, place, frame, arrival, commands, parcels, relief, has_lifts, biome="alpine"):
     """data/scenarios/<id>.json: the Starter Valley career's rules (comments kept) with this place's map."""
     text = (ROOT / "data" / "scenarios" / "starter_valley.json").read_text()
 
@@ -915,7 +917,7 @@ def write_scenario(map_id, title, place, frame, arrival, commands, parcels, reli
     between('  // Terrain is regenerated', '  "reputationRules"',
             '  // Real terrain from tools/terrain-import; roughness is the fine detail on top.\n'
             '  // The tree line is out of reach: forest and meadows come from OpenStreetMap.\n'
-            f'  "terrain": {{\n    "sizeMeters": {frame.width},\n' + (f'    "depthMeters": {frame.depth},\n' if frame.depth != frame.width else '') + f'    "heightmapFile": "../terrain/{map_id}.json",\n'
+            f'  "terrain": {{\n    "sizeMeters": {frame.width},\n' + (f'    "depthMeters": {frame.depth},\n' if frame.depth != frame.width else '') + f'    "heightmapFile": "../terrain/{map_id}.json",\n' + (f'    "biome": "{biome}",\n' if biome != "alpine" else '') +
             '    "reliefScalePermille": ' + str(round(relief * 1000)) + ',\n    "rockFormations": true,\n    "roughnessPermille": 90,\n    "treeLineCm": 900000\n  },\n  "terrainSculpt": [],\n')
     between('  "parcels": [', '  "welcome": {',
             '  "parcels": [\n' + ",\n".join("    " + json.dumps(p, ensure_ascii=False) for p in parcels) + "\n  ],\n")
@@ -933,9 +935,9 @@ def write_scenario(map_id, title, place, frame, arrival, commands, parcels, reli
     return path
 
 
-def refresh_scenery(frame, cell, map_id):
+def refresh_scenery(frame, cell, map_id, biome="alpine"):
     """Rewrites only the terrain file: hand-drawn parcels and commands stay, and so do the roads, which are commands."""
-    return write_terrain(frame, cell, map_id, scenery_from(fetch_infrastructure(frame), frame))[1]
+    return write_terrain(frame, cell, map_id, scenery_from(fetch_infrastructure(frame), frame, biome))[1]
 
 
 def nearest_edge(edges, p):
@@ -968,7 +970,7 @@ def suggest_relief(frame, elevation=None):
     return max(1.0, min(2.0, round(wanted * 20) / 20)), math.degrees(math.atan(median))
 
 
-def make_map(frame, cell, map_id, title, place, arrival, split_land=True, relief=None, leave_out=()):
+def make_map(frame, cell, map_id, title, place, arrival, split_land=True, relief=None, leave_out=(), biome="alpine"):
     """Terrain and scenario for this map; leave_out: indices into road_network the player unticked. Returns what happened,
     for the command line and the browser tool."""
     elements = fetch_infrastructure(frame)
@@ -979,7 +981,7 @@ def make_map(frame, cell, map_id, title, place, arrival, split_land=True, relief
     near = sorted(near, key=lambda p: math.dist(p, arrival))[:MAX_PARKING]
     left_out = len(parking) - len(near)
     parking = [lot for p in near for lot in parking if lot["center"] == p]
-    elevation, summary = write_terrain(frame, cell, map_id, scenery_from(elements, frame))
+    elevation, summary = write_terrain(frame, cell, map_id, scenery_from(elements, frame, biome))
     commands, stats = scenario_commands(edges, lifts, parking, arrival, "alpine_lifts",
                                         lambda p: elevation.at(*frame.latlon(*p)))
     if left_out:
@@ -988,7 +990,7 @@ def make_map(frame, cell, map_id, title, place, arrival, split_land=True, relief
     relief = relief or suggest_relief(frame, elevation)[0]
     stats["relief"] = relief
     write_scenario(map_id, title, place, frame, home, commands, default_parcels(frame.width, frame.depth, home) if split_land else [], relief,
-                   any(c["type"] == "buildLift" for c in commands))
+                   any(c["type"] == "buildLift" for c in commands), biome)
     stats.update({"terrain": summary, "bridges": sum("deckWidthCm" in c for c in commands), "lifts": sum(c["type"] == "buildLift" for c in commands),
                   "parking": sum(c["type"] == "buildParkingLot" for c in commands)})
     return stats
@@ -1010,6 +1012,7 @@ def main():
     ap.add_argument("--refresh-scenery", action="store_true", help="rewrite only the terrain file of an existing map (parcels and commands stay)")
     ap.add_argument("--no-parcels", action="store_true", help="don't split the land: the whole map is the park's from the start")
     ap.add_argument("--relief-scale", type=float, help="height multiplier (default: suggested for this place)")
+    ap.add_argument("--biome", default="alpine", choices=["alpine", "desert"], help="desert: sand and red rock, sparse plants, intermittent streams stay dry")
     ap.add_argument("--title", help="the map's name (default: the id)")
     ap.add_argument("--place", help="what the place is, for the texts")
     ap.add_argument("--arrival", default=None, help="map meters x,z near where guests should arrive (default: the centre)")
@@ -1030,14 +1033,14 @@ def main():
     except ValueError as e:
         sys.exit(str(e))
     if args.refresh_scenery:
-        print(refresh_scenery(frame, args.cell, args.id))
+        print(refresh_scenery(frame, args.cell, args.id, args.biome))
         return
     if not args.scenario:
         write_terrain(frame, args.cell, args.id)
         return
     arrival = tuple(float(v) for v in args.arrival.split(",")) if args.arrival else (frame.width / 2, frame.depth / 2)
     title = args.title or args.id.replace("_", " ").title()
-    print(json.dumps(make_map(frame, args.cell, args.id, title, args.place or title, arrival, not args.no_parcels, args.relief_scale), indent=1))
+    print(json.dumps(make_map(frame, args.cell, args.id, title, args.place or title, arrival, not args.no_parcels, args.relief_scale, biome=args.biome), indent=1))
 
 
 if __name__ == "__main__":

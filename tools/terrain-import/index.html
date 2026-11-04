@@ -38,6 +38,8 @@
 <label>What it is (for the game's texts)</label><input id="place" placeholder="the Farrenpoint above Bad Feilnbach, Bavaria">
 <label>Height ×<b id="reliefText"></b></label><input id="relief" type="range" min="1" max="2.5" step="0.05" value="1">
 <div class="dim">Real mountains look flat next to the game's. The suggestion makes this place as steep as Starter Valley.</div>
+<label>Climate</label>
+<select id="biome"><option value="alpine">Alpine: grass, forest, grey rock</option><option value="desert">Desert: sand, red rock, sparse plants; seasonal streams stay dry</option></select>
 <label>Land</label>
 <label class="choice"><input type="radio" name="land" value="grid" checked> Parcels to buy: starts as a 3 × 3 grid, redraw it in the editor</label>
 <label class="choice"><input type="radio" name="land" value="none"> Don't split: the whole map is yours from the start</label>
@@ -165,7 +167,7 @@ async function make(overwrite) {
   $('make').disabled = true; $('result').textContent = 'Fetching terrain and building the map…';
   try {
     const d = await post('/api/create', {lat: center.lat, lon: center.lng, size: size(), ratio, rotation: rotation(), id: $('id').value, title: $('title').value,
-      place: $('place').value, land: document.querySelector('input[name=land]:checked').value, relief: +$('relief').value, arrival: arrival && [arrival[0], arrival[1]], leaveOut: [...leaveOut], overwrite});
+      place: $('place').value, land: document.querySelector('input[name=land]:checked').value, relief: +$('relief').value, biome: $('biome').value, arrival: arrival && [arrival[0], arrival[1]], leaveOut: [...leaveOut], overwrite});
     if (d.exists) { $('result').textContent = ''; if (confirm('A map with this file id exists. Overwrite it?')) return make(true); return; }
     const box = $('result'); box.innerHTML = '';
     const add = (text, cls) => { const p = document.createElement('div'); p.textContent = text; p.className = cls || 'dim'; box.appendChild(p); };

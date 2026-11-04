@@ -33,6 +33,7 @@ public partial class TerrainView : Node3D
 
     private ShaderMaterial _terrainMaterial = null!;
     private ArrayMesh _treeMesh = null!;
+    private ArrayMesh _juniperMesh = null!, _shrubMesh = null!;
     private ArrayMesh[] _rockMeshes = [], _stoneMeshes = [];
     private StandardMaterial3D _scatterMaterial = null!;
     private Node3D? _chunks;
@@ -76,6 +77,8 @@ public partial class TerrainView : Node3D
     {
         _terrainMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/terrain.gdshader") };
         _treeMesh = ScatterMeshes.CreateTree();
+        _juniperMesh = ScatterMeshes.CreateJuniper();
+        _shrubMesh = ScatterMeshes.CreateShrub();
         _rockMeshes = Enum.GetValues<RockShape>().Select(shape => ScatterMeshes.CreateRock(shape, detail: 2)).ToArray();
         _stoneMeshes = Enum.GetValues<RockShape>().Select(shape => ScatterMeshes.CreateRock(shape, detail: 1)).ToArray();
         _scatterMaterial = ScatterMeshes.CreateMaterial();
@@ -231,6 +234,7 @@ public partial class TerrainView : Node3D
         _chunks = new Node3D { Name = "Chunks" };
         AddChild(_chunks);
         _terrainMaterial.SetShaderParameter("tree_line_m", grid.Settings.TreeLineCm / 100f);
+        _terrainMaterial.SetShaderParameter("desert", grid.Settings.Biome == TerrainBiome.Desert);
 
         var scatter = new List<ScatterInstance>();
         int chunkCount = 0;
@@ -264,7 +268,6 @@ public partial class TerrainView : Node3D
             Mesh = TerrainMeshBuilder.Build(grid, x0, z0, sizeX, sizeZ, 1, center),
             MaterialOverride = _terrainMaterial,
             VisibilityRangeEnd = DetailDistance,
-            VisibilityRangeEndMargin = 10f,
         };
         var far = new MeshInstance3D
         {
@@ -272,7 +275,6 @@ public partial class TerrainView : Node3D
             Mesh = TerrainMeshBuilder.Build(grid, x0, z0, sizeX, sizeZ, FarStep, center),
             MaterialOverride = _terrainMaterial,
             VisibilityRangeBegin = DetailDistance,
-            VisibilityRangeBeginMargin = 10f,
         };
         chunk.AddChild(near);
         chunk.AddChild(far);
@@ -292,13 +294,22 @@ public partial class TerrainView : Node3D
             scatter.RemoveAll(s => cleared(s.XCm, s.ZCm) && !DenseFieldOnTrail(grid, s) && !UnderFlatDrop(s));
         var treeItems = scatter.Where(s => s.Kind == ScatterKind.Tree).ToList();
         var rockItems = scatter.Where(s => s.Kind == ScatterKind.Rock).ToList();
-        if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
+        bool desert = grid.Settings.Biome == TerrainBiome.Desert;
+        Func<ScatterInstance, Color> rockTint = desert ? DesertRockTint : RockTint;
+        if (desert)
+        {
+            var junipers = treeItems.Where(s => s.Variant % 2 == 0).ToList();
+            var shrubs = treeItems.Where(s => s.Variant % 2 != 0).ToList();
+            if (junipers.Count > 0) chunk.AddChild(BuildInstances("Junipers", _juniperMesh, junipers, center, TreeDrawDistance, TreeTint));
+            if (shrubs.Count > 0) chunk.AddChild(BuildInstances("Shrubs", _shrubMesh, shrubs, center, RockDrawDistance, TreeTint));
+        }
+        else if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
         foreach (var shape in Enum.GetValues<RockShape>())
         {
             var big = rockItems.Where(s => s.Shape == shape && s.ScalePermille >= StoneMaxScale).ToList();
             var small = rockItems.Where(s => s.Shape == shape && s.ScalePermille < StoneMaxScale).ToList();
-            if (big.Count > 0) chunk.AddChild(BuildInstances($"Rocks {shape}", _rockMeshes[(int)shape], big, center, TreeDrawDistance, RockTint));
-            if (small.Count > 0) chunk.AddChild(BuildInstances($"Stones {shape}", _stoneMeshes[(int)shape], small, center, RockDrawDistance, RockTint));
+            if (big.Count > 0) chunk.AddChild(BuildInstances($"Rocks {shape}", _rockMeshes[(int)shape], big, center, TreeDrawDistance, rockTint));
+            if (small.Count > 0) chunk.AddChild(BuildInstances($"Stones {shape}", _stoneMeshes[(int)shape], small, center, RockDrawDistance, rockTint));
         }
         _treeCount += treeItems.Count;
         _rockCount += rockItems.Count;
@@ -382,6 +393,8 @@ public partial class TerrainView : Node3D
         2 => new Color(1.1f, 1.05f, 0.85f),
         _ => new Color(0.9f, 0.9f, 1f),
     };
+
+    private static Color DesertRockTint(ScatterInstance item) => new(0.98f - item.Variant * 0.03f, 0.50f - item.Variant * 0.02f, 0.31f);
 
     private static Color RockTint(ScatterInstance item) => new(1f - item.Variant * 0.05f, 1f - item.Variant * 0.05f, 1f - item.Variant * 0.04f);
 }

@@ -267,6 +267,12 @@ public static class TerrainGenerator
                 if (rockMask is not null) r = Math.Max(r, MaskAt(rockMask, map!, x, z) * 255 >> Shift);
                 rock[i] = (byte)r;
 
+                if (s.Biome == TerrainBiome.Desert)
+                {
+                    trees[i] = DesertPlants(x, z, slope, r, seeds);
+                    continue;
+                }
+
                 // Trees: inside forest patches, below a jittered tree line, not too steep.
                 long jitter = (IntNoise.Fbm(x, z, 70, 2, seeds.TreeLine) - OneHalf) * 3_000 >> Shift; // ±15 m
                 long elevationF = Clamp01((s.TreeLineCm + jitter - h) * One / 5_000);
@@ -287,6 +293,17 @@ public static class TerrainGenerator
             }
         }
         return (trees, rock, roots);
+    }
+
+    private const uint DesertPlantSalt = 0x5EED_D3A7;
+
+    /// <summary>Sparse clumps of junipers and shrubs on open ground: always below the forest threshold, and no roots.</summary>
+    private static byte DesertPlants(int x, int z, long slope, long rock, NoiseSeeds seeds)
+    {
+        const long MaxDensity = 70;
+        long clumps = Clamp01((IntNoise.Fbm(x, z, 55, 3, seeds.Forest ^ DesertPlantSalt) - One * 48 / 100) * One / (One * 14 / 100));
+        long slopeF = Clamp01((1_000 - slope) * One / 600);
+        return (byte)((Mul(clumps, slopeF) * MaxDensity >> Shift) * (255 - rock) / 255);
     }
 
     /// <summary>Bucket index below which <paramref name="permille"/> of all values lie.</summary>

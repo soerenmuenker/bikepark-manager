@@ -23,6 +23,25 @@ internal static class ScatterMeshes
         return b.ToMesh();
     }
 
+    /// <summary>A low, wide desert juniper: a twisted trunk under grey-green crowns.</summary>
+    public static ArrayMesh CreateJuniper()
+    {
+        var b = new FlatMeshBuilder();
+        b.Prism(radius: 0.18f, y0: 0f, y1: 1.1f, sides: 5, new Color(0.20f, 0.14f, 0.09f));
+        b.Cone(1.5f, 0.6f, 2.5f, sides: 7, new Color(0.10f, 0.15f, 0.07f));
+        b.Cone(1.05f, 1.5f, 3.5f, sides: 6, new Color(0.13f, 0.18f, 0.09f));
+        return b.ToMesh();
+    }
+
+    /// <summary>A knee-high sage-coloured shrub.</summary>
+    public static ArrayMesh CreateShrub()
+    {
+        var b = new FlatMeshBuilder();
+        b.Cone(0.8f, -0.05f, 0.9f, sides: 6, new Color(0.22f, 0.23f, 0.12f));
+        b.Cone(0.5f, 0.25f, 1.15f, sides: 5, new Color(0.27f, 0.28f, 0.15f));
+        return b.ToMesh();
+    }
+
     /// <summary>The planes cutting a loose rock (normal, distance): they make its flat faces and hard edges.</summary>
     private static (Vector3 Normal, float Distance)[] Cuts(RockShape shape) => shape switch
     {

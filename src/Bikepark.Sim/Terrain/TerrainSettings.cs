@@ -1,5 +1,14 @@
 namespace Bikepark.Sim.Terrain;
 
+/// <summary>The land's climate: how it looks and what grows. Soils have no effect on riding.</summary>
+public enum TerrainBiome
+{
+    Alpine = 0,
+
+    /// <summary>Sand, hardpan and red sandstone, with sparse junipers and shrubs instead of forest and roots.</summary>
+    Desert = 1,
+}
+
 /// <summary>
 /// Parameters for <see cref="TerrainGenerator"/>. Stored in <see cref="State.WorldState.Terrain"/>; the generated
 /// <see cref="TerrainGrid"/> itself is derived data and is never saved. Heights are absolute elevations in cm.
@@ -58,6 +67,8 @@ public sealed record TerrainSettings
 
     /// <summary>Stone fields, medium rocks and rock faces that ways must deal with (<see cref="RockFormation"/>). Off: only the old decorative rocks.</summary>
     public bool RockFormations { get; set; }
+
+    public TerrainBiome Biome { get; set; }
 
     /// <summary>Scenario files only: the heightmap's file, relative to the scenario. <c>ScenarioLoader.LoadFile</c> resolves it.</summary>
     public string? HeightmapFile { get; set; }

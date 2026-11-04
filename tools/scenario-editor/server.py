@@ -266,6 +266,7 @@ class Handler(BaseHTTPRequestHandler):
                     "back": self.back,
                     "path": str(self.scenario.relative_to(ROOT)),
                     "sizeMeters": data.get("terrain", {}).get("sizeMeters", 1000),
+                    "biome": data.get("terrain", {}).get("biome", "alpine"),
                     "depthMeters": data.get("terrain", {}).get("depthMeters", 0),
                     "parcels": data.get("parcels", []),
                     "commands": data.get("commands", []),

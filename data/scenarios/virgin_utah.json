@@ -1,0 +1,389 @@
+{
+  "id": "virgin_utah",
+  "name": "Virgin Utah",
+  "description": "Career on a real place: Virgin Utah.",
+  "menu": {"title": "Virgin Utah", "blurb": "A real place: Virgin Utah. Only what really stands there is built: the roads and gravel tracks, houses and water, no lifts. 75,000 € to start, enough for a first T-bar, and the first trails are yours to draw.", "defaultParkName": "Virgin Utah Bikepark", "credits": "Elevation: Mapzen/AWS Terrain Tiles; land cover (c) OpenStreetMap contributors (ODbL)"},
+  "seed": 1337,
+  "parkName": "Virgin Utah Bikepark",
+  "startingMoneyCents": 7500000,
+  "entryFeeCents": 1500,
+  "liftTicketCents": 1000,
+  // Daily rhythm (minutes of the day): open 09:00-18:00.
+  // Arrivals follow the profile (permille of baseArrivalPermille): a morning rush, tapering off in the afternoon.
+  // Guests take one lunch break between 11:00 and 13:00. bankruptcyDays: game over after this many days in a row with the
+  // books closing below zero. dailyUpkeepCents: unused here (staffRules below: the park employs its staff by role).
+  // Parking: a fee per car (Finances menu, shared by its guests and counted with the entry fee); free is the fair price.
+  "rules": {
+    "openMinute": 540,
+    "closeMinute": 1080,
+    "baseArrivalPermille": 700,
+    "arrivalProfile": [
+      { "minute": 540, "permille": 1600 },
+      { "minute": 660, "permille": 1400 },
+      { "minute": 780, "permille": 800 },
+      { "minute": 900, "permille": 400 },
+      { "minute": 990, "permille": 0 }
+    ],
+    "lunchStartMinute": 660,
+    "lunchEndMinute": 780,
+    "lunchMinMinutes": 30,
+    "lunchMaxMinutes": 50,
+    "lunchPriceCents": 1400,
+    "referenceEntryFeeCents": 1500,
+    "maxEntryFeeCents": 10000,
+    "capacity": 150,
+    "dailyUpkeepCents": 300000,
+    "snackPriceCents": 400,
+    "referenceParkingFeeCents": 0,
+    "maxParkingFeeCents": 2000,
+    "bankruptcyDays": 14
+  },
+  // Building rules and rider tuning (TrailRules). Gradients in tenths of the -10..+10 gradient score
+  // (1 point = 9°; 40 = 4.0 = 36°): beyond "max" a way can't be built, beyond "steep" it only warns.
+  // Speeds in cm/s, energy on 0..1000.
+  "trailRules": {
+    "segmentLengthMeters": 10,
+    "snapRadiusMeters": 12,
+    "maxLengthMeters": 4000,
+    "pathGradingMeters": 25,
+    "pathMaxGradient": 40,
+    "pathSteepGradient": 20,
+    "trailMaxDropGradient": 80,
+    "trailSteepDropGradient": 50,
+    "trailMaxClimbGradient": 30,
+    "trailSteepClimbGradient": 15,
+    "pathCorridorCm": 400,
+    "trailCorridorCm": 200,
+    "climbSpeedMinCmPerS": 110,
+    "climbSpeedMaxCmPerS": 300,
+    "descentSpeedMinCmPerS": 300,
+    "descentSpeedMaxCmPerS": 900,
+    "climbEnergyPerMeterGain": 2,
+    "descentEnergyPer100Meters": 3,
+    "tiredEnergy": 150,
+    // Trail traffic: no overtaking on trails (only on gravel paths); riders keep this gap, wait a moment at the trail
+    // entrance (letting faster riders waiting there go first) and lose mood while held up behind a slower rider.
+    "riderGapCm": 500,
+    "entryWaitSeconds": 10,
+    "heldUpMoodPerMinute": 5
+  },
+  // Weather: each day is rolled at midnight from these odds (permille), tomorrow's is the forecast. Rain wets the ground
+  // (wetness 0..1000), which dries afterwards; fewer guests come on bad days and riders in the rain lose mood.
+  "weatherRules": {
+    "sunnyPermille": 400,
+    "cloudyPermille": 300,
+    "showersPermille": 200,
+    "rainPermille": 100,
+    "showerMinHours": 1,
+    "showerMaxHours": 3,
+    "rainMinHours": 4,
+    "rainMaxHours": 10,
+    "wetPerRainMinute": 8,
+    "dryPerMinuteSunny": 2,
+    "dryPerMinuteCloudy": 1,
+    "sunnyArrivalPermille": 1050,
+    "cloudyArrivalPermille": 950,
+    "showersArrivalPermille": 800,
+    "rainArrivalPermille": 450,
+    "rainMoodPerMinute": 1
+  },
+  // Wear: only trail features wear (the trail itself doesn't). Each rider passing a feature takes wearPerPass millionths
+  // off its condition (more on harder features, up to 3x on wet ground). Below 70 % it is slower and less fun; below 20 %
+  // the player gets a warning to send the crew; at 0 % the trail closes until the feature is repaired.
+  "wearRules": {
+    "wearPerPass": 120,
+    "wetWearPermille": 2000,
+    "roughBelowPermille": 700,
+    "wornSpeedLossPermille": 300,
+    "wornFunLoss": 400,
+    "warnBelowPermille": 200
+  },
+  // Real terrain from tools/terrain-import; roughness is the fine detail on top.
+  // The tree line is out of reach: forest and meadows come from OpenStreetMap.
+  "terrain": {
+    "sizeMeters": 4000,
+    "depthMeters": 2665,
+    "heightmapFile": "../terrain/virgin_utah.json",
+    "biome": "desert",
+    "reliefScalePermille": 1700,
+    "rockFormations": true,
+    "roughnessPermille": 90,
+    "treeLineCm": 900000
+  },
+  "terrainSculpt": [],
+  "reputationRules": {
+    "enabled": true,
+    "intermediateFromSkill": 350,
+    "expertFromSkill": 650,
+    "groups": [
+      { "group": "beginner", "name": "Beginners", "values": "Feeling safe and a smooth day: easy trails, no scary sections, little waiting, a fair price.",
+        "fun": 250, "safety": 300, "smoothness": 200, "challenge": 0, "jumps": 0, "variety": 100, "value": 150, "challengeTarget": 250 },
+      { "group": "intermediate", "name": "Intermediates", "values": "Flow and fun: well-shaped trails, some variety, a bit of challenge and air, good value for the ticket.",
+        "fun": 300, "safety": 100, "smoothness": 150, "challenge": 100, "jumps": 100, "variety": 100, "value": 150, "challengeTarget": 480 },
+      { "group": "expert", "name": "Experts", "values": "Technical difficulty and jump quality: red and black lines with good features.",
+        "fun": 250, "safety": 0, "smoothness": 150, "challenge": 250, "jumps": 200, "variety": 100, "value": 50, "challengeTarget": 700 }
+    ],
+    "reviewChancePermille": 600,
+    "windowSize": 200,
+    "minReviewsForRating": 10,
+    "scaredMargin": 150,
+    "funFloor": 250,
+    "funCeiling": 800,
+    "heldUpWeight": 1,
+    "waitPenaltyPermille": 2000,
+    "varietyFullAt": 3,
+    "fairCentsPerRun": 150,
+    "visibilityCurve": [
+      { "x": 0, "permille": 500 },
+      { "x": 300, "permille": 750 },
+      { "x": 1500, "permille": 1000 },
+      { "x": 6000, "permille": 1200 }
+    ],
+    "ratingCurve": [
+      { "x": 10, "permille": 700 },
+      { "x": 30, "permille": 1000 },
+      { "x": 50, "permille": 1300 }
+    ],
+    "demandMinPermille": 300,
+    "demandMaxPermille": 1500,
+    "influencerChancePermille": 250,
+    "influencerFirstDay": 3,
+    "influencerMinGapDays": 7,
+    "influencerSkill": 750,
+    "influencerStayMinutes": 300,
+    "influencerPeakPermille": 400,
+    "influencerNeutralTenths": 30,
+    "influencerEffectDays": 5,
+    "xpPerKmByRating": { "blue": 100, "red": 175, "black": 250 },
+    "xpPerFeatureByRating": { "blue": 10, "red": 20, "black": 40 },
+    "xpPerVisitor": 1,
+    "visitorDays": 7,
+    "levelXp": [100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500]
+  },
+  // Crashes: every feature ridden and every 10 m of trail is a small chance to crash (parts per million), scaled by
+  // factors in permille: difficulty above the rider's skill (+overSkillPer100Permille per 100 points, lower for easy
+  // stuff), jumps, worn features (below the rough level, up to 1 + wornFactor at 0 %), wet ground and tired riders.
+  // Collisions are no chance: two riders passing a crossing of their ways (or of a way and the T-bar track) who are both
+  // within collisionDistanceCm of it at the same moment crash, if at least one rides collisionMinSpeedCmPerS or faster. A crash is serious with
+  // seriousBase + extras (jumps, collisions, over skill): the rider lies on the trail, blocking it, until the rescue
+  // helicopter (public service) has flown them out; otherwise they ride down slowly and go home. A rider hurt while
+  // being pulled up a T-bar stops the whole lift: for towStopMinutes (minor: they get off the track and go home) or
+  // until the helicopter has flown them out (serious). Crashes cost no money: a crash closes its trail to new riders
+  // (minorCloseMinutes, a serious one until the rescue). Each trail's crashes per 10 000 runs over the last rateDays
+  // (counted over at least rateMinRuns) are compared with expectedCrashesPer10kRunsByRating: a guest who rode a trail
+  // above it rates safety safetyLossPerExtraCrashPer10k permille lower per extra crash (worst trail, at most maxRateSafetyLoss).
+  // bikeOnlyPermille: that share of minor crashes only break the bike (fixed in a bike shop's workshop, else the rider goes home).
+  "crashRules": {
+    "bikeOnlyPermille": 350,
+    "enabled": true,
+    "featureBasePpm": 40,
+    "jumpFactorPermille": 2000,
+    "terrainBasePpm": 2,
+    "overSkillPer100Permille": 1000,
+    "minSkillFactorPermille": 150,
+    "wornFactorPermille": 2000,
+    "wetFactorPermille": 1000,
+    "fatigueBelowEnergy": 350,
+    "fatigueFactorPermille": 1000,
+    "collisionDistanceCm": 100,
+    "collisionMinSpeedCmPerS": 350,
+    "seriousBasePermille": 50,
+    "seriousJumpPermille": 50,
+    "seriousCollisionPermille": 150,
+    "seriousPer100OverSkillPermille": 40,
+    "minorMoodLoss": 250,
+    "seriousMoodLoss": 600,
+    "minorSpeedCmPerS": 150,
+    "towStopMinutes": 5,
+    "helicopterMinMinutes": 25,
+    "helicopterMaxMinutes": 50,
+    "injuredReviewChancePermille": 900,
+    "minorCloseMinutes": 5,
+    "rateDays": 7,
+    "expectedCrashesPer10kRunsByRating": { "blue": 20, "red": 40, "black": 60 },
+    "rateMinRuns": 1000,
+    "safetyLossPerExtraCrashPer10k": 4,
+    "maxRateSafetyLoss": 500
+  },
+  // Lift models come from the shared catalog.
+  "liftTypesFile": "../lift_types.json",
+  "trailFeaturesFile": "../trail_features.json",
+  "toolsFile": "../tools.json",
+  "facilityTypesFile": "../facility_types.json",
+  "productTypesFile": "../products.json",
+  // Brands that sponsor trails and the park (data/sponsors.json) and how they deal (SponsorRules: defaults), photo spots too.
+  "sponsorTypesFile": "../sponsors.json",
+  // Bars and shops (FacilityRules): they need a gravel path or hub within accessReachMeters and serve guests within
+  // serveReachMeters. Après-bike: guests done for the day may stay at a bar serving beer until apresEndMinute (19:30).
+  "facilityRules": {
+    "accessReachMeters": 25,
+    "serveReachMeters": 80,
+    "apresEndMinute": 1170
+  },
+  // Park staff by role (data/staff_roles.json): managers, ticket office, first aid, cleaning, marketing; set in the Crew
+  // menu → Park staff. Too few of a role costs guests, mood or rescue time (StaffMath).
+  "staffFile": "../staff_roles.json",
+  "staffRules": {
+    "enabled": true,
+    "start": [
+      { "roleId": "manager", "count": 1 },
+      { "roleId": "ticket_office", "count": 3 },
+      { "roleId": "first_aid", "count": 2 },
+      { "roleId": "cleaning", "count": 4 }
+    ]
+  },
+  // Crew and building (CrewRules). Planned ways and features are built by crew jobs during opening hours; work is in
+  // crew-minutes at base speed. Trees in a planned way's corridor are felled first (each gives woodPerTree wood).
+  // No crew limit: a way is built in sections of sectionMeters, each by up to workersPerSection workers at once (features,
+  // repairs and signs: one spot). Applicants (a fresh list at every opening) come in grades: speed and wage.
+  "crewRules": {
+    "wagePerDayCents": 18000,
+    "sectionMeters": 20,
+    "workersPerSection": 2,
+    "grades": [
+      { "id": "apprentice", "name": "Apprentice", "speedPermille": 750, "wagePerDayCents": 13000, "weight": 4 },
+      { "id": "skilled", "name": "Skilled", "speedPermille": 1000, "wagePerDayCents": 18000, "weight": 4 },
+      { "id": "expert", "name": "Expert", "speedPermille": 1350, "wagePerDayCents": 27000, "weight": 2 }
+    ],
+    "applicantCount": 4,
+    "trailWorkMinutesPerMeter": 4,
+    "pathWorkMinutesPerMeter": 3,
+    "steepExtraPermille": 500,
+    "fellMinutesPerTree": 8,
+    "repairWorkPermille": 500,
+    "woodPerTree": 2,
+    "woodPriceCents": 2500,
+    "minClearingRadiusMeters": 5,
+    "maxClearingRadiusMeters": 40
+  },
+  "startingWood": 20,
+  // The gondola belongs to a lift company; the park rents bike access in tiers (share of cabins equipped for bikes),
+  // paying the tier's daily fee at the end of each day. A booked tier starts at the next opening.
+  "operators": [
+    {
+      "id": "alpine_lifts",
+      "name": "Alpine Lift Co.",
+      "bikeAccessTiers": [
+        { "name": "No bikes", "bikeCarrierPermille": 0, "dailyFeeCents": 0 },
+        { "name": "Every 4th cabin", "bikeCarrierPermille": 250, "dailyFeeCents": 30000 },
+        { "name": "Every 2nd cabin", "bikeCarrierPermille": 500, "dailyFeeCents": 65000 },
+        { "name": "All cabins", "bikeCarrierPermille": 1000, "dailyFeeCents": 140000 }
+      ]
+    }
+  ],
+  // Structures, queues and lift routing (LiftRules). Routing costs are in cm of flat travel per minute.
+  "liftRules": {
+    "walkSpeedCmPerS": 120,
+    "guestsPerCarPermille": 2000,
+    "parkingSquareMetersPerSpace": 25,
+    "parkingWidthMeters": 40,
+    "stationReachMeters": 80,
+    "maxPadCutFillCm": 1500,
+    "embankmentGradient": 35,
+    "queueGraceMinutes": 5,
+    "queueMoodPenaltyPerMinute": 3,
+    "restEnergyPerMinute": 3,
+    "liftRideCostCmPerMinute": 9000,
+    "liftWaitCostCmPerMinute": 18000
+  },
+  // Bank loans: the amount at once, paid back in equal weekly installments (at the end of every 7th day) with a flat
+  // interest on the whole amount over the term. A missed installment (not enough money) adds lateFeePermille of it to
+  // what is owed. requiredLevel: park level needed to get the loan. One loan of each kind at a time.
+  "loanRules": {
+    "lateFeePermille": 100,
+    // Interest over the whole term: 8 % for a new, unknown park down to 2 % for a top-rated, high-level one (average of the two); 1 % with a bank sponsor.
+    "bestInterestPermille": 20, "worstInterestPermille": 80, "sponsorInterestPermille": 10,
+    "offers": [
+      { "id": "starter", "name": "Starter loan", "principalCents": 1000000, "weeks": 10, "requiredLevel": 0 },
+      { "id": "bank", "name": "Bank loan", "principalCents": 3000000, "weeks": 20, "requiredLevel": 3 },
+      { "id": "investor", "name": "Investor loan", "principalCents": 10000000, "weeks": 52, "requiredLevel": 8 }
+    ]
+  },
+  // Land the park can buy (named parcels; outlines in cm). The old ski hill is yours at the start; the others need the
+  // park level and the price. Everything you build (paths, trails, lift stations, parking, felling) must be on your land;
+  // a lift's cable may cross land you don't own.
+  "parcels": [
+
+  ],
+  "welcome": {
+    "title": "Welcome to {park}!",
+    "paragraphs": [
+      "This is a real place: Virgin Utah. Nothing has been made up here: what you see standing is what really stands there, and the gravel tracks are the real ones.",
+      "There is no lift, so your guests pedal up the tracks and tire quickly. A T-bar (Build menu) is the first thing to save for: you have just enough money to order one on your own land. Link its valley station to a track with a gravel path (P), or nobody can reach it. Guests arrive on the track at the edge of your land.",
+      "1. Hire a worker or two in the Crew menu (C). Your crew builds everything you plan.\n2. Press T to draw your first trail: start on a road or gravel track, wind across the slope and end on a road, track or lift further down. Press Enter and the crew gets to work.",
+      "Steep real slopes rate trails harder, so use switchbacks. Trails and paths may cross brooks and rivers: the crew builds a little bridge, which takes wood. Lakes and houses are in the way. Every trail and feature earns XP. New park levels unlock harder features, more land and bigger lifts. Good luck!"
+    ]
+  },
+  "commands": [
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildParkingLot", "name": "Parking", "origin": "scenario", "spaces": 40,
+        "center": {"x": 367200, "z": 227000}, "toward": {"x": 369721, "z": 226200}
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "surface": "tarmac",
+        "points": [{"x": 369787, "z": 226409}, {"x": 364898, "z": 211008}, {"x": 362832, "z": 200364}, {"x": 363165, "z": 192886}, {"x": 366785, "z": 161393}, {"x": 366075, "z": 154465}, {"x": 362780, "z": 137788}, {"x": 361814, "z": 130183}, {"x": 360255, "z": 103851}, {"x": 358660, "z": 91049}, {"x": 358966, "z": 88174}, {"x": 360988, "z": 82956}, {"x": 371784, "z": 67591}]
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "surface": "tarmac",
+        "points": [{"x": 369787, "z": 226409}, {"x": 377540, "z": 250320}, {"x": 379163, "z": 260465}, {"x": 378680, "z": 266100}]
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "surface": "tarmac",
+        "points": [{"x": 371784, "z": 67591}, {"x": 380741, "z": 55180}, {"x": 382242, "z": 50839}, {"x": 382108, "z": 49137}, {"x": 378291, "z": 39746}, {"x": 377003, "z": 33296}, {"x": 374742, "z": 11273}, {"x": 375571, "z": 400}]
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "surface": "tarmac",
+        "points": [{"x": 371784, "z": 67591}, {"x": 375561, "z": 70276}]
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "surface": "tarmac",
+        "points": [{"x": 375561, "z": 70276}, {"x": 372668, "z": 74604}, {"x": 371364, "z": 79625}]
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "surface": "tarmac",
+        "points": [{"x": 375561, "z": 70276}, {"x": 378549, "z": 66367}]
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "surface": "tarmac",
+        "points": [{"x": 378549, "z": 66367}, {"x": 380428, "z": 67066}, {"x": 380824, "z": 66810}, {"x": 380690, "z": 65983}]
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario", "surface": "tarmac",
+        "points": [{"x": 378549, "z": 66367}, {"x": 378508, "z": 62697}, {"x": 379160, "z": 61511}]
+      }
+    },
+    {
+      "tick": 0,
+      "command": {
+        "type": "buildWay", "kind": "accessPath", "name": "", "origin": "scenario",
+        "points": [{"x": 367200, "z": 227000}, {"x": 369721, "z": 226200}]
+      }
+    }
+  ]
+}
