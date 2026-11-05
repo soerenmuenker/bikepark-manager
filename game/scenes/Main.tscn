@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://scripts/SimHost.cs" id="1_simhost"]
 [ext_resource type="Script" path="res://scripts/ui/Hud.cs" id="2_hud"]
@@ -15,6 +15,7 @@
 [ext_resource type="Script" path="res://scripts/crew/CrewView.cs" id="12_crewview"]
 [ext_resource type="Script" path="res://scripts/world/DayLight.cs" id="13_daylight"]
 [ext_resource type="Script" path="res://scripts/world/RainView.cs" id="14_rain"]
+[ext_resource type="Script" path="res://scripts/ways/RockHints.cs" id="15_rockhints"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_material"]
 sky_horizon_color = Color(0.68, 0.76, 0.86, 1)
@@ -67,6 +68,9 @@ script = ExtResource("5_wayview")
 
 [node name="WayTool" type="Node3D" parent="."]
 script = ExtResource("6_waytool")
+
+[node name="RockHints" type="Node3D" parent="."]
+script = ExtResource("15_rockhints")
 
 [node name="LiftView" type="Node3D" parent="."]
 script = ExtResource("8_lifts")

@@ -2,7 +2,7 @@ using Bikepark.Sim.Terrain;
 
 namespace Bikepark.Sim.Trails;
 
-/// <summary>A medium rock or rock face on a trail's line: only a flat drop gets across it.</summary>
+/// <summary>A boulder or rock face on a trail's line (<see cref="RockFormation.MediumRock"/> = boulder): only a flat drop gets across it.</summary>
 public sealed record RockCrossing(RockFormation Kind, long FromCm, long ToCm, long DropCm)
 {
     public long SpanCm => ToCm - FromCm;
@@ -26,7 +26,7 @@ public static class RockFeatures
 
     private const long MinFlatDropCm = 50;
 
-    private const long DeckHalfWidthCm = 90, DeckClearanceCm = 30;
+    private const long DeckHalfWidthCm = RockFinder.TrailHalfWidthCm, DeckClearanceCm = 30;
 
     /// <summary>Rocks closer together than this count as one crossing: a landing wouldn't fit between them.</summary>
     public const long NeighbourGapCm = 800;
@@ -62,7 +62,7 @@ public static class RockFeatures
         var found = new List<ScatterInstance>();
         TerrainScatter.Collect(grid, samples.Min(i => geometry.Xs[i]) / 100 - Widen, samples.Min(i => geometry.Zs[i]) / 100 - Widen,
             samples.Max(i => geometry.Xs[i]) / 100 + Widen, samples.Max(i => geometry.Zs[i]) / 100 + Widen, found);
-        return found.Where(rock => rock.Kind == ScatterKind.Rock && grid.RockFormationAt(rock.XCm, rock.ZCm) >= RockFormation.MediumRock && samples.Any(i =>
+        return found.Where(rock => rock.Kind == ScatterKind.Rock && RockClasses.Of(rock) != RockClass.Stone && samples.Any(i =>
         {
             long dx = geometry.Xs[i] - rock.XCm, dz = geometry.Zs[i] - rock.ZCm, reach = DeckHalfWidthCm + RockShapes.RadiusCm(rock);
             return dx * dx + dz * dz <= reach * reach;

@@ -13,8 +13,11 @@ namespace Bikepark.Game.Ways;
 /// <summary>
 /// Drawing tool for access paths (P) and trails (T). Left-click places a point; holding the button and dragging
 /// places points continuously. A live preview is validated every frame with the Sim's <see cref="WayPlanner"/>
-/// (red = invalid section). Backspace removes the last point, Enter plans it for the crew (enqueues a <see cref="BuildWayCommand"/>),
-/// Esc cancels. Camera controls stay as they are (right-drag orbit, middle-drag pan).
+/// (red = a stretch with an error, amber = rock the trail crosses). The line stays editable: drag a point to move it,
+/// press on the line between two points to insert one and drag it, right-click (or Delete) a point to remove it.
+/// Backspace removes the last point, Enter plans it for the crew (enqueues a <see cref="BuildWayCommand"/>); with
+/// errors the points stay and the camera goes to the first one. Esc cancels. Camera controls stay as they are
+/// (right-drag orbit, middle-drag pan: only a right click without movement removes a point).
 /// </summary>
 public partial class WayTool : Node3D
 {
@@ -42,6 +45,30 @@ public partial class WayTool : Node3D
     private readonly List<PointCm> _points = [];
     private PointCm? _cursor;
     private bool _dragging;
+
+    /// <summary>Hit radius for points and the line, in screen pixels.</summary>
+    private const float HitPixels = 12f;
+
+    /// <summary>The point being moved (left-press on a marker or on the line); -1 = none.</summary>
+    private int _editIndex = -1;
+
+    /// <summary>The point under the mouse; -1 = none.</summary>
+    private int _hoverPoint = -1;
+
+    /// <summary>Where a press on the line under the mouse would insert a point; -1 = not on the line.</summary>
+    private int _hoverInsert = -1;
+
+    /// <summary>A right press on a point: removed on release if the mouse hardly moved (else it was an orbit).</summary>
+    private (Vector2 At, int Index)? _rightPress;
+
+    /// <summary>Plan of the placed points alone (no cursor), for hit-testing the line; cached by its key.</summary>
+    private WayPlan? _basePlan;
+    private string _basePlanKey = "";
+
+    /// <summary>A stretch Enter refused that the plan itself does not flag (no flat drop fits): red until the points change.</summary>
+    private (long FromCm, long ToCm, string Points)? _badStretch;
+
+    private bool Editing => _editIndex >= 0;
 
     public ToolMode Mode { get; private set; }
 
@@ -83,6 +110,9 @@ public partial class WayTool : Node3D
         Mode = mode;
         _points.Clear();
         _dragging = false;
+        _editIndex = _hoverPoint = _hoverInsert = -1;
+        _rightPress = null;
+        _badStretch = null;
         EndRock();
         Plan = null;
         Status = mode == ToolMode.None ? "" : $"Drawing a {(mode == ToolMode.AccessPath ? "gravel access path" : mode == ToolMode.TarmacRoad ? "tarmac road" : "trail")}";
@@ -116,13 +146,16 @@ public partial class WayTool : Node3D
                     break;
                 case Key.Escape when _rockPlan is not null:
                     EndRock();
-                    Status = "Keep drawing, then Enter.";
+                    Status = "Back to drawing: drag a point to change the line, then Enter.";
                     break;
                 case Key.Escape when Mode != ToolMode.None:
                     if (_points.Count > 0) _points.Clear(); else SetMode(ToolMode.None);
                     break;
-                case Key.Backspace when _points.Count > 0:
+                case Key.Backspace when _points.Count > 0 && !Editing:
                     _points.RemoveAt(_points.Count - 1);
+                    break;
+                case Key.Delete when Mode != ToolMode.None && _rockPlan is null && !Editing && HoveredPoint() is { } index:
+                    RemovePoint(index);
                     break;
                 case Key.Enter or Key.KpEnter when Mode != ToolMode.None:
                     Build();
@@ -137,11 +170,62 @@ public partial class WayTool : Node3D
         if (Mode == ToolMode.None) return;
         if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
         {
-            _dragging = button.Pressed;
-            if (button.Pressed && CursorPoint() is { } p)
-                _points.Add(p);
+            if (!button.Pressed)
+            {
+                _dragging = false;
+                _editIndex = -1;
+            }
+            else if (CursorPoint() is { } p)
+            {
+                UpdateHover();
+                if (_hoverPoint >= 0)
+                    _editIndex = _hoverPoint; // move this point
+                else if (_hoverInsert >= 0)
+                {
+                    _points.Insert(_hoverInsert, p); // a new point on the line, moved while the button is held
+                    _editIndex = _hoverInsert;
+                }
+                else
+                {
+                    _points.Add(p);
+                    _dragging = true;
+                }
+            }
             GetViewport().SetInputAsHandled();
         }
+        // Right button: never handled here, the camera orbits with it. A click without movement on a point removes it.
+        else if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } right)
+        {
+            if (right.Pressed)
+                _rightPress = !Editing && !_dragging && HoveredPoint() is { } index ? (right.Position, index) : null;
+            else if (_rightPress is { } press)
+            {
+                _rightPress = null;
+                if (right.Position.DistanceTo(press.At) <= 4f && press.Index < _points.Count) RemovePoint(press.Index);
+            }
+        }
+    }
+
+    /// <summary>Debug (<c>--way-points=x,z;x,z;…</c>, meters): the drawn line's points, as if clicked.</summary>
+    public void SetPoints(IEnumerable<PointCm> points)
+    {
+        _points.Clear();
+        _points.AddRange(points);
+    }
+
+    private void RemovePoint(int index)
+    {
+        _points.RemoveAt(index);
+        _hoverPoint = _hoverInsert = -1;
+        Status = "Point removed. Keep drawing, then Enter.";
+    }
+
+    /// <summary>The point under the mouse right now (fresh, for key and right-button events).</summary>
+    private int? HoveredPoint()
+    {
+        if (_rockPlan is not null) return null;
+        UpdateHover();
+        return _hoverPoint >= 0 ? _hoverPoint : null;
     }
 
     public override void _Process(double delta)
@@ -151,19 +235,26 @@ public partial class WayTool : Node3D
         {
             _preview.Visible = false;
             _markers.Multimesh.VisibleInstanceCount = 0;
+            ClearIssueRocks();
             return;
         }
 
         _cursor = CursorPoint();
-        if (_dragging && _cursor is { } c && _points.Count > 0)
+        if (Editing && _cursor is { } moved && _editIndex < _points.Count)
+            _points[_editIndex] = moved;
+        else if (_dragging && _cursor is { } c && _points.Count > 0)
         {
             long dx = c.X - _points[^1].X, dz = c.Z - _points[^1].Z;
             float spacing = DragSpacingMeters * 100;
             if (dx * dx + dz * dz >= spacing * spacing) _points.Add(c);
         }
+        UpdateHover();
 
+        if (_badStretch is { } bad && bad.Points != PointsKey(_points)) _badStretch = null;
         var candidate = _points.ToList();
-        if (_rockPlan is null && !_dragging && _cursor is { } cursor && candidate.Count > 0 && candidate[^1] != cursor)
+        // Over the line, or with a refused stretch shown (its distances belong to the placed points), the cursor is no end point.
+        bool overLine = _hoverPoint >= 0 || _hoverInsert >= 0 || _badStretch is not null;
+        if (_rockPlan is null && !_dragging && !Editing && !overLine && _cursor is { } cursor && candidate.Count > 0 && candidate[^1] != cursor)
             candidate.Add(cursor);
         var sim = _host.Sim;
         Plan = candidate.Count >= 2
@@ -173,7 +264,93 @@ public partial class WayTool : Node3D
         UpdateEstimate(sim, grid, candidate);
 
         UpdatePreview(grid);
+        UpdateIssueRocks(grid);
         UpdateMarkers(grid, candidate);
+    }
+
+    private static string PointsKey(IEnumerable<PointCm> points) => string.Join(';', points);
+
+    /// <summary>
+    /// Which point or stretch of the line is under the mouse, tested in screen space against the markers and the
+    /// plan of the placed points alone. Nothing while moving a point, adding by dragging or placing a flat drop.
+    /// </summary>
+    private void UpdateHover()
+    {
+        _hoverPoint = _hoverInsert = -1;
+        if (Mode == ToolMode.None || _rockPlan is not null || Editing || _dragging || _terrain.Grid is not { } grid) return;
+        var camera = _camera.Camera;
+        var mouse = GetViewport().GetMousePosition();
+        bool OnScreen(Vector3 world, out Vector2 screen)
+        {
+            screen = default;
+            if (camera.IsPositionBehind(world)) return false;
+            screen = camera.UnprojectPosition(world);
+            return true;
+        }
+
+        float best = HitPixels;
+        for (int i = 0; i < _points.Count; i++)
+        {
+            var p = _points[i];
+            if (!OnScreen(new Vector3(p.X / 100f, grid.HeightAt(p.X, p.Z) / 100f + 0.6f, p.Z / 100f), out var s)) continue;
+            float d = s.DistanceTo(mouse);
+            if (d <= best)
+            {
+                best = d;
+                _hoverPoint = i;
+            }
+        }
+        if (_hoverPoint >= 0 || _points.Count < 2) return;
+
+        // The line: the derived geometry of the placed points (it curves between them and may snap onto a junction).
+        var sim = _host.Sim;
+        string key = $"{Kind}:{sim.State.WaysRevision}:{sim.State.TerrainRevision}:{PointsKey(_points)}";
+        if (key != _basePlanKey)
+        {
+            _basePlanKey = key;
+            _basePlan = WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, _points, Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State), rockChoice: RockChoice());
+        }
+        if (_basePlan?.Geometry is not { } g) return;
+        float bestLine = HitPixels;
+        Vector3? hit = null;
+        Vector2 previous = default;
+        bool hasPrevious = false;
+        for (int i = 0; i < g.SampleCount; i++)
+        {
+            var world = WayMeshes.ToWorld(g.PositionAt(g.Distances[i])) + Vector3.Up * 0.15f;
+            if (!OnScreen(world, out var s))
+            {
+                hasPrevious = false;
+                continue;
+            }
+            if (hasPrevious)
+            {
+                var closest = Geometry2D.GetClosestPointToSegment(mouse, previous, s);
+                float d = closest.DistanceTo(mouse);
+                if (d <= bestLine)
+                {
+                    bestLine = d;
+                    hit = world;
+                }
+            }
+            previous = s;
+            hasPrevious = true;
+        }
+        if (hit is not { } on) return;
+        // Insert after the control point whose stretch (as a straight line) passes closest to the hit.
+        var at = new Vector2(on.X, on.Z);
+        float nearest = float.MaxValue;
+        for (int k = 0; k + 1 < _points.Count; k++)
+        {
+            var a = new Vector2(_points[k].X / 100f, _points[k].Z / 100f);
+            var b = new Vector2(_points[k + 1].X / 100f, _points[k + 1].Z / 100f);
+            float d = Geometry2D.GetClosestPointToSegment(at, a, b).DistanceTo(at);
+            if (d < nearest)
+            {
+                nearest = d;
+                _hoverInsert = k + 1;
+            }
+        }
     }
 
     private WayKind Kind => Mode == ToolMode.Trail ? WayKind.Trail : WayKind.AccessPath;
@@ -209,7 +386,14 @@ public partial class WayTool : Node3D
         var plan = WayPlanner.Plan(grid, sim.Network, sim.State.TrailRules, Kind, _points, Bikepark.Sim.Land.LandMath.OwnedPredicate(sim.State), rockChoice: RockChoice());
         if (!plan.IsValid)
         {
-            Status = plan.FirstError ?? "Not valid.";
+            var error = plan.Issues.FirstOrDefault(i => i.Severity == IssueSeverity.Error && i.AtCm >= 0)
+                        ?? plan.Issues.First(i => i.Severity == IssueSeverity.Error);
+            if (error.AtCm >= 0 && plan.Geometry is { } g)
+            {
+                FocusOn(g, error.AtCm, Math.Max(error.AtCm, error.ToCm));
+                Status = $"{error.Message} Drag a point to fix it.";
+            }
+            else Status = error.Message;
             return;
         }
         if (plan.RockCrossings.Count > 0)
@@ -272,7 +456,8 @@ public partial class WayTool : Node3D
         if (option.Type is not { } type)
         {
             EndRock();
-            Status = "No flat drop fits this rock. Keep drawing, then Enter.";
+            _badStretch = (crossing.FromCm, crossing.ToCm, PointsKey(_points));
+            Status = "No flat drop fits this rock (in red). Drag a point to go around it, then Enter.";
             return;
         }
         _dropIndex = index;
@@ -369,7 +554,12 @@ public partial class WayTool : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         });
         AddChild(_rockMarker);
-        var middle = g.PositionAt((crossing.FromCm + crossing.ToCm) / 2);
+        FocusOn(g, crossing.FromCm, crossing.ToCm);
+    }
+
+    private void FocusOn(WayGeometry g, long fromCm, long toCm)
+    {
+        var middle = g.PositionAt((fromCm + toCm) / 2);
         _camera.FocusOn(new Vector2(middle.X / 100f, middle.Z / 100f));
     }
 
@@ -430,12 +620,17 @@ public partial class WayTool : Node3D
             return;
         }
 
-        // Color by gradient per segment; a problem with the whole way (e.g. not connected) dims it.
+        // Color by gradient per segment; stretches with an error red, rock on the line amber; a problem with the
+        // whole way (e.g. not connected) dims it.
         var rules = _host.Sim.State.TrailRules;
         bool wholeWayProblem = Plan.Issues.Any(i => i.Severity == IssueSeverity.Error && i.AtCm < 0);
+        var (errors, rocks) = IssueStretches(Plan, g);
         Color ColorAt(int i)
         {
-            var segment = g.Segments[g.SegmentIndexAt(g.Distances[i])];
+            long at = g.Distances[i];
+            if (errors.Any(s => at >= s.FromCm && at <= s.ToCm)) return IssueRed;
+            if (rocks.Any(s => at >= s.FromCm && at <= s.ToCm)) return IssueAmber;
+            var segment = g.Segments[g.SegmentIndexAt(at)];
             var color = WayMeshes.GradientColor(Kind, segment.GradientTenths, rules);
             return wholeWayProblem ? color.Lerp(new Color(0.35f, 0.35f, 0.35f), 0.55f) : color;
         }
@@ -445,11 +640,90 @@ public partial class WayTool : Node3D
         _preview.Visible = true;
     }
 
+    private static readonly Color IssueRed = new(0.95f, 0.15f, 0.12f);
+    private static readonly Color IssueAmber = new(1f, 0.68f, 0.1f);
+    private static readonly HashSet<string> RockCodes = ["rockCrossing", "stoneField", "rockFace", "rockTooBig", "mediumRock"];
+
+    /// <summary>
+    /// The plan's located problems: error stretches, and rock warnings (dense stone fields come without a stretch:
+    /// taken from the geometry's rock). Plus a stretch Enter refused (<see cref="_badStretch"/>).
+    /// </summary>
+    private (List<(long FromCm, long ToCm, bool Rock)> Errors, List<(long FromCm, long ToCm, bool Rock)> Rocks) IssueStretches(WayPlan plan, WayGeometry g)
+    {
+        var errors = new List<(long, long, bool)>();
+        var rocks = new List<(long, long, bool)>();
+        foreach (var issue in plan.Issues)
+        {
+            bool rock = RockCodes.Contains(issue.Code);
+            if (issue.AtCm >= 0)
+            {
+                var stretch = (issue.AtCm, Math.Max(issue.AtCm, issue.ToCm), rock);
+                if (issue.Severity == IssueSeverity.Error) errors.Add(stretch);
+                else if (rock) rocks.Add(stretch);
+            }
+            else if (issue.Code == "stoneField")
+                foreach (var r in g.Rocks)
+                    if (r.Kind == RockFormation.DenseStones)
+                        rocks.Add((g.Distances[r.From], g.Distances[r.To], true));
+        }
+        if (_badStretch is { } bad) errors.Add((bad.FromCm, bad.ToCm, true));
+        return (errors, rocks);
+    }
+
+    private Node3D? _issueRocks;
+    private string _issueRocksKey = "";
+    private StandardMaterial3D? _redRock, _amberRock;
+
+    /// <summary>The rocks on the plan's rock stretches, see-through on top (red: in the way, amber: crossed); rebuilt when the plan's points change.</summary>
+    private void UpdateIssueRocks(Bikepark.Sim.Terrain.TerrainGrid grid)
+    {
+        if (_rockPlan is not null || Plan?.Geometry is not { } g)
+        {
+            ClearIssueRocks();
+            return;
+        }
+        var (errors, rocks) = IssueStretches(Plan, g);
+        errors.RemoveAll(s => !s.Rock);
+        string key = errors.Count + rocks.Count == 0 ? "" : $"{PointsKey(Plan.Points)}|{string.Join(',', errors)}|{string.Join(',', rocks)}";
+        if (key == _issueRocksKey) return;
+        ClearIssueRocks();
+        _issueRocksKey = key;
+        if (key == "") return;
+        _redRock ??= RockMaterial(new Color(1f, 0.08f, 0.05f, 0.62f));
+        _amberRock ??= RockMaterial(new Color(1f, 0.65f, 0.05f, 0.55f));
+        _issueRocks = new Node3D { Name = "IssueRocks" };
+        foreach (var s in errors)
+            _issueRocks.AddChild(_terrain.BuildRockHighlight(RockFeatures.RocksOn(grid, g, s.FromCm, s.ToCm), _redRock));
+        foreach (var s in rocks)
+            _issueRocks.AddChild(_terrain.BuildRockHighlight(RockFeatures.RocksOn(grid, g, s.FromCm, s.ToCm), _amberRock));
+        AddChild(_issueRocks);
+    }
+
+    private void ClearIssueRocks()
+    {
+        _issueRocks?.QueueFree();
+        _issueRocks = null;
+        _issueRocksKey = "";
+    }
+
+    private static StandardMaterial3D RockMaterial(Color color)
+    {
+        var material = FeatureMeshes.CreateGhostMaterial();
+        material.AlbedoColor = color;
+        material.VertexColorUseAsAlbedo = false;
+        return material;
+    }
+
     private void UpdateMarkers(Bikepark.Sim.Terrain.TerrainGrid grid, List<PointCm> candidate)
     {
         var markers = new List<(Vector3 Position, Color Color, float Scale)>();
-        foreach (var p in _points)
-            markers.Add((new Vector3(p.X / 100f, grid.HeightAt(p.X, p.Z) / 100f + 0.6f, p.Z / 100f), new Color(1, 1, 1), 1f));
+        for (int i = 0; i < _points.Count; i++)
+        {
+            var p = _points[i];
+            bool active = i == _hoverPoint || i == _editIndex;
+            markers.Add((new Vector3(p.X / 100f, grid.HeightAt(p.X, p.Z) / 100f + 0.6f, p.Z / 100f),
+                active ? new Color(0.35f, 0.85f, 1f) : new Color(1, 1, 1), active ? 1.9f : 1f));
+        }
 
         // Snap rings: where the ends attach to the network.
         var sim = _host.Sim;
@@ -465,7 +739,9 @@ public partial class WayTool : Node3D
                 if (hubId != 0 && sim.Network.FindHub(hubId) is { } hub)
                     markers.Add((new Vector3(point.X / 100f, hub.Pad.TargetHeightCm / 100f + 0.8f, point.Z / 100f), new Color(0.2f, 1f, 0.4f), 2.2f));
         }
-        if (_cursor is { } c)
+        if (_hoverInsert >= 0 && _cursor is { } onLine)
+            markers.Add((new Vector3(onLine.X / 100f, grid.HeightAt(onLine.X, onLine.Z) / 100f + 0.6f, onLine.Z / 100f), new Color(0.35f, 0.85f, 1f), 1.4f));
+        else if (_cursor is { } c && _hoverPoint < 0 && !Editing)
         {
             int snap = sim.State.TrailRules.SnapRadiusMeters * 100;
             bool nearNetwork = sim.Network.Nearest(c.X, c.Z, snap) is not null || sim.Network.HubAt(c.X, c.Z, snap) is not null;

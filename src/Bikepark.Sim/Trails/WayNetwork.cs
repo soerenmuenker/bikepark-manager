@@ -213,13 +213,14 @@ public sealed class WayNetwork
     /// <summary>Riders may ride it: paths always; trails when open (<see cref="Way.IsRideable"/>) and connected.</summary>
     public bool IsRideable(Way way) => way.Kind != WayKind.Trail || way.IsRideable && IsConnected(way) && !IsBlockedByRock(way);
 
-    /// <summary>A trail with rock on its line that no built wooden feature gets across yet (or any more).</summary>
+    /// <summary>A trail with a boulder or face on its line whose planned flat drop isn't built yet.</summary>
     public bool IsBlockedByRock(Way way)
     {
         if (way.Kind != WayKind.Trail || !_geometries.TryGetValue(way.Id, out var geometry)) return false;
-        var built = FeaturesOn(way.Id).Where(f => f.Feature.Built && f.Type.CrossesRock != Terrain.RockFormation.None).ToList();
+        // Only a drop still to build keeps it closed: a trail built before a rock counted there stays open.
+        var drops = FeaturesOn(way.Id).Where(f => f.Type.CrossesRock != Terrain.RockFormation.None).ToList();
         foreach (var crossing in RockFeatures.Crossings(geometry))
-            if (!built.Any(f => f.StartCm <= crossing.FromCm && f.EndCm >= crossing.ToCm)) return true;
+            if (drops.Any(f => !f.Feature.Built && f.StartCm <= crossing.FromCm && f.EndCm >= crossing.ToCm)) return true;
         return false;
     }
 

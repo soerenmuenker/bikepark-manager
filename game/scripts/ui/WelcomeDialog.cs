@@ -56,7 +56,7 @@ internal sealed partial class WelcomeDialog : PanelContainer
             "so there is nothing to lose. The whole mountain is yours, everything is unlocked, and nothing here is saved.",
             "The gondola runs with rented bike access, and three trails start at its top: Flow Country, a long blue down the open " +
             "west flank; Red Rocket, a red line along the ridge east of the old hiking route; and Granite Drops, a short black line " +
-            "with five flat drops over the rocks below the plateau. No way crosses another, so riders never collide. Bars, a campground " +
+            "with two flat drops off the boulders below the plateau. No way crosses another, so riders never collide. Bars, a campground " +
             "and a bike shop wait in the valley.",
             "Want it faster still? Open the game menu (☰ at the bottom right) and switch on \"Instant build\": paths, trails, " +
             "features, lifts and buildings then appear at once, without a crew job. Switch Zen mode off in the same menu to see " +

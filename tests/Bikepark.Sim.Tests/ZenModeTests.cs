@@ -111,7 +111,7 @@ public class ZenModeTests
         Assert.All(trails, t => Assert.All(t.Features, f => Assert.True(f.Built)));
 
         var granite = trails.Single(t => t.Name == "Granite Drops");
-        Assert.Equal(5, granite.Features.Count(f => f.TypeId == "flat_drop"));
+        Assert.Equal(2, granite.Features.Count(f => f.TypeId == "flat_drop"));
         Assert.All(trails.Where(t => t != granite), t => Assert.Empty(RockFeatures.Crossings(sim.Network.Geometry(t.Id)))); // no rock on the others
     }
 

@@ -11,6 +11,9 @@ public enum RockShape : byte
     Ledged0 = 5,
     Ledged1 = 6,
     Ledged2 = 7,
+
+    /// <summary>A boulder: a level top flush with the hillside above it, a sheer face down the fall line (yaw points downhill, +X of the mesh).</summary>
+    DropBlock = 8,
 }
 
 /// <summary>How far each shape reaches: the meshes are fitted to these numbers, so the rules and the view agree.</summary>
@@ -18,7 +21,7 @@ public static class RockShapes
 {
     public const int LooseCount = 5, LedgedCount = 3;
 
-    /// <summary>Radius and height above the ground, in cm at scale 1.</summary>
+    /// <summary>Radius and height above the ground, in cm at scale 1. A drop block reaches <see cref="DropBlockDepth"/> times its height below its origin.</summary>
     public static (int RadiusCm, int HeightCm) Size(RockShape shape) => shape switch
     {
         RockShape.Slab => (120, 50),
@@ -26,10 +29,17 @@ public static class RockShapes
         RockShape.Wedge => (100, 85),
         RockShape.Fin => (65, 125),
         RockShape.Split => (110, 70),
+        RockShape.DropBlock => (150, 100),
         _ => (125, 105),
     };
+
+    /// <summary>A drop block's body below its origin, in heights: deep enough to stay buried on the steepest slope.</summary>
+    public const int DropBlockDepth = 4;
 
     public static long RadiusCm(ScatterInstance rock) => (long)rock.ScalePermille * Size(rock.Shape).RadiusCm / 1000;
 
     public static long HeightCm(ScatterInstance rock) => (long)rock.ScalePermille * Size(rock.Shape).HeightCm / 1000;
+
+    /// <summary>The highest scale a loose shape may have and still be a stone (<see cref="RockClasses.StoneMaxHeightCm"/>).</summary>
+    public static int StoneMaxScale(RockShape shape) => RockClasses.StoneMaxHeightCm * 1000 / Size(shape).HeightCm;
 }

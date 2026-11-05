@@ -315,18 +315,20 @@ public partial class TerrainView : Node3D
         _rockCount += rockItems.Count;
     }
 
-    /// <summary>A dense stone field stays on a trail: it is what makes the trail black. A gravel path clears it.</summary>
+    /// <summary>A stone field stays on a trail: it is what makes the trail black (the trail's own rocks say where). A gravel path clears it.</summary>
     private bool DenseFieldOnTrail(TerrainGrid grid, ScatterInstance item)
     {
-        if (item.Kind != ScatterKind.Rock || grid.RockFormationAt(item.XCm, item.ZCm) != RockFormation.DenseStones) return false;
+        if (item.Kind != ScatterKind.Rock || RockClasses.Of(item) != RockClass.Stone) return false;
         var network = _host.Sim.Network;
-        return network.Nearest(item.XCm, item.ZCm, 300) is { } near && network.FindWay(near.WayId) is { Kind: WayKind.Trail };
+        if (network.Nearest(item.XCm, item.ZCm, 300) is not { } near || network.FindWay(near.WayId) is not { Kind: WayKind.Trail }) return false;
+        var g = network.Geometry(near.WayId);
+        return g.Rocks.Any(r => r.Kind == RockFormation.DenseStones && near.DistanceCm >= g.Distances[r.From] - 300 && near.DistanceCm <= g.Distances[r.To] + 300);
     }
 
     /// <summary>A flat drop's deck rests on the rock: it stays, also while the drop is only planned.</summary>
     private bool UnderFlatDrop(ScatterInstance item)
     {
-        if (item.Kind != ScatterKind.Rock || _host.Sim.Terrain.RockFormationAt(item.XCm, item.ZCm) < RockFormation.MediumRock) return false;
+        if (item.Kind != ScatterKind.Rock || RockClasses.Of(item) == RockClass.Stone) return false;
         var network = _host.Sim.Network;
         return network.NearestTrail(item.XCm, item.ZCm, RockKeepRadiusCm) is { } near
             && network.FeaturesOn(near.WayId).Any(f => f.Type.Kind == FeatureKind.FlatDrop && near.DistanceCm >= f.StartCm && near.DistanceCm <= f.EndCm);

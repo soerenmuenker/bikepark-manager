@@ -228,9 +228,12 @@ public static class StructurePlanner
 
         if (checkLand && grid.HasRockFormations)
         {
-            bool rocky = false;
-            ForEachSampleInside(grid, pad, (x, z) => rocky |= grid.RockFormationAt(x * 100L, z * 100L) >= RockFormation.MediumRock);
-            if (rocky) issues.Add(Error("onRock", $"{what}: big rocks are in the way."));
+            // The boulders and faces that stand there, not the ground under them.
+            int reach = Math.Max(pad.HalfLengthCm, pad.HalfWidthCm) / 100 + 20;
+            var rocks = new List<ScatterInstance>();
+            TerrainScatter.Collect(grid, Math.Max(0, pad.CenterX / 100 - reach), Math.Max(0, pad.CenterZ / 100 - reach), pad.CenterX / 100 + reach, pad.CenterZ / 100 + reach, rocks, rocksOnly: true);
+            if (rocks.Any(r => r.Kind == ScatterKind.Rock && RockClasses.Of(r) != RockClass.Stone && pad.DistanceOutside(r.XCm, r.ZCm) <= RockShapes.RadiusCm(r)))
+                issues.Add(Error("onRock", $"{what}: big rocks are in the way."));
         }
 
         if (state.TerrainEdits.Any(e => PadsOverlap(e.Pad, pad)))

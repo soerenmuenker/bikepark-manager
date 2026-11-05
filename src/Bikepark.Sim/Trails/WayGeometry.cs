@@ -59,7 +59,7 @@ public readonly record struct WayPoint(int X, int Y, int Z, int DirX, int DirZ);
 /// <summary>A stretch of a way over water: first and last sample.</summary>
 public readonly record struct WayBridge(int From, int To);
 
-/// <summary>A stretch of a way through a rock formation: first and last sample.</summary>
+/// <summary>A stretch of a way past rocks that stand there (<see cref="RockFinder"/>): stones, a stone field, a boulder or a face; first and last sample.</summary>
 public readonly record struct WayRock(RockFormation Kind, int From, int To);
 
 /// <summary>
@@ -126,7 +126,7 @@ public sealed class WayGeometry
     /// <summary>Length of all <see cref="Bridges"/>, whole meters, at least 1 each.</summary>
     public int BridgeMeters => Bridges.Sum(b => (int)Math.Max(1, (_distance[b.To] - _distance[b.From] + 99) / 100));
 
-    /// <summary>Where the way runs through rock formations (none for scenario ways: they already exist).</summary>
+    /// <summary>Where the way runs past rocks (none for scenario ways: they already exist).</summary>
     public IReadOnlyList<WayRock> Rocks { get; private init; } = [];
 
     /// <summary>A dense stone field on a trail: difficulty of the stretch, as hard as a Rock garden, so the trail is black.</summary>
@@ -236,7 +236,7 @@ public sealed class WayGeometry
         var x = xs.ToArray();
         var z = zs.ToArray();
         var segments = BuildSegments(grid, kind, x, y, z, distance, segmentLengthCm);
-        var rocks = ignoreRocks || deck ? [] : FindRocks(grid, x, z);
+        var rocks = ignoreRocks || deck ? [] : RockFinder.Find(grid, kind, x, z);
         if (kind == WayKind.Trail) ApplyRocks(segments, rocks, distance);
         if (features is { Count: > 0 })
             ApplyFeatures(segments, features);
@@ -290,27 +290,6 @@ public sealed class WayGeometry
         if (from >= 0) bridges.Add(new WayBridge(from, last));
         return bridges;
     }
-
-    private static List<WayRock> FindRocks(TerrainGrid grid, int[] x, int[] z)
-    {
-        var rocks = new List<WayRock>();
-        if (!grid.HasRockFormations) return rocks;
-        int from = 0;
-        for (int i = 1; i <= x.Length; i++)
-        {
-            var kind = grid.RockFormationAt(x[from], z[from]);
-            if (i < x.Length && grid.RockFormationAt(x[i], z[i]) == kind) continue;
-            // Clipping a corner of a field or rock is no crossing; a rock face is never clipped.
-            int needed = kind switch { RockFormation.None => int.MaxValue, RockFormation.RockFace => 1, RockFormation.DenseStones => MinDenseSamples, _ => MinRockSamples };
-            if (i - from >= needed)
-                rocks.Add(new WayRock(kind, from, i - 1));
-            from = i;
-        }
-        return rocks;
-    }
-
-    private const int MinRockSamples = 2;
-    private const int MinDenseSamples = 5;
 
     private static void ApplyRocks(WaySegment[] segments, List<WayRock> rocks, long[] distance)
     {

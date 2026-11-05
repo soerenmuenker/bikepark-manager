@@ -282,23 +282,23 @@ public static class WayPlanner
                 if (rock.Kind == RockFormation.RockFace)
                     issues.Add(Error("rockFace", "A rock face is in the way: build around it.", from, to));
                 else if (rock.Kind == RockFormation.MediumRock)
-                    issues.Add(Error("mediumRock", "A big rock is in the way: a gravel path has to go around it.", from, to));
+                    issues.Add(Error("mediumRock", "A boulder is in the way: a gravel path has to go around it.", from, to));
             }
         foreach (var crossing in RockFeatures.Crossings(geometry))
         {
             var options = choice is null ? [] : RockFeatures.Options(grid, geometry, rules, choice, crossing);
             if (options.Any(o => o.Reason is null))
-                issues.Add(new WayIssue(IssueSeverity.Warning, "rockCrossing", $"Rock at {crossing.FromCm / 100} m: you place a flat drop when you finish the trail.", crossing.FromCm, crossing.ToCm));
+                issues.Add(new WayIssue(IssueSeverity.Warning, "rockCrossing", $"{(crossing.Kind == RockFormation.RockFace ? "Rock face" : "Boulder")} at {crossing.FromCm / 100} m: you place a flat drop off it when you finish the trail.", crossing.FromCm, crossing.ToCm));
             else
             {
                 string code = crossing.Kind == RockFormation.RockFace ? "rockFace" : "rockTooBig";
-                string what = crossing.Kind == RockFormation.RockFace ? "A rock face" : "A big rock";
+                string what = crossing.Kind == RockFormation.RockFace ? "A rock face" : "A boulder";
                 string why = options.Count == 0 ? "" : " " + string.Join(" ", options.Select(o => $"{o.Type.Name}: {o.Reason}"));
                 issues.Add(Error(code, $"{what} is in the way ({crossing.SpanCm / 100} m wide, {crossing.DropCm / 100} m down): build around it.{why}", crossing.FromCm, crossing.ToCm));
             }
         }
         if (kind == WayKind.Trail && geometry.RockMeters(RockFormation.DenseStones) > 0)
-            issues.Add(Warning("stoneField", $"Runs through a dense stone field ({geometry.RockMeters(RockFormation.DenseStones)} m): this trail will be black."));
+            issues.Add(Warning("stoneField", $"Stone field ({geometry.RockMeters(RockFormation.DenseStones)} m): the stones stay, this trail will be black."));
         if (geometry.StoneMeters > 0)
             issues.Add(Warning("clearStones", $"The crew clears stones along {geometry.StoneMeters} m: extra work."));
     }

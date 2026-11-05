@@ -51,6 +51,7 @@ internal static class TerrainMeshBuilder
         var normals = new Vector3[vertexCount];
         var colors = new Color[vertexCount];
         var uv2 = new Vector2[vertexCount];
+        var uv = new Vector2[vertexCount]; // x: 1 in a stone field (scree tint, looks only)
         var indices = new List<int>((cellsX * cellsZ + 2 * cellsX + 2 * cellsZ) * 6);
 
         for (int iz = 0; iz < sideZ; iz++)
@@ -64,6 +65,7 @@ internal static class TerrainMeshBuilder
                 normals[v] = Normal(grid, sx, sz);
                 colors[v] = new Color(sample.TreeDensity / 255f, sample.Rock / 255f, sample.Roots / 255f, sample.WaterDepthCm / 255f);
                 uv2[v] = new Vector2((float)sample.Surface, sample.SlopePermille / 1000f);
+                uv[v] = new Vector2(grid.RockFormationAt(sx * 100L, sz * 100L) == RockFormation.DenseStones ? 1f : 0f, 0f);
             }
         }
 
@@ -89,6 +91,7 @@ internal static class TerrainMeshBuilder
                 normals[next] = normals[src];
                 colors[next] = colors[src];
                 uv2[next] = uv2[src];
+                uv[next] = uv[src];
                 next++;
             }
             for (int k = 0; k < edge.Length - 1; k++)
@@ -101,6 +104,7 @@ internal static class TerrainMeshBuilder
         arrays[(int)Mesh.ArrayType.Normal] = normals;
         arrays[(int)Mesh.ArrayType.Color] = colors;
         arrays[(int)Mesh.ArrayType.TexUV2] = uv2;
+        arrays[(int)Mesh.ArrayType.TexUV] = uv;
         arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
 
         var mesh = new ArrayMesh();

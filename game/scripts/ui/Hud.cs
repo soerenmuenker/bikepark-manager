@@ -171,6 +171,15 @@ public partial class Hud : CanvasLayer
                     _picker.Click(screen);
                 };
             }
+            else if (arg.StartsWith("--way-points=", StringComparison.Ordinal))
+            {
+                // Debug: points of the line being drawn (meters "x,z;x,z;…"), after --tool=trail|path|road.
+                var points = arg[13..].Split(';').Select(xz => xz.Split(','))
+                    .Where(xz => xz.Length == 2).Select(xz => new PointCm(
+                        (int)(float.Parse(xz[0], System.Globalization.CultureInfo.InvariantCulture) * 100),
+                        (int)(float.Parse(xz[1], System.Globalization.CultureInfo.InvariantCulture) * 100))).ToList();
+                _ctx.Ways.SetPoints(points);
+            }
             else if (arg == "--follow") _followOnStart = true;
         }
     }
@@ -801,6 +810,7 @@ public partial class Hud : CanvasLayer
         else if (ways.Mode != WayTool.ToolMode.None)
         {
             lines.Add($"{ways.Status}   ·   {ways.PointCount} points");
+            if (ways.PointCount > 0) lines.Add("Drag points to move · click the line to add · right-click removes");
             if (ways.Plan is { Geometry: { } g } plan)
             {
                 string kind = plan.Kind == WayKind.Trail ? $" · {WayMeshes.RatingText(g)}, difficulty {g.DifficultyScore}" : "";

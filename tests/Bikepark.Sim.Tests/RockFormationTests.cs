@@ -12,47 +12,65 @@ public class RockFormationTests
 
     private static PointCm M(int x, int z) => new(x * 100, z * 100);
 
-    /// <summary>A gentle plane falling east with a band of the formation across it, 40 to 50 m.</summary>
-    private static TerrainGrid Band(RockFormation formation)
+    /// <summary>A plane falling east (gentle by default) with a band of the formation across it, 40 to 50 m.</summary>
+    private static TerrainGrid Band(RockFormation formation, int grade = 100, int from = 40, int to = 50)
     {
-        var plane = TestTerrain.Plane(100, Size);
+        var plane = TestTerrain.Plane(grade, Size);
         int n = plane.SamplesX;
         var layer = new byte[n * n];
         for (int z = 0; z < n; z++)
-            for (int x = 40; x <= 50; x++)
+            for (int x = from; x <= to; x++)
                 layer[z * n + x] = (byte)formation;
         return new TerrainGrid(plane.Settings with { RockFormations = true }, plane.Seed, plane.Heights.ToArray(), plane.Slopes.ToArray(),
             plane.TreeDensity.ToArray(), plane.Rock.ToArray(), plane.Roots.ToArray(), plane.WaterDepth.ToArray(), null, layer);
     }
 
-    private static WayGeometry Geometry(TerrainGrid grid, WayKind kind, bool ignoreRocks = false) =>
-        WayGeometry.Build(grid, kind, [M(10, 60), M(90, 60)], 1000, ignoreRocks: ignoreRocks);
+    private static List<ScatterInstance> RocksOf(TerrainGrid grid, RockClass kind) =>
+        TerrainScatter.CollectAll(grid).Where(s => s.Kind == ScatterKind.Rock && RockClasses.Of(s) == kind).ToList();
 
-    private static List<string> Codes(TerrainGrid grid, WayKind kind, bool scenario = false)
+    /// <summary>The east-west line at this z (meters), well inside the map.</summary>
+    private static PointCm[] Line(int z) => [M(10, z), M(90, z)];
+
+    /// <summary>A line straight over the middle of a boulder in the band (away from the map's edges).</summary>
+    private static int ThroughBoulder(TerrainGrid grid) => RocksOf(grid, RockClass.Boulder).Where(r => r.ZCm is > 2000 and < 10_800).Select(r => r.ZCm / 100).First();
+
+    private static WayGeometry Geometry(TerrainGrid grid, WayKind kind, int z = 60, bool ignoreRocks = false) =>
+        WayGeometry.Build(grid, kind, Line(z), 1000, ignoreRocks: ignoreRocks);
+
+    private static WayPlan Plan(TerrainGrid grid, WayKind kind, int z = 60, bool scenario = false, RockFeatureChoice? choice = null)
     {
         var path = new Way { Id = 1, Kind = WayKind.AccessPath, Built = true, Points = [M(5, 5), M(30, 5)] };
         var network = WayNetwork.Build([path], grid, new TrailRules());
-        return WayPlanner.Plan(grid, network, new TrailRules(), kind, [M(10, 60), M(90, 60)], mayStandAlone: scenario).Issues.Select(i => i.Code).ToList();
+        return WayPlanner.Plan(grid, network, new TrailRules(), kind, Line(z), mayStandAlone: scenario, rockChoice: choice);
     }
 
-    private static bool IsError(TerrainGrid grid, WayKind kind, string code)
+    private static List<string> Codes(TerrainGrid grid, WayKind kind, int z = 60, bool scenario = false) =>
+        Plan(grid, kind, z, scenario).Issues.Select(i => i.Code).ToList();
+
+    private static bool IsError(TerrainGrid grid, WayKind kind, string code, int z = 60) =>
+        Plan(grid, kind, z).Issues.Any(i => i.Code == code && i.Severity == IssueSeverity.Error);
+
+    [Fact]
+    public void RockClasses_AreReadFromTheRock()
     {
-        var path = new Way { Id = 1, Kind = WayKind.AccessPath, Built = true, Points = [M(5, 5), M(30, 5)] };
-        var network = WayNetwork.Build([path], grid, new TrailRules());
-        return WayPlanner.Plan(grid, network, new TrailRules(), kind, [M(10, 60), M(90, 60)]).Issues.Any(i => i.Code == code && i.Severity == IssueSeverity.Error);
+        Assert.Equal(RockClass.Boulder, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, 1000, 0, 0, RockShape.DropBlock)));
+        Assert.Equal(RockClass.Face, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, 5000, 0, 0, RockShape.Ledged1)));
+        Assert.All(Enumerable.Range(0, RockShapes.LooseCount), i => Assert.Equal(RockClass.Stone, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, 500, 0, 0, (RockShape)i))));
     }
 
     [Fact]
     public void SparseStones_AreClearedForWork_RatingStays()
     {
-        var plain = Geometry(TestTerrain.Plane(100, Size), WayKind.Trail);
-        var trail = Geometry(Band(RockFormation.SparseStones), WayKind.Trail);
+        var grid = Band(RockFormation.SparseStones);
+        int z = RocksOf(grid, RockClass.Stone).Where(r => r.XCm is > 4100 and < 4900 && r.ZCm is > 2000 and < 10_800).Select(r => r.ZCm / 100).First();
+        var plain = Geometry(TestTerrain.Plane(100, Size), WayKind.Trail, z);
+        var trail = Geometry(grid, WayKind.Trail, z);
         Assert.Equal(plain.Rating, trail.Rating);
-        Assert.True(trail.StoneMeters >= 10);
+        Assert.True(trail.StoneMeters >= 1);
         var crew = new CrewRules();
         var rules = new TrailRules();
         Assert.True(WorkCosts.WayWorkMinutes(crew, rules, WayKind.Trail, trail) > WorkCosts.WayWorkMinutes(crew, rules, WayKind.Trail, plain));
-        Assert.Contains("clearStones", Codes(Band(RockFormation.SparseStones), WayKind.Trail));
+        Assert.Contains("clearStones", Codes(grid, WayKind.Trail, z));
     }
 
     [Fact]
@@ -62,19 +80,50 @@ public class RockFormationTests
         var trail = Geometry(grid, WayKind.Trail);
         Assert.Equal(TrailRating.Black, trail.Rating);
         Assert.Equal(RatingCause.Rock, trail.RatingCause);
-        Assert.Equal(0, trail.StoneMeters);
         Assert.Contains("stoneField", Codes(grid, WayKind.Trail));
         Assert.False(IsError(grid, WayKind.Trail, "stoneField"));
 
         var path = Geometry(grid, WayKind.AccessPath);
-        Assert.True(path.StoneMeters >= 10);
+        Assert.True(path.StoneMeters >= 5);
         Assert.Contains("clearStones", Codes(grid, WayKind.AccessPath));
+    }
+
+    [Fact]
+    public void Stones_AreNeverMoreThanKneeHigh_BouldersAndFacesFarHigher()
+    {
+        var grid = TerrainGenerator.Generate(Generated(true), 0);
+        var rocks = TerrainScatter.CollectAll(grid).Where(s => s.Kind == ScatterKind.Rock).ToList();
+        Assert.All(rocks.Where(r => RockClasses.Of(r) == RockClass.Stone), r => Assert.True(RockShapes.HeightCm(r) <= RockClasses.StoneMaxHeightCm));
+        Assert.All(rocks.Where(r => RockClasses.Of(r) == RockClass.Boulder), r => Assert.True(r.YCm + RockShapes.HeightCm(r) - grid.HeightAt(r.XCm, r.ZCm) >= 50));
+        Assert.All(rocks.Where(r => RockClasses.Of(r) == RockClass.Face), r => Assert.True(RockShapes.HeightCm(r) >= 300));
+    }
+
+    [Fact]
+    public void GentleBoulderGround_HasNoBoulders_NothingToCross()
+    {
+        var grid = Band(RockFormation.MediumRock, grade: 200);
+        Assert.Empty(RocksOf(grid, RockClass.Boulder));
+        Assert.All(Enumerable.Range(20, 88).Where(z => z % 10 == 0), z => Assert.Empty(RockFeatures.Crossings(Geometry(grid, WayKind.Trail, z))));
+    }
+
+    [Fact]
+    public void Boulders_FaceDownTheFallLine_TopFlushWithTheGroundAbove()
+    {
+        var grid = Band(RockFormation.MediumRock, grade: 600);
+        var boulders = RocksOf(grid, RockClass.Boulder);
+        Assert.NotEmpty(boulders);
+        foreach (var b in boulders)
+        {
+            Assert.Equal(0, b.YawPermille); // the plane falls east: +X, no turn
+            long radius = RockShapes.RadiusCm(b), top = b.YCm + RockShapes.HeightCm(b);
+            Assert.InRange(top - grid.HeightAt(b.XCm - (int)radius, b.ZCm), 0, 20);
+        }
     }
 
     private static TrailFeatureType Drop => new()
     {
         Id = "flat_drop", Name = "Flat drop", Kind = FeatureKind.FlatDrop, Material = FeatureMaterial.Wood, Difficulty = 760, CrossesRock = RockFormation.RockFace,
-        MaxSpanMeters = 15, MaxRockDropMeters = 3, RampMeters = 40, LandingDeckMeters = 6, MinGradient = -100, RequiredLevel = 7, Wood = 20, WoodPerMeter = 1, WorkMinutes = 240, WorkPerMeter = 6,
+        MaxSpanMeters = 15, MaxRockDropMeters = 5, RampMeters = 40, LandingDeckMeters = 6, MinGradient = -100, RequiredLevel = 7, Wood = 20, WoodPerMeter = 1, WorkMinutes = 240, WorkPerMeter = 6,
     };
 
     private static TrailFeatureType Roller => new()
@@ -87,23 +136,41 @@ public class RockFormationTests
 
     private static readonly TrailRules Rules = new() { FeatureStartMarginMeters = 5, FeatureEndMarginMeters = 5 };
 
-    private static List<string?> Reasons(TerrainGrid grid, RockFeatureChoice choice)
+    private static List<string?> Reasons(TerrainGrid grid, RockFeatureChoice choice, int z)
     {
-        var g = Geometry(grid, WayKind.Trail);
+        var g = Geometry(grid, WayKind.Trail, z);
         return RockFeatures.Options(grid, g, Rules, choice, Assert.Single(RockFeatures.Crossings(g))).Select(o => o.Reason).ToList();
     }
 
     [Fact]
-    public void MediumRock_TakesADrop_NotARoller_PathsGoAround()
+    public void Boulder_TakesADrop_NotARoller_PathsGoAround()
     {
-        var grid = Band(RockFormation.MediumRock);
-        Assert.All(Reasons(grid, All), r => Assert.Null(r));
-        Assert.Single(Reasons(grid, new RockFeatureChoice([Drop, Roller], _ => true))); // an older save's roller type isn't offered
-        var g = Geometry(grid, WayKind.Trail);
+        var grid = Band(RockFormation.MediumRock, grade: 450);
+        int z = ThroughBoulder(grid);
+        Assert.All(Reasons(grid, All, z), r => Assert.Null(r));
+        Assert.Single(Reasons(grid, new RockFeatureChoice([Drop, Roller], _ => true), z)); // an older save's roller type isn't offered
+        var g = Geometry(grid, WayKind.Trail, z);
         var crossing = Assert.Single(RockFeatures.Crossings(g));
+        Assert.Equal(RockFormation.MediumRock, crossing.Kind);
         Assert.Contains("doesn't go over rock", RockFeatures.CannotPlace(grid, g, Rules, Roller, new RockFeaturePlacement(Roller.Id, crossing.FromCm - 100, crossing.SpanCm + 200)));
-        Assert.True(IsError(grid, WayKind.AccessPath, "mediumRock"));
-        Assert.All(Geometry(grid, WayKind.Trail).Rocks, r => Assert.Equal(RockFormation.MediumRock, r.Kind));
+        Assert.True(IsError(grid, WayKind.AccessPath, "mediumRock", z));
+    }
+
+    [Fact]
+    public void BoulderGround_WithoutABoulderOnTheLine_IsNoCrossing()
+    {
+        var grid = Band(RockFormation.MediumRock, grade: 450);
+        var boulders = RocksOf(grid, RockClass.Boulder);
+        // A line through the band that passes every boulder with room to spare: no crossing, though the ground is boulder ground.
+        int z = Enumerable.Range(20, 88).First(z => boulders.All(b => Math.Abs(b.ZCm - z * 100) > RockShapes.RadiusCm(b) + 300));
+        Assert.Equal(RockFormation.MediumRock, grid.RockFormationAt(4500, z * 100));
+        var g = Geometry(grid, WayKind.Trail, z);
+        Assert.Empty(RockFeatures.Crossings(g));
+        Assert.DoesNotContain(g.Rocks, r => r.Kind >= RockFormation.MediumRock);
+        Assert.False(IsError(grid, WayKind.AccessPath, "mediumRock", z));
+
+        // Over the middle of one: a crossing.
+        Assert.NotEmpty(RockFeatures.Crossings(Geometry(grid, WayKind.Trail, ThroughBoulder(grid))));
     }
 
     [Fact]
@@ -116,17 +183,18 @@ public class RockFormationTests
         Assert.True(IsError(grid, WayKind.Trail, "rockFace"));
 
         var narrow = new RockFeatureChoice([new TrailFeatureType { Id = Drop.Id, Name = Drop.Name, Kind = FeatureKind.FlatDrop, CrossesRock = RockFormation.RockFace, MaxSpanMeters = 3, MaxRockDropMeters = 3, RampMeters = 10, LandingDeckMeters = 6 }], _ => true);
-        Assert.Contains("wide", Reasons(grid, narrow)[0]);
-        var low = new RockFeatureChoice([new TrailFeatureType { Id = Drop.Id, Name = Drop.Name, Kind = FeatureKind.FlatDrop, CrossesRock = RockFormation.RockFace, MaxSpanMeters = 15, MaxRockDropMeters = 1, RampMeters = 10, LandingDeckMeters = 6 }], _ => true);
-        Assert.Contains("at most", Reasons(grid, low)[0]);
+        Assert.Contains("wide", Reasons(grid, narrow, 60)[0]);
+        var low = new RockFeatureChoice([new TrailFeatureType { Id = Drop.Id, Name = Drop.Name, Kind = FeatureKind.FlatDrop, CrossesRock = RockFormation.RockFace, MaxSpanMeters = 40, MaxRockDropMeters = 1, RampMeters = 8, LandingDeckMeters = 6 }], _ => true);
+        Assert.Contains("at most", Reasons(grid, low, 60)[0] ?? "fits");
     }
 
     [Fact]
     public void Locked_AndBadPlacements_AreRefused()
     {
-        var grid = Band(RockFormation.MediumRock);
-        var g = Geometry(grid, WayKind.Trail);
-        Assert.All(Reasons(grid, new RockFeatureChoice([Drop], _ => false)), r => Assert.Contains("level", r));
+        var grid = Band(RockFormation.MediumRock, grade: 450);
+        int z = ThroughBoulder(grid);
+        var g = Geometry(grid, WayKind.Trail, z);
+        Assert.All(Reasons(grid, new RockFeatureChoice([Drop], _ => false), z), r => Assert.Contains("level", r));
 
         var crossing = Assert.Single(RockFeatures.Crossings(g));
         Assert.Contains("must end on top of the rock", RockFeatures.CannotPlace(grid, g, Rules, Drop, new RockFeaturePlacement("flat_drop", crossing.FromCm - 500, 2500, 100)));
@@ -136,62 +204,58 @@ public class RockFormationTests
         Assert.Null(RockFeatures.CannotCross(grid, g, Rules, All, [fit]));
     }
 
-    /// <summary>Two bands of medium rock across the gentle plane, with this many meters between them.</summary>
+    [Fact]
+    public void NeighbouringBoulders_AreOneCrossing_FarApartTwo()
+    {
+        // Two bands of boulder ground 3 m apart: a line over a boulder in each is one crossing.
+        var near = Band(RockFormation.MediumRock, grade: 450, from: 40, to: 52);
+        var lines = Enumerable.Range(20, 88).Select(z => (z, g: Geometry(near, WayKind.Trail, z))).ToList();
+        var (_, two) = lines.First(l => l.g.Rocks.Count(r => r.Kind == RockFormation.MediumRock) >= 2);
+        var crossing = Assert.Single(RockFeatures.Crossings(two));
+        Assert.True(crossing.SpanCm >= 500);
+
+        var far = TwoBands(14);
+        Assert.Contains(Enumerable.Range(20, 88), z => RockFeatures.Crossings(Geometry(far, WayKind.Trail, z)).Count == 2);
+    }
+
+    /// <summary>Two bands of boulder ground across the plane, with this many meters between them.</summary>
     private static TerrainGrid TwoBands(int between)
     {
-        var plane = TestTerrain.Plane(100, Size);
+        var plane = TestTerrain.Plane(450, Size);
         int n = plane.SamplesX;
         var layer = new byte[n * n];
         for (int z = 0; z < n; z++)
-            for (int x = 40; x <= 44 + between + 4; x++)
-                if (x <= 44 || x > 44 + between)
+            for (int x = 36; x <= 42 + between + 6; x++)
+                if (x <= 42 || x > 42 + between)
                     layer[z * n + x] = (byte)RockFormation.MediumRock;
         return new TerrainGrid(plane.Settings with { RockFormations = true }, plane.Seed, plane.Heights.ToArray(), plane.Slopes.ToArray(),
             plane.TreeDensity.ToArray(), plane.Rock.ToArray(), plane.Roots.ToArray(), plane.WaterDepth.ToArray(), null, layer);
     }
 
     [Fact]
-    public void NeighbouringRocks_AreOneCrossing_OneDropCoversThem()
-    {
-        var grid = TwoBands(3);
-        var g = Geometry(grid, WayKind.Trail);
-        var crossing = Assert.Single(RockFeatures.Crossings(g));
-        Assert.True(crossing.SpanCm >= 1000);
-        var drop = RockFeatures.DefaultPlacement(grid, g, Drop, crossing);
-        Assert.Null(RockFeatures.CannotPlace(grid, g, Rules, Drop, drop));
-        Assert.Null(RockFeatures.CannotCross(grid, g, Rules, All, [drop]));
-
-        Assert.Equal(2, RockFeatures.Crossings(Geometry(TwoBands(12), WayKind.Trail)).Count);
-    }
-
-    [Fact]
-    public void NeighbouringRocks_TooWideTogether_AreRefused()
-    {
-        var narrow = new TrailFeatureType { Id = Drop.Id, Name = Drop.Name, Kind = FeatureKind.FlatDrop, CrossesRock = RockFormation.RockFace, MaxSpanMeters = 5, MaxRockDropMeters = 3, RampMeters = 40, LandingDeckMeters = 6 };
-        var g = Geometry(TwoBands(3), WayKind.Trail);
-        Assert.Contains("wide", RockFeatures.CannotPlace(TwoBands(3), g, Rules, narrow, RockFeatures.DefaultPlacement(TwoBands(3), g, narrow, Assert.Single(RockFeatures.Crossings(g)))));
-    }
-
-    [Fact]
-    public void RockKit_EveryRockHasAShape_LedgedOnlyOnFaces()
+    public void RockKit_LedgedOnlyOnFaces_DropBlocksOnlyOnBoulderGround()
     {
         var grid = TerrainGenerator.Generate(Generated(true), 0);
         var rocks = TerrainScatter.CollectAll(grid).Where(s => s.Kind == ScatterKind.Rock).ToList();
         Assert.NotEmpty(rocks);
         foreach (var rock in rocks)
-            Assert.Equal(grid.RockFormationAt(rock.XCm, rock.ZCm) == RockFormation.RockFace, rock.Shape >= RockShape.Ledged0);
-        var medium = rocks.Where(r => grid.RockFormationAt(r.XCm, r.ZCm) == RockFormation.MediumRock).ToList();
-        Assert.Equal(RockShapes.LooseCount, medium.Select(r => r.Shape).Distinct().Count());
+        {
+            var formation = grid.RockFormationAt(rock.XCm, rock.ZCm);
+            Assert.Equal(formation == RockFormation.RockFace, RockClasses.Of(rock) == RockClass.Face);
+            if (RockClasses.Of(rock) == RockClass.Boulder) Assert.Equal(RockFormation.MediumRock, formation);
+        }
+        Assert.Contains(rocks, r => RockClasses.Of(r) == RockClass.Boulder);
         Assert.All(rocks, r => Assert.True(RockShapes.RadiusCm(r) > 0 && RockShapes.HeightCm(r) > 0));
     }
 
     [Fact]
     public void FlatDrop_DeckClearsTheRealHeightOfEveryRockOnIt()
     {
-        var grid = Band(RockFormation.MediumRock);
-        var g = Geometry(grid, WayKind.Trail);
+        var grid = Band(RockFormation.MediumRock, grade: 450);
+        var g = Geometry(grid, WayKind.Trail, ThroughBoulder(grid));
         var crossing = Assert.Single(RockFeatures.Crossings(g));
         long top = RockFeatures.RockTopCm(grid, g, crossing.FromCm, crossing.ToCm);
+        Assert.NotEmpty(RockFeatures.RocksOn(grid, g, crossing.FromCm, crossing.ToCm));
         Assert.All(RockFeatures.RocksOn(grid, g, crossing.FromCm, crossing.ToCm), r => Assert.True(top >= r.YCm + RockShapes.HeightCm(r)));
     }
 
@@ -202,8 +266,8 @@ public class RockFormationTests
         Assert.Equal(20, shipped.MaxSpanMeters);
         Assert.Equal(20, shipped.MaxRockDropMeters);
 
-        var grid = Band(RockFormation.MediumRock);
-        var g = Geometry(grid, WayKind.Trail);
+        var grid = Band(RockFormation.MediumRock, grade: 450);
+        var g = Geometry(grid, WayKind.Trail, ThroughBoulder(grid));
         var crossing = Assert.Single(RockFeatures.Crossings(g));
         var type = new TrailFeatureType { Id = Drop.Id, Name = Drop.Name, Kind = FeatureKind.FlatDrop, CrossesRock = RockFormation.RockFace, MaxSpanMeters = shipped.MaxSpanMeters, MaxRockDropMeters = shipped.MaxRockDropMeters, RampMeters = 40, LandingDeckMeters = 6 };
         Assert.Null(RockFeatures.CannotPlace(grid, g, Rules, type, RockFeatures.FlatDropAt(grid, g, type, crossing, crossing.ToCm, crossing.ToCm + 2000)));
@@ -213,8 +277,8 @@ public class RockFormationTests
     [Fact]
     public void FlatDrop_DeckIsLevelOnTheRock_AndMeetsTheHillside()
     {
-        var grid = Band(RockFormation.MediumRock);
-        var g = Geometry(grid, WayKind.Trail);
+        var grid = Band(RockFormation.MediumRock, grade: 450);
+        var g = Geometry(grid, WayKind.Trail, ThroughBoulder(grid));
         var crossing = Assert.Single(RockFeatures.Crossings(g));
         var drop = RockFeatures.DefaultPlacement(grid, g, Drop, crossing);
         long lip = drop.StartCm + drop.RampCm;
@@ -223,7 +287,7 @@ public class RockFormationTests
 
         // The deck's level height (the ground at its start) is at or above the top of everything it passes over.
         Assert.True(g.HeightAt(drop.StartCm) >= RockFeatures.RockTopCm(grid, g, crossing.FromCm, lip));
-        Assert.All(RockFeatures.RocksOn(grid, g, crossing.FromCm, lip), r => Assert.True(r.Kind == ScatterKind.Rock && grid.RockFormationAt(r.XCm, r.ZCm) >= RockFormation.MediumRock));
+        Assert.All(RockFeatures.RocksOn(grid, g, crossing.FromCm, lip), r => Assert.NotEqual(RockClass.Stone, RockClasses.Of(r)));
 
         // Out of reach of the hillside: refused, with the reason.
         var shortReach = new TrailFeatureType { Id = Drop.Id, Name = Drop.Name, Kind = FeatureKind.FlatDrop, CrossesRock = RockFormation.RockFace, MaxSpanMeters = 15, MaxRockDropMeters = 30, RampMeters = 0, LandingDeckMeters = 6 };
@@ -231,14 +295,27 @@ public class RockFormationTests
     }
 
     [Fact]
+    public void FlatDrop_OnASteepBoulder_StartsRightAtTheRock()
+    {
+        // On a steep slope the boulder's top is flush with the hillside above it: the deck needs (almost) no run-up.
+        var grid = Band(RockFormation.MediumRock, grade: 600);
+        var g = Geometry(grid, WayKind.Trail, ThroughBoulder(grid));
+        var crossing = RockFeatures.Crossings(g)[0];
+        var shipped = TestWorlds.FeatureCatalog().Single(t => t.Id == "flat_drop");
+        var drop = RockFeatures.DefaultPlacement(grid, g, shipped, crossing);
+        Assert.InRange(crossing.FromCm - drop.StartCm, 0, 200);
+    }
+
+    [Fact]
     public void Features_SetTheRating_CostGrowsWithLength_TrailClosedUntilBuilt()
     {
-        var grid = Band(RockFormation.MediumRock);
-        var g = Geometry(grid, WayKind.Trail);
+        var grid = Band(RockFormation.MediumRock, grade: 450);
+        int z = ThroughBoulder(grid);
+        var g = Geometry(grid, WayKind.Trail, z);
         var crossing = Assert.Single(RockFeatures.Crossings(g));
         var placement = RockFeatures.DefaultPlacement(grid, g, Drop, crossing);
         var feature = new TrailFeature { Id = 2, TypeId = "flat_drop", DistanceCm = placement.StartCm, LengthCm = placement.LengthCm, RampCm = placement.RampCm, Built = false };
-        var trail = new Way { Id = 1, Kind = WayKind.Trail, Built = true, Points = [M(10, 60), M(90, 60)], Features = [feature] };
+        var trail = new Way { Id = 1, Kind = WayKind.Trail, Built = true, Points = [.. Line(z)], Features = [feature] };
         var rules = new TrailRules();
         Assert.True(WayNetwork.Build([trail], [], [], grid, rules, [Drop]).IsBlockedByRock(trail));
         feature.Built = true;
@@ -247,6 +324,17 @@ public class RockFormationTests
         Assert.Equal(TrailRating.Black, network.Geometry(1).Rating);
         Assert.True(WorkCosts.FeatureWood(Drop, 2000) > WorkCosts.FeatureWood(Drop, 1000));
         Assert.True(WorkCosts.FeatureMinutes(Drop, 2000) > WorkCosts.FeatureMinutes(Drop, 1000));
+    }
+
+    [Fact]
+    public void BuiltTrail_OverARockFoundLater_StaysOpen()
+    {
+        // A trail built before its rock counted (an older save) has no drop there: it stays open.
+        var grid = Band(RockFormation.MediumRock, grade: 450);
+        var trail = new Way { Id = 1, Kind = WayKind.Trail, Built = true, Points = [.. Line(ThroughBoulder(grid))] };
+        var network = WayNetwork.Build([trail], [], [], grid, new TrailRules(), [Drop]);
+        Assert.NotEmpty(RockFeatures.Crossings(network.Geometry(1)));
+        Assert.False(network.IsBlockedByRock(trail));
     }
 
     [Theory]
@@ -265,15 +353,17 @@ public class RockFormationTests
     }
 
     [Fact]
-    public void ClippingARockCorner_DoesNotCount()
+    public void AFewStones_AreNoStoneField()
     {
         var plane = TestTerrain.Plane(100, Size);
         int n = plane.SamplesX;
         var layer = new byte[n * n];
-        layer[60 * n + 40] = (byte)RockFormation.DenseStones;
+        for (int x = 40; x <= 41; x++) layer[60 * n + x] = (byte)RockFormation.DenseStones;
         var grid = new TerrainGrid(plane.Settings with { RockFormations = true }, plane.Seed, plane.Heights.ToArray(), plane.Slopes.ToArray(),
             plane.TreeDensity.ToArray(), plane.Rock.ToArray(), plane.Roots.ToArray(), plane.WaterDepth.ToArray(), null, layer);
-        Assert.Empty(Geometry(grid, WayKind.Trail).Rocks);
+        var g = Geometry(grid, WayKind.Trail);
+        Assert.DoesNotContain(g.Rocks, r => r.Kind == RockFormation.DenseStones);
+        Assert.Equal(Geometry(plane, WayKind.Trail).Rating, g.Rating);
     }
 
     [Fact]

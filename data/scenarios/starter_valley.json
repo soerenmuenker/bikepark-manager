@@ -120,6 +120,8 @@
   // Hand-made terrain changes from tools/scenario-editor (raise / lower / paint strokes), applied in order to the
   // generated terrain before the structures' pads.
   "terrainSculpt": [
+    { "tool": "paint", "radiusCm": 1400, "surface": "grass",
+      "points": [{"x": 77130, "z": 92391}, {"x": 77700, "z": 92800}, {"x": 78300, "z": 92950}] },
     { "tool": "paint", "radiusCm": 3700, "surface": "grass",
       "points": [{"x": 77030, "z": 81970}, {"x": 77030, "z": 82460}] },
     { "tool": "paint", "radiusCm": 3700, "surface": "grass",

@@ -3,6 +3,7 @@
 //   COLOR = (tree density, rock, roots, water) in 0..1
 //   UV2.x = TerrainSurface id (Grass 0, Forest 1, Roots 2, Rock 3, Water 4)
 //   UV2.y = slope grade (rise / run; 1.0 = 45°)
+//   UV.x = 1 in a stone field (RockFormation.DenseStones): a pale scree patch, so a field reads apart from boulders
 // The overlay palettes match the SimRunner map renderer (src/Bikepark.SimRunner/Terrain/TerrainMapRenderer.cs).
 shader_type spatial;
 render_mode cull_disabled;
@@ -18,6 +19,7 @@ varying vec4 layers;
 varying float slope_grade;
 varying flat float surface_id;
 varying vec3 world_pos;
+varying float scree;
 
 vec3 srgb(vec3 c) {
 	return pow(c, vec3(2.2));
@@ -58,6 +60,7 @@ void vertex() {
 	slope_grade = UV2.y;
 	surface_id = UV2.x;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	scree = UV.x;
 }
 
 void fragment() {
@@ -82,6 +85,7 @@ void fragment() {
 		float y = world_pos.y + (n - 0.5) * 3.0;
 		float band = sin(y * 1.1) * 0.5 + sin(y * 0.37) * 0.5;
 		c = mix(c, mix(sandstone, pale_band, smoothstep(0.1, 0.7, band) * 0.6), smoothstep(0.25, 0.6, layers.g + (n - 0.5) * 0.25));
+		c = mix(c, mix(vec3(0.78, 0.62, 0.46), vec3(0.52, 0.36, 0.26), step(0.55, value_noise(world_pos.xz * 3.0))), smoothstep(0.3, 0.7, scree) * 0.75);
 		c = mix(c, water, smoothstep(0.02, 0.2, layers.a));
 		c *= 0.85 + 0.3 * n;
 	} else {
@@ -96,6 +100,9 @@ void fragment() {
 		c = mix(c, forest_floor, layers.r);
 		c = mix(c, roots, layers.b * 0.8);
 		c = mix(c, rock, smoothstep(0.25, 0.6, layers.g + (n - 0.5) * 0.25));
+		// Scree: pale gravel speckled with dark stones, so a stone field never looks like boulder ground.
+		vec3 scree_color = mix(vec3(0.72, 0.70, 0.64), vec3(0.38, 0.37, 0.35), step(0.6, value_noise(world_pos.xz * 3.0)));
+		c = mix(c, scree_color, smoothstep(0.3, 0.7, scree) * 0.8);
 		c = mix(c, water, smoothstep(0.02, 0.2, layers.a));
 		c *= 0.85 + 0.3 * n;
 	}

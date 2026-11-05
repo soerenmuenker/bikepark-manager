@@ -90,7 +90,7 @@ internal static class TerrainCommand
                 if (slope >= 700) steep++;
             }
 
-        int Rocks(RockFormation formation) => scatter.Count(s => s.Kind == ScatterKind.Rock && grid.RockFormationAt(s.XCm, s.ZCm) == formation);
+        int Rocks(RockClass kind) => scatter.Count(s => s.Kind == ScatterKind.Rock && RockClasses.Of(s) == kind);
         return new
         {
             scenarioId,
@@ -105,12 +105,12 @@ internal static class TerrainCommand
             meanSlopePermille = slopeSum / count,
             steepPercent = Math.Round(100.0 * steep / count, 1),
             trees = scatter.Count(s => s.Kind == ScatterKind.Tree),
-            rocks = Rocks(RockFormation.None),
+            rocks = scatter.Count(s => s.Kind == ScatterKind.Rock),
             rockFormationsPercent = Enum.GetValues<RockFormation>().ToDictionary(
                 f => f.ToString(), f => Math.Round(100.0 * grid.Formations.ToArray().Count(b => b == (byte)f) / count, 1)),
-            stones = Rocks(RockFormation.SparseStones) + Rocks(RockFormation.DenseStones),
-            boulders = Rocks(RockFormation.MediumRock),
-            faceRocks = Rocks(RockFormation.RockFace),
+            stones = Rocks(RockClass.Stone),
+            boulders = Rocks(RockClass.Boulder),
+            faceRocks = Rocks(RockClass.Face),
             ways = network.Ways.Select(w => new
             {
                 w.Name,
