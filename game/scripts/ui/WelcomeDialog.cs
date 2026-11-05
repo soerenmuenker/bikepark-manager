@@ -52,14 +52,17 @@ internal sealed partial class WelcomeDialog : PanelContainer
         Title = "Welcome to the Demo sandbox!",
         Paragraphs =
         [
-            "The whole mountain is yours and everything is unlocked: the gondola runs with rented bike access, two demo trails " +
-            "with features and a few bars and shops are built, and there is plenty of money. Nothing here is saved, so try anything.",
-            "The demo trails were laid out in a hurry: they cross each other and the hiking route in plenty of places, and riders " +
-            "collide at crossings. Untangle them with the bulldozer (Build → Renaturalize, at the right end of the tools): click where " +
-            "a section starts and where it ends to remove it, then redraw the trail elsewhere or put a gravel path or platform in between.",
-            "Want to build fast? Open the game menu (☰ at the bottom right) and switch on \"Instant build\": every path, trail, " +
-            "feature, lift and building you place then appears at once, without a crew job and without costing money.",
+            "Zen mode is on: nothing costs money here. Build, buy, hire and upgrade whatever you like, the balance never drops, " +
+            "so there is nothing to lose. The whole mountain is yours, everything is unlocked, and nothing here is saved.",
+            "The gondola runs with rented bike access, and three trails start at its top: Flow Country, a long blue down the open " +
+            "west flank; Red Rocket, a red line along the ridge east of the old hiking route; and Granite Drops, a short black line " +
+            "with five flat drops over the rocks below the plateau. No way crosses another, so riders never collide. Bars, a campground " +
+            "and a bike shop wait in the valley.",
+            "Want it faster still? Open the game menu (☰ at the bottom right) and switch on \"Instant build\": paths, trails, " +
+            "features, lifts and buildings then appear at once, without a crew job. Switch Zen mode off in the same menu to see " +
+            "what everything really costs.",
         ],
+        FocusTrail = "Granite Drops",
     };
 
     /// <summary>

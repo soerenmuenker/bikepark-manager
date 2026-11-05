@@ -115,7 +115,7 @@ public sealed record PlaceCameraCommand(int WayId, int FeatureId) : ICommand
             return "Cameras film jumps and drops.";
         if (feature.Camera) return "There is a camera already.";
         long cost = state.SponsorRules.CameraCostCents;
-        if (state.Finance.MoneyCents < cost) return $"Not enough money: a camera costs {cost / 100:N0} €.";
+        if (!state.Finance.CanAfford(cost)) return $"Not enough money: a camera costs {cost / 100:N0} €.";
         return null;
     }
 

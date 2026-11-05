@@ -189,9 +189,9 @@ public partial class StartScreen : PanelContainer
         var (card, box) = Card(340);
         box.AddChild(UiTheme.Label("SANDBOX", 12, UiTheme.Accent, bold: true));
         box.AddChild(UiTheme.Label("Demo", 26, bold: true));
-        var text = UiTheme.Label("The whole mountain is yours and everything is unlocked: the gondola runs with rented bike access, two " +
-                                 "demo trails with features, bars and shops are built, and there is plenty of money. Try everything, " +
-                                 "untangle the trail crossings with the bulldozer. The Demo is never saved.", 14, UiTheme.TextDim);
+        var text = UiTheme.Label("Zen mode: nothing costs money. The whole mountain is yours and everything is unlocked: the gondola " +
+                                 "runs, three demo trails (a blue, a red and a black one with flat drops over rock), bars and shops are " +
+                                 "built. Try anything. The Demo is never saved.", 14, UiTheme.TextDim);
         text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         text.CustomMinimumSize = new Vector2(296, 0);
         box.AddChild(text);

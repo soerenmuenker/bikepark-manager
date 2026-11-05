@@ -977,7 +977,7 @@ public partial class LiftsPanel : HudPanel
                 var rusty = Row(10);
                 rusty.AddChild(UiTheme.Label("Rusty and out of service. Riders pedal up instead.", 13, UiTheme.Warn, bold: true));
                 string? why = !LiftWorks.StationsOwned(state, lift) ? "It stands on land you don't own."
-                    : state.Finance.MoneyCents < type.RestoreCostCents ? "Not enough money." : null;
+                    : !state.Finance.CanAfford(type.RestoreCostCents) ? "Not enough money." : null;
                 var restore = UiTheme.Button($"Restore ({UiTheme.Money(type.RestoreCostCents)}, {type.RestoreDays} days)",
                     () => Ctx.Host.Enqueue(new RestoreLiftCommand(liftId)),
                     why ?? $"A contractor fixes it for half the price of a new {type.Name}; it runs from the next opening after the work");
@@ -1143,6 +1143,7 @@ public partial class SystemPanel : HudPanel
 {
     private Button _menu = null!;
     private Label _saveNote = null!;
+    private CheckButton _zen = null!;
 
     public override string Title => "Game";
 
@@ -1167,6 +1168,14 @@ public partial class SystemPanel : HudPanel
         };
         instant.Toggled += on => Ctx.Host.InstantBuild = on;
         Body.AddChild(instant);
+        _zen = new CheckButton
+        {
+            Text = "Zen mode (sandbox): nothing costs money, build and try anything",
+            ButtonPressed = Ctx.Sim.State.Finance.ZenMode,
+            FocusMode = FocusModeEnum.None,
+        };
+        _zen.Toggled += on => Ctx.Host.Enqueue(new Bikepark.Sim.Commands.SetZenModeCommand(on));
+        Body.AddChild(_zen);
         var nights = new CheckButton
         {
             Text = "Skip nights: fast-forward while the park is closed and empty and the crew is off",
@@ -1185,5 +1194,7 @@ public partial class SystemPanel : HudPanel
         _saveNote.Text = career
             ? "Your career is saved automatically when you quit or go back to the menu."
             : "The Demo is a sandbox: it is never saved.";
+        _zen.Visible = Ctx.Sim.State.Rules.UnlockAll;
+        _zen.SetPressedNoSignal(Ctx.Sim.State.Finance.ZenMode);
     }
 }

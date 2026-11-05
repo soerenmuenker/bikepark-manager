@@ -1,0 +1,20 @@
+// The Demo's trail features on demo_trails.json (load after it): berms, rollers and tables on Flow Country (way 11),
+// kickers, a wall-ride and drops on Red Rocket (way 12); Granite Drops brings its flat drops with it. Way ids are those of a
+// fresh Demo world; the game maps them to the demo trails by name, in order.
+[
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "berm", "distanceCm": 7000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "rollers", "distanceCm": 20000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "table", "distanceCm": 35000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "berm", "distanceCm": 61600 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "table", "distanceCm": 65000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "rollers", "distanceCm": 80000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "berm", "distanceCm": 101400 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "table", "distanceCm": 110000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "table", "distanceCm": 125000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 11, "typeId": "rollers", "distanceCm": 140000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 12, "typeId": "kicker", "distanceCm": 5400 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 12, "typeId": "wall_ride", "distanceCm": 18000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 12, "typeId": "drop", "distanceCm": 26000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 12, "typeId": "kicker", "distanceCm": 38000 } },
+  { "tick": 0, "command": { "type": "placeTrailFeature", "wayId": 12, "typeId": "drop", "distanceCm": 67000 } }
+]

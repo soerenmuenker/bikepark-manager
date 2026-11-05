@@ -103,7 +103,7 @@ public partial class ToolsPanel : HudPanel
             {
                 Text = $"{tool.Name}{(owned > 0 ? $"  ×{owned}" : "")}\n{WorkWord(tool.WorkType)} +{tool.SpeedBonusPermille / 10} % · " +
                        (locked ? $"level {tool.RequiredLevel}" : UiTheme.Money(tool.PriceCents)),
-                Disabled = locked || state.Finance.MoneyCents < tool.PriceCents,
+                Disabled = locked || !state.Finance.CanAfford(tool.PriceCents),
                 FocusMode = FocusModeEnum.None,
                 CustomMinimumSize = new Vector2(150, 46),
                 TooltipText = locked ? $"Needs park level {tool.RequiredLevel}"

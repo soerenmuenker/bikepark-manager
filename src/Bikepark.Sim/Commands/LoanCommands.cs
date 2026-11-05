@@ -30,7 +30,7 @@ public sealed record RepayLoanCommand(int LoanId) : ICommand
     public string? Validate(SimContext ctx)
     {
         if (ctx.State.Loans.FirstOrDefault(l => l.Id == LoanId) is not { } loan) return "No such loan.";
-        if (ctx.State.Finance.MoneyCents < loan.PayoffCents)
+        if (!ctx.State.Finance.CanAfford(loan.PayoffCents))
             return $"Not enough money: {loan.PayoffCents / 100:N0} € are still owed on the {loan.Name.ToLowerInvariant()}.";
         return null;
     }

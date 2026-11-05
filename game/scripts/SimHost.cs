@@ -68,9 +68,9 @@ public partial class SimHost : Node
     /// <summary>Upper bound on ticks per frame, so a slow frame never snowballs.</summary>
     [Export] public int MaxTicksPerFrame { get; set; } = 240;
 
-    [Export] public string DemoNetworkFile { get; set; } = "data/scripts/demo_lift_network.json";
+    [Export] public string DemoNetworkFile { get; set; } = "data/scripts/demo_trails.json";
 
-    [Export] public string DemoFeaturesFile { get; set; } = "data/scripts/demo_features.json";
+    [Export] public string DemoFeaturesFile { get; set; } = "data/scripts/demo_trail_features.json";
     [Export] public string DemoFacilitiesFile { get; set; } = "data/scripts/demo_facilities.json";
 
     [Export] public string DemoCrewFile { get; set; } = "data/scripts/demo_crew.json";
@@ -210,14 +210,16 @@ public partial class SimHost : Node
     }
 
     /// <summary>
-    /// Queues the demo trails from the plateau (data/scripts/demo_lift_network.json), built at once, or
-    /// <paramref name="planned"/> as crew jobs (debug: <c>--demo-planned</c>), and the valley snack bar and shop
-    /// (data/scripts/demo_facilities.json).
+    /// Queues the Demo's Zen mode (nothing costs money), the demo trails from the plateau (data/scripts/demo_trails.json),
+    /// built at once, or <paramref name="planned"/> as crew jobs (debug: <c>--demo-planned</c>), and the valley's bars, campground
+    /// and bike shop (data/scripts/demo_facilities.json). Zen mode is game-side, like the Demo's welcome: the scenario itself
+    /// keeps costs on, so tests and the SimRunner see the real economy.
     /// </summary>
     public void LoadDemoNetwork() => LoadDemoNetwork(planned: false);
 
     public void LoadDemoNetwork(bool planned)
     {
+        Enqueue(new SetZenModeCommand(On: true));
         foreach (var timed in ReadScript(DemoNetworkFile))
             Enqueue(planned && timed.Command is BuildWayCommand build ? build with { Instant = false, Origin = Bikepark.Sim.Trails.WayOrigin.Player } : timed.Command);
         foreach (var timed in ReadScript(DemoFacilitiesFile))
@@ -225,7 +227,7 @@ public partial class SimHost : Node
     }
 
     /// <summary>
-    /// Queues the demo features (data/scripts/demo_features.json) on the demo trails. The script's way ids are those of a
+    /// Queues the demo features (data/scripts/demo_trail_features.json) on the demo trails. The script's way ids are those of a
     /// fresh world; they are mapped, in order, to the demo network's trails by name. Returns false if those aren't built.
     /// </summary>
     public bool LoadDemoFeatures()

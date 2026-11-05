@@ -52,7 +52,7 @@ public static class StructureRemoval
         }
         if (!PadsOwned(state, id)) return $"{info.Name} stands on land the park doesn't own.";
         long cost = CostCents(state, id);
-        if (cost > 0 && state.Finance.MoneyCents < cost) return $"Not enough money: tearing down {info.Name} costs {cost / 100:N0} €.";
+        if (cost > 0 && !state.Finance.CanAfford(cost)) return $"Not enough money: tearing down {info.Name} costs {cost / 100:N0} €.";
         return null;
     }
 

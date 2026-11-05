@@ -21,6 +21,9 @@ public sealed class ScenarioDefinition
     public ScenarioMenu? Menu { get; set; }
 
     public long StartingMoneyCents { get; set; }
+
+    /// <summary>Start in Zen mode: nothing costs money (<see cref="State.FinanceState.ZenMode"/>; sandboxes only, <see cref="State.ParkRules.UnlockAll"/>).</summary>
+    public bool ZenMode { get; set; }
     public long EntryFeeCents { get; set; }
     public long LiftTicketCents { get; set; }
     public ParkRules Rules { get; set; } = new();
@@ -235,7 +238,7 @@ public static class ScenarioLoader
             CrashRules = scenario.CrashRules,
             Parcels = scenario.Parcels,
             OwnedParcelIds = scenario.Parcels.Where(p => p.OwnedAtStart).Select(p => p.Id).ToList(),
-            Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
+            Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents, ZenMode = scenario.ZenMode },
             LoanRules = scenario.LoanRules,
             Welcome = scenario.Welcome,
         };
@@ -256,6 +259,7 @@ public static class ScenarioLoader
         var r = s.Rules;
         errors.AddRange(r.Validate());
         if (s.EntryFeeCents < 0 || s.EntryFeeCents > r.MaxEntryFeeCents) errors.Add("entryFeeCents out of range");
+        if (s.ZenMode && !r.UnlockAll) errors.Add("zenMode is only for sandboxes (rules.unlockAll)");
         if (s.LiftTicketCents < 0 || s.LiftTicketCents > r.MaxEntryFeeCents) errors.Add("liftTicketCents out of range");
 
         errors.AddRange(s.Terrain.Validate());

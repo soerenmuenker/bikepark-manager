@@ -25,6 +25,15 @@ public sealed record SetLiftTicketCommand(long TicketCents) : ICommand
     public void Apply(SimContext ctx) => ctx.State.Park.LiftTicketCents = TicketCents;
 }
 
+/// <summary>Zen mode on or off: nothing costs money while it is on (<see cref="State.FinanceState.ZenMode"/>). Sandboxes only.</summary>
+public sealed record SetZenModeCommand(bool On) : ICommand
+{
+    public string? Validate(SimContext ctx) =>
+        ctx.State.Rules.UnlockAll ? null : "Zen mode is only for the sandbox.";
+
+    public void Apply(SimContext ctx) => ctx.State.Finance.ZenMode = On;
+}
+
 /// <summary>The parking fee per car (only charged where there are parking lots), 0..<see cref="State.ParkRules.MaxParkingFeeCents"/>.</summary>
 public sealed record SetParkingFeeCommand(long FeeCents) : ICommand
 {

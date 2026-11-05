@@ -73,7 +73,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   closed until the player connects it), parcels to buy, company gondola locked; a `welcome` note (`Scenarios/WelcomeNote`,
   copied to `WorldState.Welcome`, presentation only) that the HUD's `WelcomeDialog` shows at tick 0); `lift_types.json` (T-bar, chairlift, gondola with costs, levels, build days),
   `trail_features.json`, `tools.json`, `facility_types.json` (snack bar, beer rondel, bike café, campground, bike shop, each with upgrades),
-  `products.json` (lunch, coffee, beer, radler, snack, park merch, clothing, campground night, bike rental, protectors, parts, bikes, repair, tune-up, suspension setup), `scripts/` command scripts such as `demo_lift_network.json`, `demo_features.json`,
+  `products.json` (lunch, coffee, beer, radler, snack, park merch, clothing, campground night, bike rental, protectors, parts, bikes, repair, tune-up, suspension setup), `scripts/` command scripts such as `demo_trails.json` + `demo_trail_features.json` (the game's Demo: three trails, no crossings, flat drops on the black one), `demo_lift_network.json`, `demo_features.json` (older test fixtures),
   `demo_crew.json`, `career_opening.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
@@ -389,6 +389,9 @@ tools/release/export.sh 0.1.0
     taken or repaid early) are also listed in `Finance.Transactions` (labelled, signed, the last `MaxTransactions`). The
     Finances menu shows yesterday's (or today's) budget per area, loan installments per day, the levers (entrance fee, lift
     pass), loans, recent transactions and the balance; the runner's `--daily` adds `dailyBudget` and always lists `transactions`.
+    **Zen mode** (`Finance.ZenMode`, scenario `zenMode` or `SetZenModeCommand`; only with `Rules.UnlockAll`): `Spend`/`Invest`
+    book nothing, so the balance never drops; every money check goes through `Finance.CanAfford` (true in Zen mode), never
+    compares `MoneyCents` itself.
 19a. **Entrance fee and lift pass:** `Park.EntryFeeCents` is paid on arrival (drives demand); `Park.LiftTicketCents` (0 = free
     lifts, the Demo) is a day pass bought once per visit when a guest first boards a lift (`RiderSystem.BuyLiftPass`,
     `Guest.HasLiftPass`, revenue in `Finance.TotalLiftTicketsCents`). `BestRoute` adds the unbought pass to the lift cost
@@ -436,7 +439,7 @@ tools/release/export.sh 0.1.0
 ## Game controls (debug build)
 
 Start screen (when run without world-setting debug args): start a new career (park name), continue or delete a saved
-career, or play the Demo (sandbox, demo trails built, never saved; started from the menu it opens with a welcome: untangle the crossings with the bulldozer, Instant build in the ☰ menu). A new career opens with the scenario's welcome
+career, or play the Demo (sandbox, demo trails built, never saved, Zen mode on: nothing costs money, `FinanceState.ZenMode` via `SetZenModeCommand`, sandboxes only, queued game-side by `SimHost.LoadDemoNetwork` so the scenario and tests keep real costs; ☰ menu toggles it; started from the menu it opens with a welcome: Zen mode, the three trails, Instant build in the ☰ menu). A new career opens with the scenario's welcome
 (pauses; "Show me Easy Peasy" points the camera at the trail's loose end). Careers are saved automatically, one file each
 (`game/scripts/CareerStore.cs`: `user://careers/<id>.json` + `<id>.meta.json`, on macOS in
 `~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`), when the window closes / the game quits

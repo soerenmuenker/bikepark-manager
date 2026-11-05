@@ -32,6 +32,7 @@ internal static class StatTips
                       $"Today so far: {Signed(f.RevenueTodayCents - f.ExpensesTodayCents)}\n\n" +
                       $"• Income {UiTheme.Money(f.RevenueTodayCents)}\n" +
                       $"• Expenses {UiTheme.Money(f.ExpensesTodayCents)}";
+        if (f.ZenMode) text += "\n• Zen mode: nothing costs money";
         if (state.Park.Bankrupt) text += "\n• Bankrupt: the park is closed for good";
         else if (f.DaysInDebt > 0)
             text += state.Rules.BankruptcyDays > 0

@@ -189,6 +189,9 @@ internal static class TestWorlds
         new(810, new SetReserveBenchCommand(99, true)),
         new(820, new SetFacilityClosedCommand(99, true)), // rejected: no such building
         new(820, new SetLiftClosedCommand(99, true)), // rejected: no such lift
+        // Zen mode (the test world is a sandbox): nothing costs money for a while.
+        new(830, new SetZenModeCommand(true)),
+        new(1200, new SetZenModeCommand(false)),
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

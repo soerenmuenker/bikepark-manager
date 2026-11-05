@@ -451,6 +451,7 @@ public partial class FinancePanel : HudPanel
     {
         var f = state.Finance;
         if (state.Park.Bankrupt) return "The park is bankrupt: the bank has closed it.";
+        if (f.ZenMode) return "Zen mode: nothing costs money, only the income is booked. Switch it off in the game menu (☰) to see the real costs.";
         string debt = f.DaysInDebt > 0 && state.Rules.BankruptcyDays > 0
             ? $" You are in the red ({f.DaysInDebt} of {state.Rules.BankruptcyDays} days until bankruptcy): take a loan, raise prices or cut costs."
             : f.MoneyCents < 0 ? " You are in the red: take a loan, raise prices or cut costs." : "";
@@ -527,7 +528,7 @@ public partial class FinancePanel : HudPanel
                 int id = loan.Id;
                 var repay = UiTheme.Button($"Repay {UiTheme.Money(loan.PayoffCents)}", () => Ctx.Host.Enqueue(new RepayLoanCommand(id)),
                     "Pay the loan off now: the interest still to come is not charged");
-                repay.Disabled = state.Finance.MoneyCents < loan.PayoffCents;
+                repay.Disabled = !state.Finance.CanAfford(loan.PayoffCents);
                 head.AddChild(repay);
             }
             else

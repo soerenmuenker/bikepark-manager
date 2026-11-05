@@ -79,9 +79,13 @@ Lift catalog (`LiftType`): carrier capacity, `bikesPerCarrier`, `intervalSeconds
 
 Command scripts: a JSON list of `{tick, command}` (same format as scenario `commands`), used with
 `--commands <file>` (SimRunner run and `terrain`), by tests, and by the game's "Demo trails" button.
-`demo_lift_network.json` builds two trails (Flow Country, Red Rocket) from Starter Valley's plateau down to the
-valley station, at once (`"instant": true`). `demo_features.json` plans 19 features on them (ways 11 and 12 of a fresh
-world). `demo_crew.json` hires a third worker, buys the shovel set and the chainsaw and marks a felling area
+`demo_trails.json` is the game's Demo: three trails from the plateau, built at once and crossing no other way: Flow
+Country (blue, the west flank down to the valley station), Red Rocket (red, the ridge east of the hiking route, joining it
+at its bottom) and Granite Drops (black, straight down over the rocks below the plateau with five flat drops, into Red
+Rocket); player trails, so their rock is checked as for any trail drawn in the game. `demo_trail_features.json` adds 15
+features to Flow Country and Red Rocket (ways 11 and 12 of a fresh Demo world). `demo_lift_network.json` (two older,
+tangled trails as scenario ways) and `demo_features.json` (19 features on them) stay as fixtures for tests and runner
+examples. `demo_crew.json` hires a third worker, buys the shovel set and the chainsaw and marks a felling area
 (`fellTrees`) east of the plateau. `demo_network.json` (Phase 2, for worlds without a lift; used by tests) builds a 2.7 km switchback gravel path from the base up to ~1010 m and two trails
 (Blue Line, Red Rocket) on Starter Valley. Coordinates are in cm:
 
