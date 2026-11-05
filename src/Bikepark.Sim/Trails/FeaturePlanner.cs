@@ -34,6 +34,8 @@ public static class FeaturePlanner
             return Fail(wayId, null, "unknownType", $"Unknown feature '{typeId}'.");
         if (type.CrossesRock != Terrain.RockFormation.None)
             return Fail(wayId, type, "overRock", $"A {type.Name.ToLowerInvariant()} is chosen while drawing a trail over rock.");
+        if (TrailFeatures.ComesFromStoneField(type))
+            return Fail(wayId, type, "stoneField", $"A {type.Name.ToLowerInvariant()} comes from a stone field: draw a trail through one.");
         var way = network.FindWay(wayId);
         if (way is null || !network.TryGetGeometry(wayId, out var geometry))
             return Fail(wayId, type, "noSuchTrail", "No such trail.");

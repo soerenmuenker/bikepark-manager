@@ -304,12 +304,15 @@ public partial class TerrainView : Node3D
             if (shrubs.Count > 0) chunk.AddChild(BuildInstances("Shrubs", _shrubMesh, shrubs, center, RockDrawDistance, TreeTint));
         }
         else if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
+        // Stone fields get pebbles between their stones (looks only: the rules count the stones).
+        var pebbles = desert ? [] : Pebbles(grid, rockItems);
+        Func<ScatterInstance, Color> stoneTint = desert ? DesertRockTint : StoneTint;
         foreach (var shape in Enum.GetValues<RockShape>())
         {
-            var big = rockItems.Where(s => s.Shape == shape && s.ScalePermille >= StoneMaxScale).ToList();
-            var small = rockItems.Where(s => s.Shape == shape && s.ScalePermille < StoneMaxScale).ToList();
+            var big = rockItems.Where(s => s.Shape == shape && !IsSmallStone(s)).ToList();
+            var small = rockItems.Where(s => s.Shape == shape && IsSmallStone(s)).Concat(pebbles.Where(p => p.Shape == shape)).ToList();
             if (big.Count > 0) chunk.AddChild(BuildInstances($"Rocks {shape}", _rockMeshes[(int)shape], big, center, TreeDrawDistance, rockTint));
-            if (small.Count > 0) chunk.AddChild(BuildInstances($"Stones {shape}", _stoneMeshes[(int)shape], small, center, RockDrawDistance, rockTint));
+            if (small.Count > 0) chunk.AddChild(BuildInstances($"Stones {shape}", _stoneMeshes[(int)shape], small, center, RockDrawDistance, stoneTint, tumble: true));
         }
         _treeCount += treeItems.Count;
         _rockCount += rockItems.Count;
@@ -339,6 +342,61 @@ public partial class TerrainView : Node3D
     /// <summary>Smaller rocks are the many small stones: a coarser mesh, and not drawn as far.</summary>
     private const int StoneMaxScale = 1000;
 
+    /// <summary>A rock's turn and size as drawn; stones tumble.</summary>
+    private static Basis RockBasis(ScatterInstance item, float scale, bool tumble)
+    {
+        var basis = new Basis(Vector3.Up, item.YawPermille / 1000f * Mathf.Tau).Scaled(Vector3.One * scale);
+        if (tumble)
+        {
+            // Stones lie every which way.
+            uint h = Hash((uint)item.XCm * 40503u ^ (uint)item.ZCm * 9973u);
+            var axis = new Vector3(((h & 0xFF) / 255f) - 0.5f, 0, (((h >> 8) & 0xFF) / 255f) - 0.5f);
+            if (axis.LengthSquared() > 0.0001f) basis = new Basis(axis.Normalized(), ((h >> 16) & 0xFF) / 255f * 0.6f) * basis;
+        }
+        return basis;
+    }
+
+    /// <summary>A stone (never a boulder or face, however small) drawn with the coarse mesh, tumbled and half sunk.</summary>
+    private static bool IsSmallStone(ScatterInstance item) => RockClasses.Of(item) == RockClass.Stone && item.ScalePermille < StoneMaxScale;
+
+    private const int PebblesPerStone = 4;
+
+    /// <summary>Little pebbles round each stone of a stone field, from a hash of its position: looks only, never in the sim.</summary>
+    private static List<ScatterInstance> Pebbles(TerrainGrid grid, List<ScatterInstance> rocks)
+    {
+        var pebbles = new List<ScatterInstance>();
+        foreach (var stone in rocks)
+        {
+            if (RockClasses.Of(stone) != RockClass.Stone || grid.RockFormationAt(stone.XCm, stone.ZCm) != RockFormation.DenseStones) continue;
+            for (int k = 0; k < PebblesPerStone; k++)
+            {
+                uint h = Hash((uint)stone.XCm * 73856093u ^ (uint)stone.ZCm * 19349663u ^ (uint)k * 83492791u);
+                int x = stone.XCm + (int)(h % 160) - 80, z = stone.ZCm + (int)((h >> 8) % 160) - 80;
+                if (x < 0 || z < 0 || x > grid.WidthMeters * 100 || z > grid.DepthMeters * 100) continue;
+                pebbles.Add(new ScatterInstance(ScatterKind.Rock, x, z, grid.HeightAt(x, z), 150 + (int)((h >> 16) % 220), (int)((h >> 4) % 1000),
+                    (byte)((h >> 24) % 4), (RockShape)((h >> 26) % RockShapes.LooseCount)));
+            }
+        }
+        return pebbles;
+    }
+
+    private static uint Hash(uint x)
+    {
+        x ^= x >> 16;
+        x *= 0x7FEB352Du;
+        x ^= x >> 15;
+        x *= 0x846CA68Bu;
+        return x ^ (x >> 16);
+    }
+
+    /// <summary>Stones vary more than big rocks: lighter and darker, a little warmer or cooler.</summary>
+    private static Color StoneTint(ScatterInstance item)
+    {
+        uint h = Hash((uint)item.XCm * 2654435761u ^ (uint)item.ZCm);
+        float light = 0.6f + (h & 0xFF) / 255f * 0.38f, warm = ((h >> 8) & 0xFF) / 255f * 0.1f - 0.05f;
+        return new Color(light + warm, light, light - warm);
+    }
+
     /// <summary>Red see-through copies of these rocks, on top of everything (the rock the trail tool is asking about).</summary>
     public Node3D BuildRockHighlight(IEnumerable<ScatterInstance> rocks, Material material)
     {
@@ -346,20 +404,21 @@ public partial class TerrainView : Node3D
         foreach (var rock in rocks)
         {
             float scale = rock.ScalePermille / 1000f * 1.04f;
+            bool small = IsSmallStone(rock);
+            float sink = small ? 0.05f + RockShapes.HeightCm(rock) / 100f * 0.33f : 0.15f;
             root.AddChild(new MeshInstance3D
             {
-                Mesh = (rock.ScalePermille >= StoneMaxScale ? _rockMeshes : _stoneMeshes)[(int)rock.Shape],
+                Mesh = (small ? _stoneMeshes : _rockMeshes)[(int)rock.Shape],
                 MaterialOverride = material,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-                Transform = new Transform3D(new Basis(Vector3.Up, rock.YawPermille / 1000f * Mathf.Tau).Scaled(Vector3.One * scale),
-                    new Vector3(rock.XCm / 100f, rock.YCm / 100f - 0.15f, rock.ZCm / 100f)),
+                Transform = new Transform3D(RockBasis(rock, scale, small), new Vector3(rock.XCm / 100f, rock.YCm / 100f - sink, rock.ZCm / 100f)),
             });
         }
         return root;
     }
 
     private MultiMeshInstance3D BuildInstances(
-        string name, Mesh mesh, List<ScatterInstance> items, Vector3 center, float drawDistance, Func<ScatterInstance, Color> tint)
+        string name, Mesh mesh, List<ScatterInstance> items, Vector3 center, float drawDistance, Func<ScatterInstance, Color> tint, bool tumble = false)
     {
         var multimesh = new MultiMesh
         {
@@ -372,8 +431,9 @@ public partial class TerrainView : Node3D
         {
             var item = items[i];
             float scale = item.ScalePermille / 1000f;
-            var basis = new Basis(Vector3.Up, item.YawPermille / 1000f * Mathf.Tau).Scaled(Vector3.One * scale);
-            var position = new Vector3(item.XCm / 100f, item.YCm / 100f - 0.15f, item.ZCm / 100f) - center;
+            var basis = RockBasis(item, scale, tumble);
+            float sink = tumble ? 0.05f + RockShapes.HeightCm(item) / 100f * 0.33f : 0.15f; // a third of a stone in the ground
+            var position = new Vector3(item.XCm / 100f, item.YCm / 100f - sink, item.ZCm / 100f) - center;
             multimesh.SetInstanceTransform(i, new Transform3D(basis, position));
             multimesh.SetInstanceColor(i, tint(item));
         }

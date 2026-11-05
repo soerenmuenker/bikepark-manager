@@ -53,9 +53,10 @@ public class RockFormationTests
     [Fact]
     public void RockClasses_AreReadFromTheRock()
     {
-        Assert.Equal(RockClass.Boulder, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, 1000, 0, 0, RockShape.DropBlock)));
-        Assert.Equal(RockClass.Face, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, 5000, 0, 0, RockShape.Ledged1)));
-        Assert.All(Enumerable.Range(0, RockShapes.LooseCount), i => Assert.Equal(RockClass.Stone, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, 500, 0, 0, (RockShape)i))));
+        // A loose rock is a stone up to knee height, a boulder above; ledged rocks are faces, whatever their size.
+        Assert.All(Enumerable.Range(0, RockShapes.LooseCount), i => Assert.Equal(RockClass.Boulder, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, 1300, 0, 0, (RockShape)i))));
+        Assert.All(Enumerable.Range(0, RockShapes.LooseCount), i => Assert.Equal(RockClass.Stone, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, RockShapes.StoneMaxScale((RockShape)i), 0, 0, (RockShape)i))));
+        Assert.Equal(RockClass.Face, RockClasses.Of(new ScatterInstance(ScatterKind.Rock, 0, 0, 0, 500, 0, 0, RockShape.Ledged1)));
     }
 
     [Fact]
@@ -89,12 +90,27 @@ public class RockFormationTests
     }
 
     [Fact]
+    public void StoneField_BecomesARockGarden_LessWhatADropCovers()
+    {
+        var g = Geometry(Band(RockFormation.DenseStones), WayKind.Trail);
+        var field = g.Rocks.Single(r => r.Kind == RockFormation.DenseStones);
+        long from = g.Distances[field.From], to = g.Distances[field.To];
+        Assert.Equal([(from, to)], RockFeatures.StoneGardens(g, null));
+        Assert.Empty(RockFeatures.StoneGardens(Geometry(Band(RockFormation.DenseStones), WayKind.AccessPath), null));
+
+        // A drop over its first part: the garden starts after it; one covering it all leaves none.
+        long middle = (from + to) / 2;
+        Assert.Equal([(middle, to)], RockFeatures.StoneGardens(g, [new RockFeaturePlacement("flat_drop", from - 500, middle - from + 500)]));
+        Assert.Empty(RockFeatures.StoneGardens(g, [new RockFeaturePlacement("flat_drop", from - 100, to - from + 200)]));
+    }
+
+    [Fact]
     public void Stones_AreNeverMoreThanKneeHigh_BouldersAndFacesFarHigher()
     {
         var grid = TerrainGenerator.Generate(Generated(true), 0);
         var rocks = TerrainScatter.CollectAll(grid).Where(s => s.Kind == ScatterKind.Rock).ToList();
         Assert.All(rocks.Where(r => RockClasses.Of(r) == RockClass.Stone), r => Assert.True(RockShapes.HeightCm(r) <= RockClasses.StoneMaxHeightCm));
-        Assert.All(rocks.Where(r => RockClasses.Of(r) == RockClass.Boulder), r => Assert.True(r.YCm + RockShapes.HeightCm(r) - grid.HeightAt(r.XCm, r.ZCm) >= 50));
+        Assert.All(rocks.Where(r => RockClasses.Of(r) == RockClass.Boulder), r => Assert.True(RockShapes.HeightCm(r) > RockClasses.StoneMaxHeightCm));
         Assert.All(rocks.Where(r => RockClasses.Of(r) == RockClass.Face), r => Assert.True(RockShapes.HeightCm(r) >= 300));
     }
 
@@ -106,24 +122,10 @@ public class RockFormationTests
         Assert.All(Enumerable.Range(20, 88).Where(z => z % 10 == 0), z => Assert.Empty(RockFeatures.Crossings(Geometry(grid, WayKind.Trail, z))));
     }
 
-    [Fact]
-    public void Boulders_FaceDownTheFallLine_TopFlushWithTheGroundAbove()
-    {
-        var grid = Band(RockFormation.MediumRock, grade: 600);
-        var boulders = RocksOf(grid, RockClass.Boulder);
-        Assert.NotEmpty(boulders);
-        foreach (var b in boulders)
-        {
-            Assert.Equal(0, b.YawPermille); // the plane falls east: +X, no turn
-            long radius = RockShapes.RadiusCm(b), top = b.YCm + RockShapes.HeightCm(b);
-            Assert.InRange(top - grid.HeightAt(b.XCm - (int)radius, b.ZCm), 0, 20);
-        }
-    }
-
     private static TrailFeatureType Drop => new()
     {
         Id = "flat_drop", Name = "Flat drop", Kind = FeatureKind.FlatDrop, Material = FeatureMaterial.Wood, Difficulty = 760, CrossesRock = RockFormation.RockFace,
-        MaxSpanMeters = 15, MaxRockDropMeters = 5, RampMeters = 40, LandingDeckMeters = 6, MinGradient = -100, RequiredLevel = 7, Wood = 20, WoodPerMeter = 1, WorkMinutes = 240, WorkPerMeter = 6,
+        MaxSpanMeters = 15, MaxRockDropMeters = 8, RampMeters = 40, LandingDeckMeters = 6, MinGradient = -100, RequiredLevel = 7, Wood = 20, WoodPerMeter = 1, WorkMinutes = 240, WorkPerMeter = 6,
     };
 
     private static TrailFeatureType Roller => new()
@@ -233,7 +235,7 @@ public class RockFormationTests
     }
 
     [Fact]
-    public void RockKit_LedgedOnlyOnFaces_DropBlocksOnlyOnBoulderGround()
+    public void RockKit_LedgedOnlyOnFaces_BouldersOnlyOnBoulderGround()
     {
         var grid = TerrainGenerator.Generate(Generated(true), 0);
         var rocks = TerrainScatter.CollectAll(grid).Where(s => s.Kind == ScatterKind.Rock).ToList();
@@ -244,7 +246,9 @@ public class RockFormationTests
             Assert.Equal(formation == RockFormation.RockFace, RockClasses.Of(rock) == RockClass.Face);
             if (RockClasses.Of(rock) == RockClass.Boulder) Assert.Equal(RockFormation.MediumRock, formation);
         }
-        Assert.Contains(rocks, r => RockClasses.Of(r) == RockClass.Boulder);
+        var boulders = rocks.Where(r => RockClasses.Of(r) == RockClass.Boulder).ToList();
+        Assert.Equal(RockShapes.LooseCount, boulders.Select(r => r.Shape).Distinct().Count()); // every loose shape turns up
+        Assert.True(boulders.Max(r => r.ScalePermille) >= 2 * boulders.Min(r => r.ScalePermille)); // and sizes vary widely
         Assert.All(rocks, r => Assert.True(RockShapes.RadiusCm(r) > 0 && RockShapes.HeightCm(r) > 0));
     }
 
@@ -292,18 +296,6 @@ public class RockFormationTests
         // Out of reach of the hillside: refused, with the reason.
         var shortReach = new TrailFeatureType { Id = Drop.Id, Name = Drop.Name, Kind = FeatureKind.FlatDrop, CrossesRock = RockFormation.RockFace, MaxSpanMeters = 15, MaxRockDropMeters = 30, RampMeters = 0, LandingDeckMeters = 6 };
         Assert.Contains("too high", RockFeatures.CannotPlace(grid, g, Rules, shortReach, RockFeatures.DefaultPlacement(grid, g, shortReach, crossing)));
-    }
-
-    [Fact]
-    public void FlatDrop_OnASteepBoulder_StartsRightAtTheRock()
-    {
-        // On a steep slope the boulder's top is flush with the hillside above it: the deck needs (almost) no run-up.
-        var grid = Band(RockFormation.MediumRock, grade: 600);
-        var g = Geometry(grid, WayKind.Trail, ThroughBoulder(grid));
-        var crossing = RockFeatures.Crossings(g)[0];
-        var shipped = TestWorlds.FeatureCatalog().Single(t => t.Id == "flat_drop");
-        var drop = RockFeatures.DefaultPlacement(grid, g, shipped, crossing);
-        Assert.InRange(crossing.FromCm - drop.StartCm, 0, 200);
     }
 
     [Fact]

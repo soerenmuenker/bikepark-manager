@@ -1,7 +1,7 @@
 // The Demo's trails from the gondola's top plateau (the game's Demo loads them, built at once; SimRunner: --commands).
 // Laid out so that no way crosses another: Flow Country (blue) winds down the open west flank to the valley station,
 // Red Rocket (red) takes the ridge east of the hiking route and joins the route at its bottom, and Granite Drops (black)
-// falls straight down between the two over the boulders below the plateau, with two flat drops off them, into Red Rocket. Player
+// falls straight down between the two over the boulders below the plateau, with two flat drops over them and a rock garden through a stone field, into Red Rocket. Player
 // trails (not scenario ones), so their rock is checked like on any trail the player draws. Features: demo_trail_features.json.
 [
   {
@@ -18,6 +18,6 @@
     "tick": 0,
     "command": { "type": "buildWay", "instant": true, "kind": "trail", "name": "Granite Drops",
       "points": [{"x": 60000, "z": 53700}, {"x": 60410, "z": 56360}, {"x": 60020, "z": 57620}, {"x": 61590, "z": 58560}, {"x": 60970, "z": 60700}, {"x": 62150, "z": 63080}, {"x": 62240, "z": 64260}, {"x": 60729, "z": 65680}, {"x": 59460, "z": 65150}, {"x": 58529, "z": 65950}, {"x": 58370, "z": 68740}, {"x": 59500, "z": 70110}, {"x": 60400, "z": 71600}],
-      "rockFeatures": [{"typeId": "flat_drop", "startCm": 8792, "lengthCm": 2518, "rampCm": 1818}, {"typeId": "flat_drop", "startCm": 13376, "lengthCm": 1000, "rampCm": 300}] }
+      "rockFeatures": [{"typeId": "flat_drop", "startCm": 8806, "lengthCm": 2631, "rampCm": 1931}, {"typeId": "flat_drop", "startCm": 16179, "lengthCm": 1971, "rampCm": 1271}] }
   }
 ]

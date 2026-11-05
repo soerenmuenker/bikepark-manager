@@ -112,6 +112,15 @@ public class ZenModeTests
 
         var granite = trails.Single(t => t.Name == "Granite Drops");
         Assert.Equal(2, granite.Features.Count(f => f.TypeId == "flat_drop"));
+        // Its stone field became a rock garden by itself: built, nothing to dig, not removable.
+        var garden = Assert.Single(granite.Features, f => f.TypeId == "rock_garden");
+        Assert.True(garden.FromStoneField && garden.Built);
+        Assert.Null(Bikepark.Sim.Crew.Jobs.ForFeature(sim.State, garden.Id));
+        sim.Commands.Enqueue(new RemoveTrailFeatureCommand(granite.Id, garden.Id), sim.State.Tick);
+        sim.Step();
+        sim.Events.Dispatch();
+        Assert.Contains(rejections, r => r.Command is RemoveTrailFeatureCommand);
+        Assert.Contains(granite.Features, f => f.Id == garden.Id);
         Assert.All(trails.Where(t => t != granite), t => Assert.Empty(RockFeatures.Crossings(sim.Network.Geometry(t.Id)))); // no rock on the others
     }
 

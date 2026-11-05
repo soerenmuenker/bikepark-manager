@@ -100,19 +100,14 @@ public static class TerrainScatter
                     {
                         // Stones: packed close in a field, a few elsewhere on rocky ground; never more than knee high.
                         case Layer.Stone when formation == RockFormation.DenseStones && roll < 250:
-                            scale = 300 + Steep(sample, 0, 1200) / 5 + more / 4;
+                            scale = 220 + Steep(sample, 0, 1200) / 6 + more * more / 2500; // many small, a few big
                             break;
                         case Layer.Stone when formation is RockFormation.SparseStones or RockFormation.MediumRock && roll < 30:
                             scale = 250 + Steep(sample, 0, 1200) / 6 + more / 4;
                             break;
-                        case Layer.Boulder when formation == RockFormation.MediumRock && sample.SlopePermille >= BoulderMinSlope && roll < 210:
-                        {
-                            scale = 1000 + Steep(sample, 300, 1300) / 2 + more / 2;
-                            var (yaw, top) = DropBlockPose(grid, xCm, zCm, RockShapes.Size(RockShape.DropBlock).RadiusCm * scale / 1000);
-                            int height = RockShapes.Size(RockShape.DropBlock).HeightCm * scale / 1000;
-                            output.Add(new ScatterInstance(ScatterKind.Rock, xCm, zCm, top - height, scale, yaw, (byte)(h2 >> 30), RockShape.DropBlock));
-                            continue;
-                        }
+                        case Layer.Boulder when formation == RockFormation.MediumRock && sample.SlopePermille >= BoulderMinSlope && roll < 150:
+                            scale = 1300 + Steep(sample, 300, 1300) * 2 + more * 13 / 10; // always taller than any stone
+                            break;
                         case Layer.Face when formation == RockFormation.RockFace:
                             scale = 4000 + Steep(sample, 1150, 2000) * 7 + more * 3;
                             break;
@@ -141,36 +136,8 @@ public static class TerrainScatter
         }
     }
 
-    // Sixteen directions, a sixteenth of a turn apart, as the view turns a mesh: +X towards -Z (cos, -sin), × 1000.
-    /// <summary>Boulders stand only where a top flush with the hillside still leaves a sheer face of about a meter.</summary>
+    /// <summary>Boulders lie only on steep boulder ground: on gentle ground it has a few stones.</summary>
     public const int BoulderMinSlope = 350;
-
-    private static readonly int[] DirX = [1000, 924, 707, 383, 0, -383, -707, -924, -1000, -924, -707, -383, 0, 383, 707, 924];
-    private static readonly int[] DirZ = [0, -383, -707, -924, -1000, -924, -707, -383, 0, 383, 707, 924, 1000, 924, 707, 383];
-
-    /// <summary>
-    /// How a boulder stands: turned so its sheer face looks down the fall line, its level top flush with the ground just above
-    /// it. Yaw in thousandths of a turn, top in cm.
-    /// </summary>
-    internal static (int Yaw, int TopCm) DropBlockPose(TerrainGrid grid, int xCm, int zCm, int radiusCm)
-    {
-        long gx = grid.HeightAt(xCm + 200, zCm) - grid.HeightAt(xCm - 200, zCm);
-        long gz = grid.HeightAt(xCm, zCm + 200) - grid.HeightAt(xCm, zCm - 200);
-        int best = 0;
-        long bestDot = long.MinValue;
-        for (int k = 0; k < DirX.Length; k++)
-        {
-            long dot = -gx * DirX[k] - gz * DirZ[k];
-            if (dot > bestDot)
-            {
-                bestDot = dot;
-                best = k;
-            }
-        }
-        int backX = xCm - DirX[best] * radiusCm / 1000, backZ = zCm - DirZ[best] * radiusCm / 1000;
-        int top = grid.HeightAt(backX, backZ) + 10;
-        return ((best * 1000 + 8) / 16, top);
-    }
 
     /// <summary>How far the slope (permille) is into the range, 0 below it: the steeper, the bigger the rock.</summary>
     private static int Steep(TerrainSample sample, int from, int to) => Math.Clamp(sample.SlopePermille, from, to) - from;

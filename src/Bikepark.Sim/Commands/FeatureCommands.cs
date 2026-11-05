@@ -43,6 +43,7 @@ public sealed record RemoveTrailFeatureCommand(int WayId, int FeatureId) : IComm
     public string? Validate(SimContext ctx)
     {
         if (ctx.State.Ways.FirstOrDefault(w => w.Id == WayId)?.Features.FirstOrDefault(f => f.Id == FeatureId) is not { } feature) return "No such feature.";
+        if (feature.FromStoneField) return "These are the stone field's own stones: renaturalize that section of the trail instead.";
         return TrailFeatures.FindType(ctx.State.TrailFeatureTypes, feature.TypeId) is { CrossesRock: not Terrain.RockFormation.None }
             ? "This feature carries the trail over rock: renaturalize that section of the trail instead."
             : null;

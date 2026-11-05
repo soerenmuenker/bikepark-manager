@@ -164,6 +164,9 @@ public sealed class TrailFeature
     /// <summary>A flat drop's level deck, from its start to the lip.</summary>
     public long RampCm { get; set; }
 
+    /// <summary>A rock garden the trail got by running through a stone field: the field's own stones, no work, not removable.</summary>
+    public bool FromStoneField { get; set; }
+
     /// <summary>The stretch of trail it covers.</summary>
     public long LengthOn(TrailFeatureType type) => LengthCm > 0 ? LengthCm : type.LengthCm;
 
@@ -194,6 +197,12 @@ public static class TrailFeatures
 {
     public static TrailFeatureType? FindType(IReadOnlyList<TrailFeatureType> types, string typeId) =>
         types.FirstOrDefault(t => t.Id == typeId);
+
+    /// <summary>Rock gardens are never placed by hand: a trail gets one where it runs through a stone field (<see cref="RockFeatures.StoneGardens"/>).</summary>
+    public static bool ComesFromStoneField(TrailFeatureType type) => type.Kind == FeatureKind.RockGarden;
+
+    /// <summary>The placeable features: not those over rock (chosen while drawing) nor rock gardens (from stone fields).</summary>
+    public static bool IsPlacedByHand(TrailFeatureType type) => type.CrossesRock == Terrain.RockFormation.None && !ComesFromStoneField(type);
 
     /// <summary>
     /// Why the park can't place this feature type yet (its level), or null. A sandbox (<see cref="ParkRules.UnlockAll"/>)

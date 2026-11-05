@@ -82,7 +82,7 @@ public class FeatureTests
             FeaturePlanner.Plan(sim.Network, sim.State.TrailRules, sim.State.TrailFeatureTypes, way, type, meters * 100)
                 .Issues.FirstOrDefault(i => i.Severity == IssueSeverity.Error)?.Code ?? "ok";
 
-        Assert.Equal("ok", Plan(RedRocket, "rock_garden", 100));
+        Assert.Equal("stoneField", Plan(RedRocket, "rock_garden", 100)); // rock gardens come from stone fields, never by hand
         Assert.Equal("ok", Plan(FlowCountry, "big_drop", 135));
         Assert.Equal("noLanding", Plan(FlowCountry, "big_drop", 140)); // the landing runs out onto the flat
         Assert.Equal("tooShallow", Plan(FlowCountry, "big_drop", 400)); // steep enough per segment, but under 3 m down
@@ -99,8 +99,6 @@ public class FeatureTests
         sim.Step();
         Assert.Equal("overlaps", Plan(RedRocket, "table", 228)); // in the jump's landing
         Assert.Contains("landing", FeaturePlanner.Plan(sim.Network, sim.State.TrailRules, sim.State.TrailFeatureTypes, RedRocket, "table", 22_800).FirstError);
-        Assert.Equal("overlaps", Plan(RedRocket, "rock_garden", 180)); // ends at 200 m: no 5 m gap before the jump
-        Assert.Equal("ok", Plan(RedRocket, "rock_garden", 240)); // after landing + gap
         Assert.Equal(TrailRating.Black, sim.Network.Geometry(RedRocket).Rating);
     }
 

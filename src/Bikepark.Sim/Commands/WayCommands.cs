@@ -75,6 +75,13 @@ public sealed record BuildWayCommand(
                 way.Features.Add(feature);
                 if (!way.Built) Jobs.QueueFeature(ctx, id, feature, TrailFeatures.FindType(state.TrailFeatureTypes, placement.TypeId)!);
             }
+        // Through a stone field the trail gets a rock garden: the stones are there already, so there is nothing to build.
+        if (Kind == WayKind.Trail && Origin != WayOrigin.Scenario && state.TrailFeatureTypes.FirstOrDefault(TrailFeatures.ComesFromStoneField) is { } garden)
+        {
+            foreach (var (from, to) in Trails.RockFeatures.StoneGardens(plan.Geometry!, RockFeatures))
+                way.Features.Add(new TrailFeature { Id = state.AllocateEntityId(), TypeId = garden.Id, DistanceCm = from, LengthCm = to - from, Built = true, FromStoneField = true });
+            way.Features.Sort((a, b) => a.DistanceCm.CompareTo(b.DistanceCm));
+        }
         state.Ways.Add(way);
         state.WaysRevision++;
         ctx.Publish(new WayBuilt(ctx.Tick, id));

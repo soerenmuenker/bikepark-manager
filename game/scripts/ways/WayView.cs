@@ -336,6 +336,7 @@ public partial class WayView : Node3D
     {
         foreach (var feature in network.FeaturesOn(way.Id))
         {
+            if (feature.Feature.FromStoneField) continue; // the field's own stones are the garden
             bool built = feature.Feature.Built;
             var job = built ? null : Jobs.ForFeature(state, feature.Feature.Id);
             float progress = job is null ? 0f : WorkCosts.ProgressPermille(state.CrewRules, job) / 1000f;

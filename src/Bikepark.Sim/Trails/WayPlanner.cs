@@ -298,7 +298,7 @@ public static class WayPlanner
             }
         }
         if (kind == WayKind.Trail && geometry.RockMeters(RockFormation.DenseStones) > 0)
-            issues.Add(Warning("stoneField", $"Stone field ({geometry.RockMeters(RockFormation.DenseStones)} m): the stones stay, this trail will be black."));
+            issues.Add(Warning("stoneField", $"Stone field ({geometry.RockMeters(RockFormation.DenseStones)} m): it becomes a rock garden, this trail will be black."));
         if (geometry.StoneMeters > 0)
             issues.Add(Warning("clearStones", $"The crew clears stones along {geometry.StoneMeters} m: extra work."));
     }

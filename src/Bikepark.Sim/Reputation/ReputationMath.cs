@@ -324,7 +324,7 @@ public static class ParkProgress
     public static List<string> UnlocksAt(WorldState state, int level)
     {
         var unlocks = new List<string>();
-        unlocks.AddRange(state.TrailFeatureTypes.Where(t => t.RequiredLevel == level).Select(t => $"{t.Name} ({t.Rating.ToString().ToLowerInvariant()})"));
+        unlocks.AddRange(state.TrailFeatureTypes.Where(t => t.RequiredLevel == level && !TrailFeatures.ComesFromStoneField(t)).Select(t => $"{t.Name} ({t.Rating.ToString().ToLowerInvariant()})"));
         unlocks.AddRange(state.LiftTypes.Where(t => t.RequiredLevel == level).Select(t => t.Name));
         unlocks.AddRange(state.Parcels.Where(p => p.RequiredLevel == level && !state.OwnedParcelIds.Contains(p.Id)).Select(p => $"land: {p.Name}"));
         return unlocks;

@@ -37,6 +37,36 @@ float value_noise(vec2 p) {
 	           mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
 }
 
+// Cellular pebbles: (distance to the nearest pebble centre, gap to the next one, the pebble's own random value).
+vec3 pebbles(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	float d1 = 8.0, d2 = 8.0, id = 0.0;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 g = vec2(float(x), float(y));
+			vec2 o = vec2(hash(i + g), hash(i + g + vec2(17.3, 5.1)));
+			float d = length(g + o - f);
+			if (d < d1) { d2 = d1; d1 = d; id = hash(i + g + vec2(3.7, 9.2)); }
+			else if (d < d2) { d2 = d; }
+		}
+	}
+	return vec3(d1, d2 - d1, id);
+}
+
+// Scree: pebbles of two sizes in light and dark shades, gritty dark gaps between them.
+vec3 scree_color(vec2 xz, vec3 light, vec3 dark, vec3 grit) {
+	// Warp the cells a little so they never line up like paving.
+	vec2 p = xz + vec2(value_noise(xz * 0.9), value_noise(xz * 0.9 + 13.0)) * 0.8;
+	vec3 big = pebbles(p * 2.3);
+	vec3 small = pebbles(p * 6.5 + vec2(31.0, 7.0));
+	vec3 c = mix(light, dark, big.z);
+	c = mix(c, mix(light, dark, small.z), 0.5);
+	c *= 0.85 + 0.3 * value_noise(xz * 0.35); // lighter and darker drifts
+	float gap = min(smoothstep(0.0, 0.07, big.y), smoothstep(0.0, 0.05, small.y));
+	return mix(mix(grit, c, 0.45), c, gap); // faint gaps of grit, not grout
+}
+
 vec3 slope_color(float grade) {
 	if (grade < 0.141) return vec3(0.18, 0.55, 0.20); // < 8°
 	if (grade < 0.268) return vec3(0.55, 0.75, 0.25); // < 15°
@@ -85,7 +115,7 @@ void fragment() {
 		float y = world_pos.y + (n - 0.5) * 3.0;
 		float band = sin(y * 1.1) * 0.5 + sin(y * 0.37) * 0.5;
 		c = mix(c, mix(sandstone, pale_band, smoothstep(0.1, 0.7, band) * 0.6), smoothstep(0.25, 0.6, layers.g + (n - 0.5) * 0.25));
-		c = mix(c, mix(vec3(0.78, 0.62, 0.46), vec3(0.52, 0.36, 0.26), step(0.55, value_noise(world_pos.xz * 3.0))), smoothstep(0.3, 0.7, scree) * 0.75);
+		c = mix(c, scree_color(world_pos.xz, vec3(0.80, 0.64, 0.48), vec3(0.50, 0.34, 0.24), vec3(0.36, 0.25, 0.18)), smoothstep(0.35, 0.75, scree + (n - 0.5) * 0.5) * 0.8);
 		c = mix(c, water, smoothstep(0.02, 0.2, layers.a));
 		c *= 0.85 + 0.3 * n;
 	} else {
@@ -100,9 +130,8 @@ void fragment() {
 		c = mix(c, forest_floor, layers.r);
 		c = mix(c, roots, layers.b * 0.8);
 		c = mix(c, rock, smoothstep(0.25, 0.6, layers.g + (n - 0.5) * 0.25));
-		// Scree: pale gravel speckled with dark stones, so a stone field never looks like boulder ground.
-		vec3 scree_color = mix(vec3(0.72, 0.70, 0.64), vec3(0.38, 0.37, 0.35), step(0.6, value_noise(world_pos.xz * 3.0)));
-		c = mix(c, scree_color, smoothstep(0.3, 0.7, scree) * 0.8);
+		// Scree: pale pebbles with dark grit between them, so a stone field never looks like boulder ground.
+		c = mix(c, scree_color(world_pos.xz, vec3(0.70, 0.68, 0.63), vec3(0.40, 0.39, 0.37), vec3(0.30, 0.29, 0.26)), smoothstep(0.35, 0.75, scree + (n - 0.5) * 0.5) * 0.85);
 		c = mix(c, water, smoothstep(0.02, 0.2, layers.a));
 		c *= 0.85 + 0.3 * n;
 	}

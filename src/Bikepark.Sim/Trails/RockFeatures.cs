@@ -103,6 +103,32 @@ public static class RockFeatures
 
     public static bool IsFlatDrop(TrailFeatureType type) => type.Kind == FeatureKind.FlatDrop;
 
+    /// <summary>A rock garden shorter than this isn't one: its stones are just part of the trail.</summary>
+    public const long MinGardenCm = 300;
+
+    /// <summary>
+    /// The rock gardens a trail gets from the stone fields on its line (from, to in cm): each field's stretch, less what the flat
+    /// drops over rock cover.
+    /// </summary>
+    public static List<(long FromCm, long ToCm)> StoneGardens(WayGeometry geometry, IReadOnlyList<RockFeaturePlacement>? drops)
+    {
+        var gardens = new List<(long, long)>();
+        if (geometry.Kind != WayKind.Trail) return gardens;
+        var covered = (drops ?? []).Select(d => (From: d.StartCm, To: d.StartCm + d.LengthCm)).OrderBy(d => d.From).ToList();
+        foreach (var field in geometry.Rocks.Where(r => r.Kind == RockFormation.DenseStones))
+        {
+            long from = geometry.Distances[field.From], to = geometry.Distances[field.To];
+            foreach (var (dropFrom, dropTo) in covered)
+            {
+                if (dropTo <= from || dropFrom >= to) continue;
+                if (dropFrom - from >= MinGardenCm) gardens.Add((from, dropFrom));
+                from = Math.Max(from, dropTo);
+            }
+            if (to - from >= MinGardenCm) gardens.Add((from, to));
+        }
+        return gardens;
+    }
+
     /// <summary>Why this placement can't be, or null.</summary>
     public static string? CannotPlace(TerrainGrid grid, WayGeometry geometry, TrailRules rules, TrailFeatureType type, RockFeaturePlacement placement)
     {

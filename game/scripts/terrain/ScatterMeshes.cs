@@ -85,7 +85,6 @@ internal static class ScatterMeshes
     /// </summary>
     public static ArrayMesh CreateRock(RockShape shape, int detail)
     {
-        if (shape == RockShape.DropBlock) return CreateDropBlock();
         var parts = new List<(Vector3 Center, List<(Vector3 A, Vector3 B, Vector3 C)> Triangles)>();
         foreach (var (kit, center, size) in Stack(shape))
         {
@@ -121,43 +120,6 @@ internal static class ScatterMeshes
                 float shade = 0.55f + 0.05f * MathF.Sin(MathF.Abs(n.X) * 4f + MathF.Abs(n.Z) * 7f + MathF.Abs(n.Y) * 3f) + 0.025f * i;
                 b.Triangle(pa, pc, pe, new Color(shade, shade * 0.98f, shade * 0.93f), inside);
             }
-        }
-        return b.ToMesh();
-    }
-
-    /// <summary>
-    /// A boulder made for a flat drop: a level, light top (flush with the hillside behind it), a small bevel and sheer sides
-    /// that reach <see cref="RockShapes.DropBlockDepth"/> heights down, so the ground hides its foot on any slope. Its sheer
-    /// front looks along +X, down the fall line. Sized exactly to <see cref="RockShapes.Size"/>: the rules count on it.
-    /// </summary>
-    private static ArrayMesh CreateDropBlock()
-    {
-        var (radiusCm, heightCm) = RockShapes.Size(RockShape.DropBlock);
-        float r = radiusCm / 100f / 1.5f, h = heightCm / 100f, rim = h - 0.12f, foot = -RockShapes.DropBlockDepth * h;
-        // The footprint, counter-clockwise from above: a straight front (+X), a rounded back. All within the radius.
-        Vector2[] outline =
-        [
-            new(1.2f, -0.75f), new(1.26f, 0.02f), new(1.2f, 0.8f), new(0.3f, 1.05f),
-            new(-0.8f, 0.9f), new(-1.25f, 0.2f), new(-1.1f, -0.7f), new(-0.1f, -1.05f),
-        ];
-        var b = new FlatMeshBuilder();
-        var inside = new Vector3(0, foot / 2, 0);
-        Vector3 At(Vector2 p, float y, float scale = 1f) => new(p.X * r * scale, y, p.Y * r * scale);
-        var top = new Color(0.70f, 0.69f, 0.65f);
-        var middle = At(Vector2.Zero, h);
-        for (int i = 0; i < outline.Length; i++)
-        {
-            Vector2 a = outline[i], c = outline[(i + 1) % outline.Length];
-            b.Triangle(middle, At(a, h, 0.9f), At(c, h, 0.9f), top, inside);
-            var bevel = new Color(0.62f, 0.61f, 0.58f);
-            b.Triangle(At(a, h, 0.9f), At(a, rim), At(c, rim), bevel, inside);
-            b.Triangle(At(a, h, 0.9f), At(c, rim), At(c, h, 0.9f), bevel, inside);
-            // The front faces darker, the back a touch lighter: the sheer side reads from above.
-            float facing = (a.X + c.X) / 2.5f;
-            float shade = 0.5f - 0.06f * facing + 0.02f * (i % 2);
-            var side = new Color(shade, shade * 0.98f, shade * 0.93f);
-            b.Triangle(At(a, rim), At(a, foot), At(c, foot), side, inside);
-            b.Triangle(At(a, rim), At(c, foot), At(c, rim), side, inside);
         }
         return b.ToMesh();
     }

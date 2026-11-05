@@ -81,7 +81,7 @@ Command scripts: a JSON list of `{tick, command}` (same format as scenario `comm
 `--commands <file>` (SimRunner run and `terrain`), by tests, and by the game's "Demo trails" button.
 `demo_trails.json` is the game's Demo: three trails from the plateau, built at once and crossing no other way: Flow
 Country (blue, the west flank down to the valley station), Red Rocket (red, the ridge east of the hiking route, joining it
-at its bottom) and Granite Drops (black, straight down over the boulders below the plateau with two flat drops, into Red
+at its bottom) and Granite Drops (black, straight down over the boulders below the plateau with two flat drops and a rock garden, into Red
 Rocket); player trails, so their rock is checked as for any trail drawn in the game. `demo_trail_features.json` adds 15
 features to Flow Country and Red Rocket (ways 11 and 12 of a fresh Demo world). `demo_lift_network.json` (two older,
 tangled trails as scenario ways) and `demo_features.json` (19 features on them) stay as fixtures for tests and runner
