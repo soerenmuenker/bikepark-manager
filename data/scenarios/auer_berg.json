@@ -207,6 +207,9 @@
     "influencerEffectDays": 5,
     "xpPerKmByRating": { "blue": 100, "red": 175, "black": 250 },
     "xpPerFeatureByRating": { "blue": 10, "red": 20, "black": 40 },
+    "xpPerBuilding": 30,
+    "xpPerUpgrade": 10,
+    "xpPerLift": 100,
     "xpPerVisitor": 1,
     "visitorDays": 7,
     "levelXp": [100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500]

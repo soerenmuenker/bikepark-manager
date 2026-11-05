@@ -144,6 +144,13 @@ public sealed class ReputationRules
     /// <summary>XP per built trail feature, by the feature's own rating (its difficulty band).</summary>
     public PerRating XpPerFeatureByRating { get; set; } = new() { Blue = 10, Red = 20, Black = 40 };
 
+    /// <summary>XP per building the park has (bar, campground, bike shop, ...) and per upgrade bought for one.</summary>
+    public int XpPerBuilding { get; set; } = 30;
+    public int XpPerUpgrade { get; set; } = 10;
+
+    /// <summary>XP per lift the park owns and runs (built or restored; rented company lifts don't count).</summary>
+    public int XpPerLift { get; set; } = 100;
+
     /// <summary>XP per average daily visitor over the last <see cref="VisitorDays"/> days.</summary>
     public int XpPerVisitor { get; set; } = 1;
     public int VisitorDays { get; set; } = 7;
@@ -191,7 +198,8 @@ public sealed class ReputationRules
         if (InfluencerPeakPermille is < 0 or > 1000) errors.Add($"{p}.influencerPeakPermille must be within 0..1000");
         if (InfluencerNeutralTenths is < 10 or > 50) errors.Add($"{p}.influencerNeutralTenths must be within 10..50");
         if (InfluencerEffectDays < 1) errors.Add($"{p}.influencerEffectDays must be >= 1");
-        if (XpPerKmByRating.Any(v => v < 0) || XpPerFeatureByRating.Any(v => v < 0) || XpPerVisitor < 0) errors.Add($"{p}: xp values must be >= 0");
+        if (XpPerKmByRating.Any(v => v < 0) || XpPerFeatureByRating.Any(v => v < 0) || XpPerVisitor < 0
+            || XpPerBuilding < 0 || XpPerUpgrade < 0 || XpPerLift < 0) errors.Add($"{p}: xp values must be >= 0");
         if (VisitorDays < 1) errors.Add($"{p}.visitorDays must be >= 1");
         if (LevelXp.Count > MaxLevel) errors.Add($"{p}.levelXp: at most {MaxLevel} levels");
         for (int i = 0; i < LevelXp.Count; i++)

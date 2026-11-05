@@ -264,7 +264,7 @@ public static class ReputationMath
 
 /// <summary>
 /// Park XP and level, derived from the park as it is now: built trail length per rating, built features per rating
-/// (their own difficulty band) and recent visitors.
+/// (their own difficulty band), buildings and their upgrades, lifts the park runs and recent visitors.
 /// </summary>
 public static class ParkProgress
 {
@@ -274,9 +274,11 @@ public static class ParkProgress
     public sealed record XpBreakdown(
         IReadOnlyList<long> TrailMeters, int TrailXp,
         IReadOnlyList<int> Features, int FeatureXp,
+        int Buildings, int Upgrades, int BuildingXp,
+        int Lifts, int LiftXp,
         int AverageVisitors, int VisitorXp)
     {
-        public int Total => TrailXp + FeatureXp + VisitorXp;
+        public int Total => TrailXp + FeatureXp + BuildingXp + LiftXp + VisitorXp;
         public long TotalTrailMeters => TrailMeters.Sum();
         public int TotalFeatures => Features.Sum();
     }
@@ -300,11 +302,16 @@ public static class ParkProgress
             trailXp += lengthCm[r] * rules.XpPerKmByRating.For((TrailRating)r) / 100_000;
             featureXp += (long)features[r] * rules.XpPerFeatureByRating.For((TrailRating)r);
         }
+        int buildings = state.Facilities.Count;
+        int upgrades = state.Facilities.Sum(f => f.Level);
+        int lifts = state.Lifts.Count(l => l.OperatorId is null && l.InService);
         var visitors = state.Reputation.DailyVisitors;
         int average = visitors.Count == 0 ? 0 : (int)(visitors.Sum(v => (long)v) / visitors.Count);
         return new XpBreakdown(
             lengthCm.Select(cm => cm / 100).ToArray(), (int)trailXp,
             features, (int)featureXp,
+            buildings, upgrades, buildings * rules.XpPerBuilding + upgrades * rules.XpPerUpgrade,
+            lifts, lifts * rules.XpPerLift,
             average, average * rules.XpPerVisitor);
     }
 

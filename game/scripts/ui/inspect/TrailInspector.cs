@@ -198,6 +198,7 @@ internal sealed partial class TrailInspector : InspectorWindow
             return;
         }
         Text(body, "No sponsor. Brands may offer for good trails by themselves, or apply:", 12);
+        body.AddChild(UiTheme.InfoBox(FinancePanel.SponsorRules(State), Width - 20));
         foreach (var brand in State.SponsorTypes.OrderBy(b => b.RequiredLevel))
         {
             var row = new HBoxContainer();
@@ -213,6 +214,8 @@ internal sealed partial class TrailInspector : InspectorWindow
             apply.Disabled = misfit is not null;
             row.AddChild(apply);
             body.AddChild(row);
+            Text(body, FinancePanel.BrandNeeds(brand), 11);
+            if (misfit is not null) Text(body, $"Not yet: {misfit}", 11, UiTheme.Warn);
         }
     }
 

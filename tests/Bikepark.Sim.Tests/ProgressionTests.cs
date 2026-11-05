@@ -97,6 +97,39 @@ public class ProgressionTests
     }
 
     [Fact]
+    public void Xp_CountsBuildings_TheirUpgrades_AndLiftsTheParkRuns()
+    {
+        var scenario = TestWorlds.LiftScenario();
+        scenario.StartingMoneyCents = 100_000_000;
+        var sim = new Simulation(ScenarioLoader.CreateWorld(scenario));
+        foreach (var c in TestWorlds.DemoLiftNetwork())
+            sim.Commands.Enqueue(c.Command, 0);
+        sim.Step();
+        var rules = sim.State.ReputationRules;
+        var before = ParkProgress.Xp(sim.State, sim.Network);
+        Assert.Equal(0, before.Buildings);
+        int ownLifts = sim.State.Lifts.Count(l => l.OperatorId is null && l.InService);
+        Assert.Equal(ownLifts * rules.XpPerLift, before.LiftXp);
+
+        Assert.Null(Reject(sim, new BuildFacilityCommand("bike_shop", new PointCm(25000, 90000), new PointCm(26000, 90000), Level: 2)));
+        var after = ParkProgress.Xp(sim.State, sim.Network);
+        Assert.Equal(1, after.Buildings);
+        Assert.Equal(2, after.Upgrades);
+        Assert.Equal(rules.XpPerBuilding + 2 * rules.XpPerUpgrade, after.BuildingXp);
+        Assert.Equal(before.Total + after.BuildingXp, after.Total);
+
+        // A lift out of service (derelict) or rented from a company brings nothing.
+        if (sim.State.Lifts.FirstOrDefault(l => l.OperatorId is null && l.InService) is { } lift)
+        {
+            lift.Derelict = true;
+            Assert.Equal(after.LiftXp - rules.XpPerLift, ParkProgress.Xp(sim.State, sim.Network).LiftXp);
+            lift.Derelict = false;
+            lift.OperatorId = "company";
+            Assert.Equal(after.LiftXp - rules.XpPerLift, ParkProgress.Xp(sim.State, sim.Network).LiftXp);
+        }
+    }
+
+    [Fact]
     public void Xp_PerKm_IsWorthMoreOnHarderTrails()
     {
         var rules = new ReputationRules();

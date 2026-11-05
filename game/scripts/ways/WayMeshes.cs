@@ -116,10 +116,12 @@ internal static class WayMeshes
     private static bool OverRock(WayGeometry g, long d) =>
         g.Rocks.Any(r => d >= g.Distances[r.From] - RockMarginCm && d <= g.Distances[r.To] + RockMarginCm);
 
-    public static ShaderMaterial CreateMaterial(float depthBias = 0.0015f)
+    /// <param name="pullScale">Scales the ribbon's pull towards the camera (the build preview pulls more, to sit over built ways).</param>
+    public static ShaderMaterial CreateMaterial(float pullScale = 1f)
     {
         var material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/way.gdshader") };
-        material.SetShaderParameter("depth_bias", depthBias);
+        material.SetShaderParameter("pull_min", 0.05f * pullScale);
+        material.SetShaderParameter("pull_per_meter", 0.004f * pullScale);
         return material;
     }
 

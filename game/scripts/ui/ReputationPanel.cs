@@ -324,9 +324,12 @@ public partial class ReputationPanel : HudPanel
         }
         _xpParts.Text = $"Trails {PerColour(r => $"{xp.TrailMeters[r] / 1000.0:0.0} km")}  +{xp.TrailXp} XP\n" +
                         $"Features {PerColour(r => $"{xp.Features[r]}")}  +{xp.FeatureXp} XP\n" +
+                        $"Buildings {xp.Buildings}, upgrades {xp.Upgrades}  +{xp.BuildingXp} XP\n" +
+                        $"Lifts running {xp.Lifts}  +{xp.LiftXp} XP\n" +
                         $"Visitors {xp.AverageVisitors}/day  +{xp.VisitorXp} XP\n" +
                         $"XP per km: {PerColour(r => $"{rules.XpPerKmByRating.For((TrailRating)r)}")} · per feature: " +
-                        PerColour(r => $"{rules.XpPerFeatureByRating.For((TrailRating)r)}");
+                        PerColour(r => $"{rules.XpPerFeatureByRating.For((TrailRating)r)}") +
+                        $" · per building {rules.XpPerBuilding}, upgrade {rules.XpPerUpgrade}, own lift {rules.XpPerLift}";
 
         long day = GameTime.Day(state.Tick);
         _post.Text = ReputationMath.ActivePost(state, day) is { } post

@@ -6,6 +6,7 @@ using Bikepark.Sim.Facilities;
 using Bikepark.Sim.Sponsors;
 using Bikepark.Sim.Staff;
 using Bikepark.Sim.State;
+using Bikepark.Sim.Trails;
 using Godot;
 
 namespace Bikepark.Game.Ui;
@@ -192,6 +193,7 @@ public partial class FinancePanel : HudPanel
     {
         if (Ctx.Sim.State.SponsorTypes.Count == 0) return;
         var card = Card(right, "SPONSORS — the park and its trails, with benefits");
+        card.AddChild(UiTheme.InfoBox(SponsorRules(Ctx.Sim.State), 316));
         _sponsors = new VBoxContainer();
         _sponsors.AddThemeConstantOverride("separation", 6);
         card.AddChild(_sponsors);
@@ -274,7 +276,8 @@ public partial class FinancePanel : HudPanel
             }
             var best = SponsorMath.BestTrail(state, network, brand, level);
             string? why = best is null
-                ? network.Trails.Select(t => SponsorMath.TrailMisfit(state, network, brand, t, level)).FirstOrDefault(m => m is not null) ?? "No trail fits."
+                ? network.Trails.Select(t => SponsorMath.TrailMisfit(state, network, brand, t, level)).FirstOrDefault(m => m is not null)
+                  ?? (network.Trails.Any() ? "Every fitting trail already has an offer." : "There is no built trail yet.")
                 : null;
             int wayId = best?.Id ?? 0;
             var trail = UiTheme.Button(best is null ? "Trail" : best.Name, () => Ctx.Host.Enqueue(new ApplySponsorCommand(id, wayId)),
@@ -282,6 +285,17 @@ public partial class FinancePanel : HudPanel
             trail.Disabled = busy || best is null;
             row.AddChild(trail);
             _sponsors.AddChild(row);
+            var needs = UiTheme.Label(BrandNeeds(brand), 10, UiTheme.TextDim);
+            needs.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            needs.CustomMinimumSize = new Vector2(316, 0);
+            _sponsors.AddChild(needs);
+            if (!busy && best is null && why is not null)
+            {
+                var reason = UiTheme.Label($"Not yet: {why}", 10, UiTheme.Warn);
+                reason.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                reason.CustomMinimumSize = new Vector2(316, 0);
+                _sponsors.AddChild(reason);
+            }
         }
     }
 
@@ -627,6 +641,36 @@ public partial class FinancePanel : HudPanel
         label.HorizontalAlignment = align;
         label.VerticalAlignment = VerticalAlignment.Center;
         return label;
+    }
+
+    /// <summary>When brands sponsor at all (for the info boxes in the Finances menu and the trail window).</summary>
+    internal static string SponsorRules(WorldState state)
+    {
+        var rules = state.SponsorRules;
+        return "When can I get a sponsor?\n" +
+               "• Each brand deals with the park only from its park level (see each brand below).\n" +
+               "• A trail must be built and connected to the park, have no other sponsor, and reach the brand's rating, " +
+               "fun stars (riders' average) and runs a day.\n" +
+               "• Some brands also sponsor the whole park: they want a park level and sometimes a rating.\n" +
+               $"• One deal per brand and one brand per trail (or the park). Brands look every {rules.OfferCheckDays} days and may " +
+               $"offer by themselves; an application is answered after {rules.ApplyAnswerDays} days.\n" +
+               "• A deal pays only once the crew has put up its sign (carpentry and wood).";
+    }
+
+    /// <summary>What a brand wants, in one line: "From level 2 · trail: red or harder, 3.5★, 20 runs a day · park: level 6, 4.0★".</summary>
+    internal static string BrandNeeds(SponsorType brand)
+    {
+        var parts = new List<string>();
+        if (brand.RequiredLevel > 0) parts.Add($"from level {brand.RequiredLevel}");
+        var trail = new List<string> { brand.MinRating == TrailRating.Blue ? "any rating" : $"{brand.MinRating.ToString().ToLowerInvariant()} or harder" };
+        if (brand.MinStarsTenths > 0) trail.Add($"{brand.MinStarsTenths / 10.0:0.0}★ fun");
+        if (brand.MinRunsPerDay > 0) trail.Add($"{brand.MinRunsPerDay} runs a day");
+        parts.Add("trail: " + string.Join(", ", trail));
+        if (brand.SponsorsParks)
+            parts.Add($"park: level {Math.Max(brand.RequiredLevel, brand.ParkMinLevel)}" +
+                      (brand.ParkMinStarsTenths > 0 ? $", rated {brand.ParkMinStarsTenths / 10.0:0.0}★" : ""));
+        var line = string.Join(" · ", parts);
+        return char.ToUpperInvariant(line[0]) + line[1..];
     }
 
     private static VBoxContainer Card(VBoxContainer parent, string caption)

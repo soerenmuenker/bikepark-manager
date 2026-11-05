@@ -51,6 +51,7 @@ public partial class Hud : CanvasLayer
     private HudContext _ctx = null!;
     private Control _root = null!;
     private PanelContainer _bar = null!;
+    private Control _zoom = null!;
     private readonly Dictionary<Menu, HudPanel> _panels = [];
     private readonly Dictionary<Menu, RoundButton> _menuButtons = [];
     private readonly List<RoundButton> _speedButtons = [];
@@ -236,6 +237,7 @@ public partial class Hud : CanvasLayer
         bar.AddChild(menus);
         bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
         var zoom = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        _zoom = zoom;
         zoom.AddThemeConstantOverride("separation", 4);
         zoom.AddChild(new RoundButton(UiIcon.ZoomIn, 28, "", "Zoom in  [+]", _ctx.Camera.ZoomIn));
         zoom.AddChild(new RoundButton(UiIcon.ZoomOut, 28, "", "Zoom out  [−]", _ctx.Camera.ZoomOut));
@@ -466,10 +468,20 @@ public partial class Hud : CanvasLayer
     private void Layout()
     {
         var view = _root.GetViewportRect().Size;
+        // Never wider than the window: in a narrow one (or with long values in the stats) the zoom buttons go first
+        // (wheel and +/- still zoom), then the whole bar is scaled down, so the game menu on the right never drops out.
+        var content = _bar.GetCombinedMinimumSize();
+        float zoomWidth = _zoom.GetCombinedMinimumSize().X + 6;
+        float fullWidth = content.X + (_zoom.Visible ? 0 : zoomWidth);
+        _zoom.Visible = fullWidth <= view.X;
+        float width = fullWidth - (_zoom.Visible ? 0 : zoomWidth);
+        float scale = width > view.X ? view.X / width : 1f;
         // Never shorter than its content: a taller bar grows upwards instead of pushing its bottom row out of the window.
-        float barHeight = MathF.Max(UiTheme.BarHeight, _bar.GetCombinedMinimumSize().Y);
+        float ownHeight = MathF.Max(UiTheme.BarHeight, content.Y);
+        float barHeight = ownHeight * scale;
+        _bar.Scale = new Vector2(scale, scale);
         _bar.Position = new Vector2(0, view.Y - barHeight);
-        _bar.Size = new Vector2(view.X, barHeight);
+        _bar.Size = new Vector2(view.X / scale, ownHeight);
 
         if (_open != Menu.None && _panels[_open] is { } panel)
         {

@@ -158,6 +158,39 @@ internal static class UiTheme
         return box;
     }
 
+    /// <summary>
+    /// A boxed note with an "i" sign: how a part of the game works (rules, requirements), wrapped at
+    /// <paramref name="width"/>. A first line of several is shown bold as its title.
+    /// </summary>
+    public static Control InfoBox(string text, float width)
+    {
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", Box(new Color(Accent, 0.10f), 6, 8, 6, new Color(Accent, 0.45f), 1));
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        var sign = new PanelContainer { CustomMinimumSize = new Vector2(18, 18), SizeFlagsVertical = Control.SizeFlags.ShrinkBegin };
+        sign.AddThemeStyleboxOverride("panel", Box(Accent, 9, 0, 0));
+        var i = Label("i", 12, Bar, bold: true);
+        i.HorizontalAlignment = HorizontalAlignment.Center;
+        i.VerticalAlignment = VerticalAlignment.Center;
+        sign.AddChild(i);
+        row.AddChild(sign);
+        var lines = new VBoxContainer();
+        lines.AddThemeConstantOverride("separation", 2);
+        var parts = text.Replace("\r", "").Split('\n');
+        for (int k = 0; k < parts.Length; k++)
+        {
+            bool title = parts.Length > 1 && k == 0;
+            var label = Label(parts[k], title ? 12 : 11, title ? Text : new Color(Text, 0.85f), bold: title);
+            label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            label.CustomMinimumSize = new Vector2(Math.Max(60, width - 46), 0);
+            lines.AddChild(label);
+        }
+        row.AddChild(lines);
+        panel.AddChild(row);
+        return panel;
+    }
+
     public static HSeparator Separator()
     {
         var separator = new HSeparator();

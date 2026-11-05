@@ -115,8 +115,8 @@
   // rating is the average of the last windowSize reviews per group, shown from minReviewsForRating reviews on.
   // Demand (permille of the arrival rate) = visibility (by all-time reviews) x rating factor (by stars) x influencer.
   // Influencers come now and then, ride the park, and post: a good post boosts demand, a bad one hurts, fading over
-  // influencerEffectDays. Park XP is derived from built trail km, distinct trail ratings, distinct feature kinds and
-  // the average visitors of the last visitorDays days; levelXp lists the XP for levels 1..20 (25 n^2 + 75 n: a demo park
+  // influencerEffectDays. Park XP is derived from built trail km, distinct trail ratings, distinct feature kinds,
+  // buildings (+ upgrades), lifts the park runs itself and the average visitors of the last visitorDays days; levelXp lists the XP for levels 1..20 (25 n^2 + 75 n: a demo park
   // with two trails is level 4, a dense network of ~50 km across the map with busy days reaches 20).
   "reputationRules": {
     "enabled": true,
@@ -163,6 +163,9 @@
     "influencerEffectDays": 5,
     "xpPerKmByRating": { "blue": 100, "red": 175, "black": 250 },
     "xpPerFeatureByRating": { "blue": 10, "red": 20, "black": 40 },
+    "xpPerBuilding": 30,
+    "xpPerUpgrade": 10,
+    "xpPerLift": 100,
     "xpPerVisitor": 1,
     "visitorDays": 7,
     "levelXp": [100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500]

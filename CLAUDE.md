@@ -360,7 +360,8 @@ tools/release/export.sh 0.1.0
     (`ParkProgress`, never saved; `Reputation.Level` only remembers the last announced level). `ReputationSystem` runs
     before `FinanceSystem` (it reads today's visitors before the books close). XP = built trail length per rating
     (`XpPerKmByRating`) + built features per their own rating (`TrailFeatureType.Rating`, `XpPerFeatureByRating`) +
-    average recent visitors.
+    buildings and their upgrades (`XpPerBuilding`, `XpPerUpgrade`) + lifts the park owns and runs (`XpPerLift`; not
+    derelict, not under construction, not rented from a company) + average recent visitors.
 17a. **Unlocks:** content has a `RequiredLevel` (feature types, lift types, parcels); checks compare against
     `ParkRules.UnlockLevel(level)` (`UnlockAll` = sandbox, the Demo: everything open). Features: `TrailFeatures.CannotPlace`,
     checked in `PlaceTrailFeatureCommand` (not for debug `Instant`) and `FeatureTool`; lifts: `LiftWorks.CannotBuild`.

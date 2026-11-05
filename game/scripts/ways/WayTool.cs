@@ -88,7 +88,7 @@ public partial class WayTool : Node3D
         _host = GetNode<SimHost>(SimHostPath);
         _terrain = GetNode<TerrainView>(TerrainPath);
         _camera = GetNode<RtsCamera>(CameraPath);
-        _material = WayMeshes.CreateMaterial(0.0025f);
+        _material = WayMeshes.CreateMaterial(1.6f);
         _preview = new MeshInstance3D { Name = "Preview", MaterialOverride = _material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_preview);
         _markers = new MultiMeshInstance3D
