@@ -233,7 +233,7 @@ internal sealed partial class RepairDialog : PanelContainer
                 : UiTheme.Button($"Camera {UiTheme.Money(cost)}", () => ctx.Host.Enqueue(new PlaceCameraCommand(wayId, featureId)),
                     $"A photo spot: riders landing it may buy their clip after the run (price: the trail window); clips shared online bring a little " +
                     $"demand. Upkeep {UiTheme.Money(state.SponsorRules.CameraUpkeepPerDayCents)}/day");
-            camera.Disabled = !feature.Built || !feature.Camera && state.Finance.MoneyCents < cost;
+            camera.Disabled = !feature.Built || !feature.Camera && !state.Finance.CanAfford(cost);
             row.AddChild(camera);
         }
         var button = UiTheme.Button(job is not null ? "Repairing…" : "Repair",

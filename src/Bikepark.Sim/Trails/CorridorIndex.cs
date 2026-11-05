@@ -11,12 +11,14 @@ internal sealed class CorridorIndex
     private readonly Dictionary<long, List<(int Entry, int Sample)>> _buckets = [];
     private readonly List<(int WayId, WayGeometry Geometry, long HalfWidthCm)> _entries = [];
 
-    public void Add(int wayId, WayGeometry geometry, int corridorWidthCm)
+    /// <param name="onlySample">Leave out the other samples.</param>
+    public void Add(int wayId, WayGeometry geometry, int corridorWidthCm, Func<int, bool>? onlySample = null)
     {
         int entry = _entries.Count;
         _entries.Add((wayId, geometry, corridorWidthCm / 2));
         for (int i = 0; i < geometry.SampleCount; i++)
         {
+            if (onlySample is not null && !onlySample(i)) continue;
             long key = Key(geometry.Xs[i] / BucketCm, geometry.Zs[i] / BucketCm);
             if (!_buckets.TryGetValue(key, out var list))
                 _buckets[key] = list = [];

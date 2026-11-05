@@ -1,3 +1,4 @@
+using Bikepark.Sim.Terrain;
 using Godot;
 
 namespace Bikepark.Game.Terrain;
@@ -22,39 +23,157 @@ internal static class ScatterMeshes
         return b.ToMesh();
     }
 
-    public static ArrayMesh CreateRock()
+    /// <summary>A low, wide desert juniper: a twisted trunk under grey-green crowns.</summary>
+    public static ArrayMesh CreateJuniper()
     {
-        // Icosahedron with deterministic radial jitter, flattened.
-        float p = (1f + MathF.Sqrt(5f)) / 2f;
-        Vector3[] v =
+        var b = new FlatMeshBuilder();
+        b.Prism(radius: 0.18f, y0: 0f, y1: 1.1f, sides: 5, new Color(0.20f, 0.14f, 0.09f));
+        b.Cone(1.5f, 0.6f, 2.5f, sides: 7, new Color(0.10f, 0.15f, 0.07f));
+        b.Cone(1.05f, 1.5f, 3.5f, sides: 6, new Color(0.13f, 0.18f, 0.09f));
+        return b.ToMesh();
+    }
+
+    /// <summary>A knee-high sage-coloured shrub.</summary>
+    public static ArrayMesh CreateShrub()
+    {
+        var b = new FlatMeshBuilder();
+        b.Cone(0.8f, -0.05f, 0.9f, sides: 6, new Color(0.22f, 0.23f, 0.12f));
+        b.Cone(0.5f, 0.25f, 1.15f, sides: 5, new Color(0.27f, 0.28f, 0.15f));
+        return b.ToMesh();
+    }
+
+    /// <summary>The planes cutting a loose rock (normal, distance): they make its flat faces and hard edges.</summary>
+    private static (Vector3 Normal, float Distance)[] Cuts(RockShape shape) => shape switch
+    {
+        RockShape.Slab => [(new(0.25f, 1, 0.1f), 0.22f), (new(1, 0.5f, 0.3f), 0.5f), (new(-0.8f, 0.7f, 0.9f), 0.42f), (new(0.3f, 0.6f, -1), 0.46f), (new(-1, 0.4f, -0.6f), 0.52f), (new(0.8f, 0.3f, 1), 0.56f)],
+        RockShape.Block => [(new(0.18f, 1, -0.14f), 0.42f), (new(1, 0.08f, 0.15f), 0.44f), (new(-1, 0.12f, 0.3f), 0.4f), (new(0.2f, 0.1f, 1), 0.46f), (new(-0.15f, 0.05f, -1), 0.42f), (new(0.8f, 0.9f, 0.7f), 0.62f)],
+        RockShape.Wedge => [(new(1, 0.9f, 0.15f), 0.2f), (new(-1, 0.02f, 0.1f), 0.42f), (new(0.1f, 0.15f, 1), 0.5f), (new(0.2f, 0.2f, -1), 0.44f), (new(-0.5f, 1, 0.4f), 0.55f)],
+        RockShape.Fin => [(new(0.7f, 1, 0.1f), 0.5f), (new(-0.6f, 1, -0.2f), 0.52f), (new(0.08f, 0.1f, 1), 0.2f), (new(-0.12f, 0.05f, -1), 0.17f), (new(1, 0.1f, 0.25f), 0.42f), (new(-1, 0.2f, 0.1f), 0.46f)],
+        _ => [(new(0.15f, 1, 0.2f), 0.34f), (new(1, 0.35f, -0.25f), 0.5f), (new(-1, 0.4f, 0.15f), 0.5f), (new(0.3f, 0.4f, 1), 0.42f), (new(-0.2f, 0.4f, -1), 0.46f), (new(0.7f, 0.5f, 0.9f), 0.5f)],
+    };
+
+    /// <summary>
+    /// The rocks a piece of rock face is stacked from (kit shape, centre, half size; 1 = the piece's radius and height): wide
+    /// ones low down and narrower ones on top make its ledges, the lowest reach far below the ground for steep slopes.
+    /// </summary>
+    private static (RockShape Shape, Vector3 Center, Vector3 Size)[] Stack(RockShape shape) => shape switch
+    {
+        RockShape.Ledged0 =>
         [
-            new(-1, p, 0), new(1, p, 0), new(-1, -p, 0), new(1, -p, 0),
-            new(0, -1, p), new(0, 1, p), new(0, -1, -p), new(0, 1, -p),
-            new(p, 0, -1), new(p, 0, 1), new(-p, 0, -1), new(-p, 0, 1),
-        ];
-        float[] jitter = [1.0f, 0.82f, 0.93f, 1.1f, 0.88f, 1.05f, 0.95f, 0.8f, 1.12f, 0.9f, 1.0f, 0.86f];
-        for (int i = 0; i < v.Length; i++)
+            (RockShape.Block, new(0, -0.35f, 0), new(1, 0.75f, 0.9f)),
+            (RockShape.Slab, new(-0.15f, 0.5f, 0.1f), new(0.75f, 0.22f, 0.7f)),
+            (RockShape.Block, new(0.2f, 0.72f, -0.1f), new(0.5f, 0.28f, 0.45f)),
+        ],
+        RockShape.Ledged1 =>
+        [
+            (RockShape.Block, new(-0.3f, -0.4f, 0), new(0.7f, 0.7f, 0.85f)),
+            (RockShape.Fin, new(0.35f, 0.1f, 0.15f), new(0.35f, 0.9f, 0.6f)),
+            (RockShape.Wedge, new(-0.4f, 0.5f, -0.1f), new(0.55f, 0.3f, 0.6f)),
+        ],
+        RockShape.Ledged2 =>
+        [
+            (RockShape.Split, new(0.1f, -0.35f, 0), new(0.95f, 0.7f, 0.75f)),
+            (RockShape.Wedge, new(-0.35f, 0.5f, 0.15f), new(0.6f, 0.42f, 0.6f)),
+            (RockShape.Fin, new(0.4f, 0.6f, -0.2f), new(0.3f, 0.4f, 0.5f)),
+        ],
+        _ => [(shape, Vector3.Zero, Vector3.One)],
+    };
+
+    /// <summary>
+    /// A rock of the kit, fitted to its size in <see cref="RockShapes"/> (its foot below the ground): a ball cut flat by a few
+    /// planes. Ledged shapes, the pieces of rock face, are stacks of those.
+    /// </summary>
+    public static ArrayMesh CreateRock(RockShape shape, int detail)
+    {
+        var parts = new List<(Vector3 Center, List<(Vector3 A, Vector3 B, Vector3 C)> Triangles)>();
+        foreach (var (kit, center, size) in Stack(shape))
         {
-            var dir = v[i].Normalized() * 0.6f * jitter[i];
-            v[i] = new Vector3(dir.X, dir.Y * 0.65f + 0.2f, dir.Z);
+            var triangles = CutBall(kit, detail);
+            var points = triangles.SelectMany(t => new[] { t.A, t.B, t.C }).ToList();
+            Vector3 low = points.Aggregate((a, b) => a.Min(b)), high = points.Aggregate((a, b) => a.Max(b));
+            // A stacked rock fills its box; a single one keeps its foot where the cuts left it.
+            Vector3 Place(Vector3 p) => shape < RockShape.Ledged0 ? p : center + ((p - low) / (high - low) * 2f - Vector3.One) * size;
+            parts.Add((center, triangles.Select(t => (Place(t.A), Place(t.B), Place(t.C))).ToList()));
         }
 
-        int[][] faces =
-        [
+        // Fitted exactly: the rules count on these numbers.
+        float radius = 0, height = 0;
+        foreach (var (_, triangles) in parts)
+            foreach (var (a, c, e) in triangles)
+                foreach (var p in new[] { a, c, e })
+                {
+                    radius = Math.Max(radius, new Vector2(p.X, p.Z).Length());
+                    height = Math.Max(height, p.Y);
+                }
+        var (radiusCm, heightCm) = RockShapes.Size(shape);
+        Vector3 Fit(Vector3 p) => new(p.X / radius * radiusCm / 100f, p.Y / height * heightCm / 100f, p.Z / radius * radiusCm / 100f);
+
+        var b = new FlatMeshBuilder();
+        for (int i = 0; i < parts.Count; i++)
+        {
+            var inside = Fit(parts[i].Center) + new Vector3(0, 0.1f, 0);
+            foreach (var (a, c, e) in parts[i].Triangles)
+            {
+                Vector3 pa = Fit(a), pc = Fit(c), pe = Fit(e);
+                // The same shade across one flat face, another on the next; each rock of a stack its own.
+                var n = (pc - pa).Cross(pe - pa).Normalized();
+                float shade = 0.55f + 0.05f * MathF.Sin(MathF.Abs(n.X) * 4f + MathF.Abs(n.Z) * 7f + MathF.Abs(n.Y) * 3f) + 0.025f * i;
+                b.Triangle(pa, pc, pe, new Color(shade, shade * 0.98f, shade * 0.93f), inside);
+            }
+        }
+        return b.ToMesh();
+    }
+
+    private static List<(Vector3 A, Vector3 B, Vector3 C)> CutBall(RockShape shape, int detail)
+    {
+        var cuts = Cuts(shape);
+        Vector3 Cut(Vector3 direction)
+        {
+            var p = direction.Normalized();
+            for (int pass = 0; pass < 3; pass++) // cutting by one plane can push a point over another
+                foreach (var (normal, distance) in cuts)
+                {
+                    var n = normal.Normalized();
+                    float over = p.Dot(n) - distance;
+                    if (over > 0) p -= n * over;
+                }
+            if (shape == RockShape.Split && p.Y > 0.05f) // a crack across the top
+                p.Y -= 0.32f * Math.Max(0f, 1f - MathF.Abs(p.X + 0.1f * p.Z - 0.08f) / 0.16f);
+            return p;
+        }
+
+        var triangles = new List<(Vector3 A, Vector3 B, Vector3 C)>();
+        void Split(Vector3 a, Vector3 c, Vector3 e, int depth)
+        {
+            if (depth > 0)
+            {
+                Vector3 ac = (a + c).Normalized(), ce = (c + e).Normalized(), ea = (e + a).Normalized();
+                Split(a, ac, ea, depth - 1);
+                Split(ac, c, ce, depth - 1);
+                Split(ea, ce, e, depth - 1);
+                Split(ac, ce, ea, depth - 1);
+                return;
+            }
+            triangles.Add((Cut(a), Cut(c), Cut(e)));
+        }
+        var (corners, faces) = Icosahedron();
+        foreach (var f in faces) Split(corners[f[0]], corners[f[1]], corners[f[2]], detail);
+        return triangles;
+    }
+
+    private static (Vector3[] Corners, int[][] Faces) Icosahedron()
+    {
+        float p = (1f + MathF.Sqrt(5f)) / 2f;
+        return ([
+            new Vector3(-1, p, 0), new Vector3(1, p, 0), new Vector3(-1, -p, 0), new Vector3(1, -p, 0),
+            new Vector3(0, -1, p), new Vector3(0, 1, p), new Vector3(0, -1, -p), new Vector3(0, 1, -p),
+            new Vector3(p, 0, -1), new Vector3(p, 0, 1), new Vector3(-p, 0, -1), new Vector3(-p, 0, 1),
+        ], [
             [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
             [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
             [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
             [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
-        ];
-
-        var b = new FlatMeshBuilder();
-        var center = new Vector3(0, 0.2f, 0);
-        for (int f = 0; f < faces.Length; f++)
-        {
-            float shade = 0.5f + 0.06f * (f % 4);
-            b.Triangle(v[faces[f][0]], v[faces[f][1]], v[faces[f][2]], new Color(shade, shade * 0.98f, shade * 0.94f), center);
-        }
-        return b.ToMesh();
+        ]);
     }
 
     public static StandardMaterial3D CreateMaterial() => new()

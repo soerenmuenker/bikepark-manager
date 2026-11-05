@@ -87,7 +87,7 @@ public sealed record BuyToolCommand(string ToolId) : ICommand
         int level = Reputation.ParkProgress.CurrentLevel(state, ctx.Network);
         if (state.Rules.UnlockLevel(level) < tool.RequiredLevel)
             return $"The {tool.Name.ToLowerInvariant()} needs park level {tool.RequiredLevel} (you are level {level}).";
-        if (state.Finance.MoneyCents < tool.PriceCents) return "Not enough money.";
+        if (!state.Finance.CanAfford(tool.PriceCents)) return "Not enough money.";
         return null;
     }
 
@@ -110,7 +110,7 @@ public sealed record BuyWoodCommand(int Amount) : ICommand
     public string? Validate(SimContext ctx)
     {
         if (Amount is < 1 or > MaxAmount) return $"Buy between 1 and {MaxAmount} wood.";
-        if (ctx.State.Finance.MoneyCents < Amount * ctx.State.CrewRules.WoodPriceCents) return "Not enough money.";
+        if (!ctx.State.Finance.CanAfford(Amount * ctx.State.CrewRules.WoodPriceCents)) return "Not enough money.";
         return null;
     }
 

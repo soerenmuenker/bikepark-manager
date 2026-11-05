@@ -75,6 +75,13 @@ public sealed class CrewRules
     public int SectionMeters { get; set; } = 20;
     public int WorkersPerSection { get; set; } = 2;
 
+    /// <summary>A bridge over a brook or river (a way crossing water): wood and extra work per meter of it.</summary>
+    public int BridgeWoodPerMeter { get; set; } = 2;
+    public int BridgeMinutesPerMeter { get; set; } = 30;
+
+    /// <summary>Moving loose stones out of a way's line, per meter.</summary>
+    public int StoneClearMinutesPerMeter { get; set; } = 6;
+
     /// <summary>Worker grades applicants come in (none: no applicants, every hire is a standard worker).</summary>
     public List<CrewGrade> Grades { get; set; } = [];
 

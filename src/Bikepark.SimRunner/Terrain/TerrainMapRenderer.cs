@@ -48,11 +48,11 @@ internal static class TerrainMapRenderer
 
     public static byte[] Render(TerrainGrid grid, MapMode mode, IReadOnlyList<ScatterInstance>? scatter, WayNetwork? network = null, WorldState? state = null)
     {
-        int n = grid.Samples;
+        int n = grid.SamplesX, rows = grid.SamplesZ;
         var heights = grid.Heights;
-        var rgb = new byte[n * n * 3];
+        var rgb = new byte[n * rows * 3];
 
-        for (int z = 0; z < n; z++)
+        for (int z = 0; z < rows; z++)
         {
             for (int x = 0; x < n; x++)
             {
@@ -62,7 +62,14 @@ internal static class TerrainMapRenderer
                 Rgb color = mode switch
                 {
                     MapMode.Slope => SlopeColor(sample.SlopePermille),
-                    MapMode.Surface => SurfaceColors[(int)sample.Surface],
+                    MapMode.Surface => grid.RockFormationAt(x * 100L, z * 100L) switch
+                    {
+                        RockFormation.SparseStones => new Rgb(0.78, 0.76, 0.66),
+                        RockFormation.DenseStones => new Rgb(0.45, 0.42, 0.40),
+                        RockFormation.MediumRock => new Rgb(0.90, 0.50, 0.15),
+                        RockFormation.RockFace => new Rgb(0.10, 0.08, 0.10),
+                        _ => SurfaceColors[(int)sample.Surface],
+                    },
                     _ => ReliefColor(grid, sample),
                 };
 
@@ -81,11 +88,13 @@ internal static class TerrainMapRenderer
             foreach (var s in scatter)
             {
                 int x = s.XCm / 100, z = s.ZCm / 100;
-                if (x >= n || z >= n) continue;
+                if (x >= n || z >= rows) continue;
                 Put(rgb, grid.Index(x, z), s.Kind == ScatterKind.Tree ? new Rgb(0.05, 0.22, 0.08) : new Rgb(0.35, 0.33, 0.32));
             }
         }
 
+        if (grid.Settings.Heightmap?.Scenery is { } scenery)
+            DrawScenery(rgb, n, scenery);
         if (state is not null)
             DrawParcels(rgb, n, state);
         if (network is not null)
@@ -93,6 +102,30 @@ internal static class TerrainMapRenderer
 
         DrawMarker(rgb, n, grid.Peak.X, grid.Peak.Z, new Rgb(0.9, 0.1, 0.1));
         return rgb;
+    }
+
+    private static void DrawScenery(byte[] rgb, int n, TerrainScenery scenery)
+    {
+        foreach (var street in scenery.Streets)
+            for (int i = 1; i < street.Points.Count; i++)
+            {
+                var (a, b) = (street.Points[i - 1], street.Points[i]);
+                long steps = Math.Max(1, Math.Max(Math.Abs(b.X - a.X), Math.Abs(b.Z - a.Z)) / 50);
+                for (long k = 0; k <= steps; k++)
+                    Disc(rgb, n, (int)((a.X + (b.X - a.X) * k / steps) / 100), (int)((a.Z + (b.Z - a.Z) * k / steps) / 100), street.WidthCm / 200, new Rgb(0.25, 0.26, 0.28));
+            }
+        foreach (var b in scenery.Buildings)
+        {
+            int reach = Math.Max(b.HalfLengthCm, b.HalfWidthCm) * 1415 / 100000 + 1;
+            for (int z = b.CenterZ / 100 - reach; z <= b.CenterZ / 100 + reach; z++)
+                for (int x = b.CenterX / 100 - reach; x <= b.CenterX / 100 + reach; x++)
+                {
+                    long dx = x * 100L - b.CenterX, dz = z * 100L - b.CenterZ;
+                    if (x >= 0 && z >= 0 && x < n && (z + 1) * n * 3 <= rgb.Length
+                        && Math.Abs(dx * b.DirX + dz * b.DirZ) / 1000 <= b.HalfLengthCm && Math.Abs(dz * b.DirX - dx * b.DirZ) / 1000 <= b.HalfWidthCm)
+                        Put(rgb, z * n + x, new Rgb(0.55, 0.22, 0.18));
+                }
+        }
     }
 
     private static void DrawNetwork(byte[] rgb, int n, WayNetwork network)
@@ -104,7 +137,7 @@ internal static class TerrainMapRenderer
             int reach = Math.Max(hub.Pad.HalfLengthCm, hub.Pad.HalfWidthCm) / 100 + 2;
             for (int z = hub.Pad.CenterZ / 100 - reach; z <= hub.Pad.CenterZ / 100 + reach; z++)
                 for (int x = hub.Pad.CenterX / 100 - reach; x <= hub.Pad.CenterX / 100 + reach; x++)
-                    if (x >= 0 && z >= 0 && x < n && z < n && hub.Pad.Contains(x * 100L, z * 100L))
+                    if (x >= 0 && z >= 0 && x < n && (z + 1) * n * 3 <= rgb.Length && hub.Pad.Contains(x * 100L, z * 100L))
                         Put(rgb, z * n + x, color);
         }
         foreach (var link in network.Links)
@@ -184,7 +217,7 @@ internal static class TerrainMapRenderer
             for (int dx = -radius; dx <= radius; dx++)
             {
                 int x = cx + dx, z = cz + dz;
-                if (dx * dx + dz * dz <= radius * radius && x >= 0 && z >= 0 && x < n && z < n)
+                if (dx * dx + dz * dz <= radius * radius && x >= 0 && z >= 0 && x < n && (z + 1) * n * 3 <= rgb.Length)
                     Put(rgb, z * n + x, color);
             }
     }
@@ -193,6 +226,13 @@ internal static class TerrainMapRenderer
     {
         if (s.WaterDepthCm >= TerrainGrid.WaterSurfaceThresholdCm)
             return Rgb.Lerp(new Rgb(0.45, 0.65, 0.9), new Rgb(0.15, 0.35, 0.75), Math.Min(1, s.WaterDepthCm / 150.0));
+
+        if (grid.Settings.Biome == TerrainBiome.Desert)
+        {
+            Rgb soil = Rgb.Lerp(new Rgb(0.66, 0.50, 0.33), new Rgb(0.58, 0.36, 0.23), Math.Clamp((s.SlopePermille - 120) / 280.0, 0, 1));
+            soil = Rgb.Lerp(soil, new Rgb(0.42, 0.32, 0.22), s.TreeDensity / 255.0);
+            return Rgb.Lerp(soil, new Rgb(0.62, 0.36, 0.24), s.Rock / 255.0);
+        }
 
         // Hypsometric tint: valley green → alpine meadow → bare.
         double t = (s.HeightCm - grid.MinHeightCm) / (double)Math.Max(1, grid.MaxHeightCm - grid.MinHeightCm);
@@ -216,9 +256,8 @@ internal static class TerrainMapRenderer
     /// <summary>Lambertian shading with light from the north-west, 45° above the horizon.</summary>
     private static double Hillshade(TerrainGrid grid, ReadOnlySpan<int> heights, int x, int z)
     {
-        int n = grid.Samples;
-        int x0 = Math.Max(0, x - 1), x1 = Math.Min(n - 1, x + 1);
-        int z0 = Math.Max(0, z - 1), z1 = Math.Min(n - 1, z + 1);
+        int x0 = Math.Max(0, x - 1), x1 = Math.Min(grid.SamplesX - 1, x + 1);
+        int z0 = Math.Max(0, z - 1), z1 = Math.Min(grid.SamplesZ - 1, z + 1);
         double dx = (heights[grid.Index(x1, z)] - heights[grid.Index(x0, z)]) / 100.0 / (x1 - x0);
         double dz = (heights[grid.Index(x, z1)] - heights[grid.Index(x, z0)]) / 100.0 / (z1 - z0);
 
@@ -232,8 +271,7 @@ internal static class TerrainMapRenderer
 
     private static Rgb Contours(TerrainGrid grid, ReadOnlySpan<int> heights, int x, int z, Rgb color)
     {
-        int n = grid.Samples;
-        if (x + 1 >= n || z + 1 >= n) return color;
+        if (x + 1 >= grid.SamplesX || z + 1 >= grid.SamplesZ) return color;
         int h = heights[grid.Index(x, z)];
         foreach (int neighbor in (ReadOnlySpan<int>)[heights[grid.Index(x + 1, z)], heights[grid.Index(x, z + 1)]])
         {
@@ -255,7 +293,7 @@ internal static class TerrainMapRenderer
 
         void Plot(int x, int z)
         {
-            if (x >= 0 && z >= 0 && x < n && z < n)
+            if (x >= 0 && z >= 0 && x < n && (z + 1) * n * 3 <= rgb.Length)
                 Put(rgb, z * n + x, color);
         }
     }

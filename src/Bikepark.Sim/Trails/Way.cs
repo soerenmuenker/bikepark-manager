@@ -18,6 +18,13 @@ public enum WayOrigin : byte
 /// <summary>A horizontal position in centimeters (X east, Z south).</summary>
 public readonly record struct PointCm(int X, int Z);
 
+/// <summary>What an access path is made of: it only changes how it looks (real maps' roads and the player's are tarmac).</summary>
+public enum WaySurface : byte
+{
+    Gravel = 0,
+    Tarmac = 1,
+}
+
 /// <summary>Where a way's endpoint attaches to another way: that way's id and the distance along it.</summary>
 public sealed record WayJoin(int WayId, long DistanceCm);
 
@@ -35,7 +42,7 @@ public sealed class Way
 
     /// <summary>The name, or what to call an unnamed way in messages.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
-    public string Label => Name.Length > 0 ? Name : Kind == WayKind.AccessPath ? "a gravel path" : $"Trail #{Id}";
+    public string Label => Name.Length > 0 ? Name : Kind == WayKind.AccessPath ? (Surface == WaySurface.Tarmac ? "a tarmac road" : "a gravel path") : $"Trail #{Id}";
 
     /// <summary>Control points from start to end. Paths start at their low end, trails at their high end.</summary>
     public List<PointCm> Points { get; set; } = [];
@@ -48,6 +55,14 @@ public sealed class Way
     public int EndHubId { get; set; }
 
     public WayOrigin Origin { get; set; }
+
+    public WaySurface Surface { get; set; }
+
+    /// <summary>
+    /// A scenario's real bridge: its deck's width; 0 = a way on the ground. The deck runs level from end to end, at the middle of
+    /// the ground heights there, and <c>BuildWayCommand</c> makes the ground meet it with a pad at each end.
+    /// </summary>
+    public int DeckWidthCm { get; set; }
 
     /// <summary>Features placed on a trail (berms, jumps, wood features), sorted by distance. Empty on access paths.</summary>
     public List<TrailFeature> Features { get; set; } = [];

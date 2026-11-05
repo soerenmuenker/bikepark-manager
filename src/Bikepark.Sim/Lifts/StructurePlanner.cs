@@ -137,7 +137,8 @@ public static class StructurePlanner
         if (liftId == 0 || best > rules.StationReachMeters * 100L)
         {
             liftId = 0;
-            issues.Add(Error("noStation", $"Place it within {rules.StationReachMeters} m of a valley station."));
+            // A scenario's starter lot needs no lift: its ways connect it.
+            if (!scenario) issues.Add(Error("noStation", $"Place it within {rules.StationReachMeters} m of a valley station."));
         }
 
         return new ParkingPlan { Pad = pad, LiftId = liftId, Issues = issues };
@@ -213,6 +214,25 @@ public static class StructurePlanner
         if (worst > rules.MaxPadCutFillCm)
             issues.Add(Error("tooUneven", $"{what}: ground too uneven ({worst / 100} m cut or fill, limit {rules.MaxPadCutFillCm / 100} m)."));
 
+        if (grid.Scenery is not null)
+        {
+            bool wet = false, built = false;
+            ForEachSampleInside(grid, pad, (x, z) =>
+            {
+                wet |= grid.SampleAt(x, z).WaterDepthCm > 0;
+                built |= grid.BlockedAt(x * 100L, z * 100L) == TerrainSceneryData.Building;
+            });
+            if (wet) issues.Add(Error("onWater", $"{what} can't stand on water."));
+            if (built) issues.Add(Error("onBuilding", $"{what}: a building stands here."));
+        }
+
+        if (checkLand && grid.HasRockFormations)
+        {
+            bool rocky = false;
+            ForEachSampleInside(grid, pad, (x, z) => rocky |= grid.RockFormationAt(x * 100L, z * 100L) >= RockFormation.MediumRock);
+            if (rocky) issues.Add(Error("onRock", $"{what}: big rocks are in the way."));
+        }
+
         if (state.TerrainEdits.Any(e => PadsOverlap(e.Pad, pad)))
             issues.Add(Error("overlapsStructure", $"{what} overlaps another structure."));
 
@@ -232,7 +252,7 @@ public static class StructurePlanner
     /// <summary>Calls <paramref name="visit"/> for every 1 m terrain sample inside the pad's flat area.</summary>
     private static void ForEachSampleInside(TerrainGrid grid, TerrainPad pad, Action<int, int> visit)
     {
-        var (x0, z0, x1, z1) = TerrainEditor.Bounds(pad, grid.SizeMeters, 0);
+        var (x0, z0, x1, z1) = TerrainEditor.Bounds(pad, grid.WidthMeters, grid.DepthMeters, 0);
         for (int z = z0; z <= z1; z++)
             for (int x = x0; x <= x1; x++)
                 if (pad.Contains(x * 100L, z * 100L))

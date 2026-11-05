@@ -20,6 +20,7 @@ internal static class WayMeshes
     {
         RatingCause.OverallSteepness => "steep overall",
         RatingCause.SteepSections => "steep sections",
+        RatingCause.Rock => "rocks",
         _ => "features",
     }})";
 
@@ -52,11 +53,12 @@ internal static class WayMeshes
 
     // Ways use an unshaded material (lit ribbons rendered dark), so colors are given in sRGB and converted to linear.
     public static readonly Color Gravel = new Color(0.78f, 0.78f, 0.79f).SrgbToLinear(); // light rock grey
+    public static readonly Color Tarmac = new Color(0.27f, 0.28f, 0.30f).SrgbToLinear();
     public static readonly Color Dirt = new Color(0.45f, 0.31f, 0.19f).SrgbToLinear(); // wood earth tone
 
     /// <param name="followGround">Edges sit on the terrain (trails); otherwise on the way's own graded height (paths).</param>
     /// <param name="color">Color per sample index.</param>
-    public static ArrayMesh? Ribbon(TerrainGrid grid, WayGeometry g, float width, float lift, bool followGround, Func<int, Color> color)
+    public static ArrayMesh? Ribbon(TerrainGrid grid, WayGeometry g, float width, float lift, bool followGround, Func<int, Color> color, IReadOnlyList<(long From, long To)>? hidden = null)
     {
         int n = g.SampleCount;
         if (n < 2) return null;
@@ -64,7 +66,8 @@ internal static class WayMeshes
         var vertices = new Vector3[n * 2];
         var normals = new Vector3[n * 2];
         var colors = new Color[n * 2];
-        var indices = new int[(n - 1) * 6];
+        var pull = new Vector2[n * 2];
+        var indices = new List<int>((n - 1) * 6);
         float half = width / 2f;
 
         for (int i = 0; i < n; i++)
@@ -82,30 +85,36 @@ internal static class WayMeshes
                 vertices[i * 2 + s] = new Vector3(p.X, y + lift, p.Y);
                 normals[i * 2 + s] = Vector3.Up;
                 colors[i * 2 + s] = color(i);
+                pull[i * 2 + s] = new Vector2(OverRock(g, g.Distances[i]) ? 0f : 1f, 0f);
             }
         }
 
         for (int i = 0; i < n - 1; i++)
         {
+            if (hidden is not null && hidden.Any(h => g.Distances[i] >= h.From && g.Distances[i + 1] <= h.To)) continue;
             int l0 = i * 2, r0 = l0 + 1, l1 = l0 + 2, r1 = l0 + 3;
-            indices[i * 6 + 0] = l0;
-            indices[i * 6 + 1] = r0;
-            indices[i * 6 + 2] = l1;
-            indices[i * 6 + 3] = r0;
-            indices[i * 6 + 4] = r1;
-            indices[i * 6 + 5] = l1;
+            indices.AddRange([l0, r0, l1, r0, r1, l1]);
         }
 
+        if (indices.Count == 0) return null;
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = vertices;
         arrays[(int)Mesh.ArrayType.Normal] = normals;
         arrays[(int)Mesh.ArrayType.Color] = colors;
-        arrays[(int)Mesh.ArrayType.Index] = indices;
+        arrays[(int)Mesh.ArrayType.TexUV] = pull;
+        arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
     }
+
+    /// <summary>Rock may stand just beside its formation: this far around it a ribbon isn't pulled in front either.</summary>
+    private const long RockMarginCm = 300;
+
+    /// <summary>Over rock a ribbon gets no pull towards the camera (its UV.x is 0), so the rock stands in front of it.</summary>
+    private static bool OverRock(WayGeometry g, long d) =>
+        g.Rocks.Any(r => d >= g.Distances[r.From] - RockMarginCm && d <= g.Distances[r.To] + RockMarginCm);
 
     public static ShaderMaterial CreateMaterial(float depthBias = 0.0015f)
     {

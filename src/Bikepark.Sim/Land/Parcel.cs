@@ -85,7 +85,7 @@ public static class LandMath
     {
         if (IsOwned(state, parcel)) return $"{parcel.Name} is already yours.";
         if (level < parcel.RequiredLevel) return $"{parcel.Name} needs park level {parcel.RequiredLevel} (you are level {level}).";
-        if (state.Finance.MoneyCents < parcel.PriceCents) return $"Not enough money for {parcel.Name}.";
+        if (!state.Finance.CanAfford(parcel.PriceCents)) return $"Not enough money for {parcel.Name}.";
         return null;
     }
 }

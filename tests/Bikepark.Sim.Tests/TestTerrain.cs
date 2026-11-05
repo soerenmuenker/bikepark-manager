@@ -33,7 +33,7 @@ internal static class TestTerrain
                 rk[i] = rock?.Invoke(x, z) ?? 0;
                 w[i] = water?.Invoke(x, z) ?? 0;
             }
-        var slopes = TerrainGenerator.ComputeSlopes(h, n);
+        var slopes = TerrainGenerator.ComputeSlopes(h, n, n);
         return new TerrainGrid(new TerrainSettings { SizeMeters = size, PeakXMeters = 0, PeakZMeters = 0 }, 0, h, slopes, t, rk, ro, w);
     }
 }

@@ -61,6 +61,7 @@ internal static class TestWorlds
     public static ScenarioDefinition LiftScenario(ulong seed = 1337)
     {
         var scenario = ScenarioLoader.LoadFile(Path.Combine(RepoRoot(), "data", "scenarios", "demo_valley.json"));
+        scenario.Terrain = scenario.Terrain with { RockFormations = false }; // RockFormationTests cover them; these worlds keep fixed lines
         scenario.Seed = seed;
         scenario.Terrain = scenario.Terrain with { Seed = 1337 };
         return scenario;
@@ -74,6 +75,7 @@ internal static class TestWorlds
     public static ScenarioDefinition CareerScenario(ulong seed = 1337)
     {
         var scenario = ScenarioLoader.LoadFile(Path.Combine(RepoRoot(), "data", "scenarios", "starter_valley.json"));
+        scenario.Terrain = scenario.Terrain with { RockFormations = false }; // RockFormationTests cover them; these worlds keep fixed lines
         scenario.Seed = seed;
         scenario.Terrain = scenario.Terrain with { Seed = 1337 };
         return scenario;
@@ -85,7 +87,9 @@ internal static class TestWorlds
 
     /// <summary>The demo trails from the plateau (data/scripts/demo_lift_network.json), built at tick 0.</summary>
     public static IReadOnlyList<TimedCommand> DemoLiftNetwork() =>
-        JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(Path.Combine(RepoRoot(), "data", "scripts", "demo_lift_network.json")), SimJson.Indented)!;
+        // The script marks its trails as scenario ways, so they ignore rocks on the shipped maps. Here they are the player's (deletable, plannable).
+        JsonSerializer.Deserialize<List<TimedCommand>>(File.ReadAllText(Path.Combine(RepoRoot(), "data", "scripts", "demo_lift_network.json")), SimJson.Indented)!
+            .Select(c => c.Command is BuildWayCommand build ? c with { Command = build with { Origin = WayOrigin.Player } } : c).ToList();
 
     /// <summary>The Demo's valley snack bar and merch shop (data/scripts/demo_facilities.json), built at tick 0.</summary>
     public static IReadOnlyList<TimedCommand> DemoFacilities() =>
@@ -185,6 +189,9 @@ internal static class TestWorlds
         new(810, new SetReserveBenchCommand(99, true)),
         new(820, new SetFacilityClosedCommand(99, true)), // rejected: no such building
         new(820, new SetLiftClosedCommand(99, true)), // rejected: no such lift
+        // Zen mode (the test world is a sandbox): nothing costs money for a while.
+        new(830, new SetZenModeCommand(true)),
+        new(1200, new SetZenModeCommand(false)),
     ];
 
     public static Simulation Run(ulong seed, long days, IEnumerable<TimedCommand>? commands = null)

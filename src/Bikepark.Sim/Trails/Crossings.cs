@@ -25,6 +25,7 @@ public static class Crossings
     public static List<(long CmA, long CmB)> Find(WayGeometry a, WayGeometry b)
     {
         var hits = new List<(long CmA, long CmB)>();
+        if (a.IsDeck || b.IsDeck) return hits; // one passes under the other
         var ax = a.Xs; var az = a.Zs; var ad = a.Distances;
         var bx = b.Xs; var bz = b.Zs; var bd = b.Distances;
         int na = ax.Length - 1, nb = bx.Length - 1;
@@ -67,6 +68,7 @@ public static class Crossings
     public static List<(long Cm, long FractionPpm)> FindOnTrack(WayGeometry way, Terrain.TerrainPad valley, Terrain.TerrainPad mountain)
     {
         var hits = new List<(long Cm, long FractionPpm)>();
+        if (way.IsDeck) return hits;
         var xs = way.Xs; var zs = way.Zs; var d = way.Distances;
         long ax = valley.CenterX, az = valley.CenterZ, bx = mountain.CenterX, bz = mountain.CenterZ;
         for (int i = 0; i + 1 < xs.Length; i++)

@@ -1,10 +1,11 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scripts/SimHost.cs" id="1_simhost"]
 [ext_resource type="Script" path="res://scripts/ui/Hud.cs" id="2_hud"]
 [ext_resource type="Script" path="res://scripts/terrain/TerrainView.cs" id="3_terrain"]
 [ext_resource type="Script" path="res://scripts/camera/RtsCamera.cs" id="4_camera"]
 [ext_resource type="Script" path="res://scripts/ways/WayView.cs" id="5_wayview"]
+[ext_resource type="Script" path="res://scripts/world/SceneryView.cs" id="5_sceneryview"]
 [ext_resource type="Script" path="res://scripts/ways/WayTool.cs" id="6_waytool"]
 [ext_resource type="Script" path="res://scripts/riders/RiderView.cs" id="7_riders"]
 [ext_resource type="Script" path="res://scripts/lifts/LiftView.cs" id="8_lifts"]
@@ -57,6 +58,9 @@ script = ExtResource("3_terrain")
 
 [node name="RtsCamera" type="Node3D" parent="."]
 script = ExtResource("4_camera")
+
+[node name="SceneryView" type="Node3D" parent="."]
+script = ExtResource("5_sceneryview")
 
 [node name="WayView" type="Node3D" parent="."]
 script = ExtResource("5_wayview")

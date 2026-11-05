@@ -94,6 +94,7 @@
   },
   // Terrain is regenerated from these settings; "seed" defaults to the scenario seed.
   "terrain": {
+    "rockFormations": true,
     "sizeMeters": 1000,
     "baseElevationCm": 80000,
     "reliefCm": 35000,
@@ -297,7 +298,7 @@
     {
       "tick": 0,
       "command": {
-        "type": "buildLift", "typeId": "gondola_8", "name": "Valley Gondola",
+        "type": "buildLift", "typeId": "gondola_8", "name": "Valley Gondola", "origin": "scenario",
         "valley": {"x": 20500, "z": 85000}, "mountain": {"x": 60500, "z": 50500},
         "operatorId": "alpine_lifts", "initialTier": 1
       }

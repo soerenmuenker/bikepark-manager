@@ -298,7 +298,7 @@ public partial class ToolCard : PanelContainer
 
 public partial class BuildPanel : HudPanel
 {
-    private ToolCard _path = null!, _trail = null!, _parking = null!, _fell = null!, _platform = null!, _renaturalize = null!;
+    private ToolCard _path = null!, _road = null!, _trail = null!, _parking = null!, _fell = null!, _platform = null!, _renaturalize = null!;
     private readonly List<(LiftType Type, ToolCard Card)> _lifts = [];
     private readonly List<(TrailFeatureType Type, ToolCard Card)> _features = [];
     private readonly List<(Bikepark.Sim.Facilities.FacilityType Type, ToolCard Card)> _facilities = [];
@@ -311,7 +311,9 @@ public partial class BuildPanel : HudPanel
         Body.AddChild(cards);
         _path = new ToolCard(UiIcon.Path, "Gravel path", "P", "Gravel path  [P]\nTwo-way access path riders can pedal up and walk on; the crew builds it.\n\n• Max gradient ±4.0\n• Bars and shops need one nearby",
             () => ToggleWay(WayTool.ToolMode.AccessPath));
-        _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "Trail  [T]\nOne-way downhill trail. Start it on a plateau, path or loose trail end.\n\n• The crew fells the trees in the way, then digs it\n• Its rating comes from steepness and features",
+        _road = new ToolCard(UiIcon.Path, "Tarmac road", "like a path", "Tarmac road\nA paved road: works like a gravel path, riders pedal up and walk on it and trails can start and end on it; the crew builds it.\n\n• Max gradient ±4.0\n• Bars and shops need one nearby",
+            () => ToggleWay(WayTool.ToolMode.TarmacRoad));
+        _trail = new ToolCard(UiIcon.Trail, "Trail", "T", "Trail  [T]\nOne-way downhill trail. Start it on a plateau, path, road or loose trail end.\n\n• The crew fells the trees in the way, then digs it\n• Its rating comes from steepness and features",
             () => ToggleWay(WayTool.ToolMode.Trail));
         _parking = new ToolCard(UiIcon.Parking, "Parking lot", "K", "Parking lot  [K]\nParking next to a valley station; guests arriving by car park here.\n\n• Free to build, on your land\n• Parking fee: Park menu [H]",
             () => ToggleStructure(StructureTool.ToolMode.Parking));
@@ -326,7 +328,7 @@ public partial class BuildPanel : HudPanel
             "• Lifts and parking lots: click them; a contractor tears them down for a fee\n" +
             "• Platforms: free",
             () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize), UiTheme.Warn);
-        foreach (var card in new[] { _path, _trail, _fell, _parking, _platform }) cards.AddChild(card);
+        foreach (var card in new[] { _path, _road, _trail, _fell, _parking, _platform }) cards.AddChild(card);
         // Removing things sits apart, at the right end of the row.
         cards.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(16, 0) });
         cards.AddChild(new VSeparator());
@@ -370,7 +372,8 @@ public partial class BuildPanel : HudPanel
 
         Body.AddChild(UiTheme.Separator());
         Body.AddChild(UiTheme.Label("TRAIL FEATURES", 13, UiTheme.Accent, bold: true));
-        var types = Ctx.Sim.State.TrailFeatureTypes;
+        // Features over rock are chosen while drawing a trail across rock.
+        var types = Ctx.Sim.State.TrailFeatureTypes.Where(t => t.CrossesRock == Bikepark.Sim.Terrain.RockFormation.None).ToList();
         if (types.Count == 0)
         {
             Body.AddChild(UiTheme.Label("No trail features in this scenario.", 12, UiTheme.TextDim));
@@ -532,6 +535,7 @@ public partial class BuildPanel : HudPanel
     public override void Refresh()
     {
         _path.Active = Ctx.Ways.Mode == WayTool.ToolMode.AccessPath;
+        _road.Active = Ctx.Ways.Mode == WayTool.ToolMode.TarmacRoad;
         _trail.Active = Ctx.Ways.Mode == WayTool.ToolMode.Trail;
         int level = Ctx.Kpi.Level;
         foreach (var (type, card) in _lifts)
@@ -973,7 +977,7 @@ public partial class LiftsPanel : HudPanel
                 var rusty = Row(10);
                 rusty.AddChild(UiTheme.Label("Rusty and out of service. Riders pedal up instead.", 13, UiTheme.Warn, bold: true));
                 string? why = !LiftWorks.StationsOwned(state, lift) ? "It stands on land you don't own."
-                    : state.Finance.MoneyCents < type.RestoreCostCents ? "Not enough money." : null;
+                    : !state.Finance.CanAfford(type.RestoreCostCents) ? "Not enough money." : null;
                 var restore = UiTheme.Button($"Restore ({UiTheme.Money(type.RestoreCostCents)}, {type.RestoreDays} days)",
                     () => Ctx.Host.Enqueue(new RestoreLiftCommand(liftId)),
                     why ?? $"A contractor fixes it for half the price of a new {type.Name}; it runs from the next opening after the work");
@@ -1139,6 +1143,7 @@ public partial class SystemPanel : HudPanel
 {
     private Button _menu = null!;
     private Label _saveNote = null!;
+    private CheckButton _zen = null!;
 
     public override string Title => "Game";
 
@@ -1163,6 +1168,14 @@ public partial class SystemPanel : HudPanel
         };
         instant.Toggled += on => Ctx.Host.InstantBuild = on;
         Body.AddChild(instant);
+        _zen = new CheckButton
+        {
+            Text = "Zen mode (sandbox): nothing costs money, build and try anything",
+            ButtonPressed = Ctx.Sim.State.Finance.ZenMode,
+            FocusMode = FocusModeEnum.None,
+        };
+        _zen.Toggled += on => Ctx.Host.Enqueue(new Bikepark.Sim.Commands.SetZenModeCommand(on));
+        Body.AddChild(_zen);
         var nights = new CheckButton
         {
             Text = "Skip nights: fast-forward while the park is closed and empty and the crew is off",
@@ -1181,5 +1194,7 @@ public partial class SystemPanel : HudPanel
         _saveNote.Text = career
             ? "Your career is saved automatically when you quit or go back to the menu."
             : "The Demo is a sandbox: it is never saved.";
+        _zen.Visible = Ctx.Sim.State.Rules.UnlockAll;
+        _zen.SetPressedNoSignal(Ctx.Sim.State.Finance.ZenMode);
     }
 }

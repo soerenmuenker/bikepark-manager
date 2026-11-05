@@ -17,7 +17,7 @@ public static class ReviewMath
 
     /// <summary>Feature kinds riders get air on (their fun counts for the jump aspect).</summary>
     public static bool IsJump(FeatureKind kind) =>
-        kind is FeatureKind.Table or FeatureKind.Double or FeatureKind.Kicker or FeatureKind.Drop or FeatureKind.LongJump or FeatureKind.BigDrop;
+        kind is FeatureKind.FlatDrop or FeatureKind.Table or FeatureKind.Double or FeatureKind.Kicker or FeatureKind.Drop or FeatureKind.LongJump or FeatureKind.BigDrop;
 
     /// <summary>
     /// The visit so far, judged on each aspect against what the guest's group looks for. <paramref name="unsafeTrailLoss"/>:

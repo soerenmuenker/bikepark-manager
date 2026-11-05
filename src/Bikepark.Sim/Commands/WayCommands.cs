@@ -1,5 +1,6 @@
 using Bikepark.Sim.Crew;
 using Bikepark.Sim.Events;
+using Bikepark.Sim.Terrain;
 using Bikepark.Sim.Trails;
 
 namespace Bikepark.Sim.Commands;
@@ -11,16 +12,36 @@ namespace Bikepark.Sim.Commands;
 /// and validates.
 /// </summary>
 public sealed record BuildWayCommand(
-    WayKind Kind, string Name, List<PointCm> Points, WayOrigin Origin = WayOrigin.Player, bool Instant = false) : ICommand
+    WayKind Kind, string Name, List<PointCm> Points, WayOrigin Origin = WayOrigin.Player, bool Instant = false,
+    WaySurface Surface = WaySurface.Gravel, List<RockFeaturePlacement>? RockFeatures = null, int DeckWidthCm = 0) : ICommand
 {
     public const int MaxNameLength = 40;
+    public const int MaxDeckWidthCm = 3000;
+
+    /// <summary>How far a pad reaches from a bridge's end, along the bridge.</summary>
+    private const int DeckPadHalfLengthCm = 600;
 
     public string? Validate(SimContext ctx)
     {
         if (Points is null) return "No points given.";
         if (Name is { Length: > MaxNameLength }) return $"Name cannot exceed {MaxNameLength} characters.";
         if (Kind == WayKind.Trail && !string.IsNullOrWhiteSpace(Name) && RenameTrailCommand.CannotName(ctx.State, Name) is { } taken) return taken;
-        return Plan(ctx).FirstError;
+        if (DeckWidthCm != 0 && (Origin != WayOrigin.Scenario || Kind != WayKind.AccessPath)) return "Only a scenario's roads can be bridges.";
+        if (DeckWidthCm is < 0 or > MaxDeckWidthCm) return $"A bridge is at most {MaxDeckWidthCm / 100} m wide.";
+        var plan = Plan(ctx);
+        if (plan.FirstError is { } error) return error;
+        return Kind == WayKind.Trail && plan.Geometry is { } geometry && Origin != WayOrigin.Scenario
+            ? Trails.RockFeatures.CannotCross(ctx.Terrain, geometry, ctx.State.TrailRules, Choice(ctx), RockFeatures)
+            : null;
+    }
+
+    /// <summary>The feature types over rock this build may use: what the park's level allows, or all for a debug instant build.</summary>
+    private RockFeatureChoice Choice(SimContext ctx)
+    {
+        if (Instant) return new RockFeatureChoice(ctx.State.TrailFeatureTypes, _ => true);
+        int level = Reputation.ParkProgress.CurrentLevel(ctx.State, ctx.Network);
+        var state = ctx.State;
+        return new RockFeatureChoice(state.TrailFeatureTypes, t => TrailFeatures.CannotPlace(state, level, t) is null);
     }
 
     public void Apply(SimContext ctx)
@@ -39,14 +60,37 @@ public sealed record BuildWayCommand(
             StartHubId = plan.StartHubId,
             EndHubId = plan.EndHubId,
             Origin = Origin,
+            Surface = Surface,
             Built = Instant || Origin == WayOrigin.Scenario,
+            DeckWidthCm = DeckWidthCm,
         };
+        if (DeckWidthCm > 0)
+            AddDeckPads(state, id, plan.Geometry!);
         if (!way.Built)
             Jobs.QueueWay(ctx, way, plan.Geometry!);
+        if (Origin != WayOrigin.Scenario)
+            foreach (var placement in (RockFeatures ?? []).OrderBy(p => p.StartCm))
+            {
+                var feature = new TrailFeature { Id = state.AllocateEntityId(), TypeId = placement.TypeId, DistanceCm = placement.StartCm, LengthCm = placement.LengthCm, RampCm = placement.RampCm, Built = way.Built };
+                way.Features.Add(feature);
+                if (!way.Built) Jobs.QueueFeature(ctx, id, feature, TrailFeatures.FindType(state.TrailFeatureTypes, placement.TypeId)!);
+            }
         state.Ways.Add(way);
         state.WaysRevision++;
         ctx.Publish(new WayBuilt(ctx.Tick, id));
         if (way.Built) WayEditing.OnBuilt(ctx, way);
+    }
+
+    /// <summary>The ground meets the deck at both ends: it is what the ways joining there follow.</summary>
+    private void AddDeckPads(State.WorldState state, int wayId, WayGeometry deck)
+    {
+        var (dirX, dirZ) = TerrainPad.Direction(deck.Xs[^1] - deck.Xs[0], deck.Zs[^1] - deck.Zs[0]);
+        foreach (int i in new[] { 0, deck.SampleCount - 1 })
+        {
+            var pad = new TerrainPad(deck.Xs[i], deck.Zs[i], DeckPadHalfLengthCm, DeckWidthCm / 2 + 100, dirX, dirZ, deck.Ys[i], state.LiftRules.EmbankmentGradient);
+            state.TerrainEdits.Add(new TerrainEdit(state.AllocateEntityId(), wayId, pad));
+        }
+        state.TerrainRevision++;
     }
 
     /// <summary>"Trail 1", "Trail 2", ...: the first number no way uses yet.</summary>
@@ -58,11 +102,12 @@ public sealed record BuildWayCommand(
 
     private WayPlan Plan(SimContext ctx) =>
         WayPlanner.Plan(ctx.Terrain, ctx.Network, ctx.State.TrailRules, Kind, Points,
-            Origin == WayOrigin.Scenario ? null : Land.LandMath.OwnedPredicate(ctx.State));
+            Origin == WayOrigin.Scenario ? null : Land.LandMath.OwnedPredicate(ctx.State), mayStandAlone: Origin == WayOrigin.Scenario, rockChoice: Choice(ctx), deck: DeckWidthCm > 0);
 
     // Value equality over the points, so identical commands compare equal (records compare lists by reference).
     public bool Equals(BuildWayCommand? other) =>
-        other is not null && Kind == other.Kind && Name == other.Name && Origin == other.Origin && Instant == other.Instant
+        other is not null && Kind == other.Kind && Name == other.Name && Origin == other.Origin && Instant == other.Instant && Surface == other.Surface && DeckWidthCm == other.DeckWidthCm
+        && (RockFeatures ?? []).SequenceEqual(other.RockFeatures ?? [])
         && (ReferenceEquals(Points, other.Points) || (Points is not null && other.Points is not null && Points.SequenceEqual(other.Points)));
 
     public override int GetHashCode() => HashCode.Combine(Kind, Name, Points?.Count ?? -1);

@@ -233,6 +233,7 @@ def validate(text, scenario_path):
 
 class Handler(BaseHTTPRequestHandler):
     scenario = None  # Path
+    back = None  # the map maker's address, when it started this editor
 
     def log_message(self, fmt, *args):
         pass
@@ -258,16 +259,22 @@ class Handler(BaseHTTPRequestHandler):
                 lift_types = []
                 if catalog:
                     lift_types = json.loads(strip_comments((self.scenario.parent / catalog).read_text()))
+                heightmap = data.get("terrain", {}).get("heightmapFile")
+                scenery = json.loads((self.scenario.parent / heightmap).read_text()).get("scenery") if heightmap else None
                 self.send(200, {
+                    "scenery": scenery,
+                    "back": self.back,
                     "path": str(self.scenario.relative_to(ROOT)),
                     "sizeMeters": data.get("terrain", {}).get("sizeMeters", 1000),
+                    "biome": data.get("terrain", {}).get("biome", "alpine"),
+                    "depthMeters": data.get("terrain", {}).get("depthMeters", 0),
                     "parcels": data.get("parcels", []),
                     "commands": data.get("commands", []),
                     "terrainSculpt": data.get("terrainSculpt", []),
                     "liftTypes": lift_types,
                 })
             elif url.path == "/api/raw":
-                raw = OUT / f"{self.scenario.stem}_raw.bin"
+                raw = OUT / f"{self.scenario.stem}_grid.bin"
                 with lock:
                     if not raw.exists() or "fresh" in q:
                         OUT.mkdir(parents=True, exist_ok=True)
@@ -317,6 +324,10 @@ def main():
     if "--port" in args:
         i = args.index("--port")
         port = int(args[i + 1])
+        del args[i:i + 2]
+    if "--back" in args:
+        i = args.index("--back")
+        Handler.back = args[i + 1]
         del args[i:i + 2]
     scenario = (ROOT / (args[0] if args else "data/scenarios/starter_valley.json")).resolve()
     Handler.scenario = scenario

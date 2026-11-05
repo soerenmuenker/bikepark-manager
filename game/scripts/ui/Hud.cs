@@ -704,6 +704,7 @@ public partial class Hud : CanvasLayer
             : _ctx.Structures.Mode == StructureTool.ToolMode.Lift ? (UiIcon.Lift, "Lift")
             : _ctx.Structures.Mode == StructureTool.ToolMode.Parking ? (UiIcon.Parking, "Parking lot")
             : _ctx.Ways.Mode == WayTool.ToolMode.AccessPath ? (UiIcon.Path, "Gravel path")
+            : _ctx.Ways.Mode == WayTool.ToolMode.TarmacRoad ? (UiIcon.Path, "Tarmac road")
             : (UiIcon.Trail, "Trail");
         _toolChipIcon.Set(icon, UiTheme.Accent);
         _toolChipText.Text = $"Building: {name}";
@@ -717,6 +718,7 @@ public partial class Hud : CanvasLayer
         {
             case "trail": _ctx.Ways.SetMode(WayTool.ToolMode.Trail); break;
             case "path": _ctx.Ways.SetMode(WayTool.ToolMode.AccessPath); break;
+            case "road": _ctx.Ways.SetMode(WayTool.ToolMode.TarmacRoad); break;
             case "fell": _ctx.Clearing.SetActive(true); break;
             case "lift": _ctx.Structures.SetMode(StructureTool.ToolMode.Lift); break;
             case "parking": _ctx.Structures.SetMode(StructureTool.ToolMode.Parking); break;
@@ -1061,7 +1063,7 @@ public partial class Hud : CanvasLayer
         {
             var way = _ctx.Sim.State.Ways.FirstOrDefault(w => w.Id == e.WayId);
             if (way is null) return; // joined onto a trail at once (that has its own toast)
-            Toast(way is { Built: false } ? $"Planned {(way.Kind == WayKind.AccessPath ? "a gravel path" : way.Name)}: the crew will build it" : $"Built {way.Label}", UiTheme.Accent);
+            Toast(way is { Built: false } ? $"Planned {way.Label}: the crew will build it" : $"Built {way.Label}", UiTheme.Accent);
         }));
         _subscriptions.Add(events.Subscribe<TrailFeaturePlaced>(e => Toast(FeatureText(e.WayId, e.FeatureId), UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<JobCompleted>(e => Toast(e.Kind switch

@@ -29,10 +29,11 @@ public static class LiftNetwork
             var pad = Pad(state, lot.TerrainEditId);
             var lift = state.Lifts.FirstOrDefault(l => l.Id == lot.LiftId);
             var station = lift is null ? null : Pad(state, lift.Valley.TerrainEditId);
-            if (pad is null || lift is null || station is null) continue;
+            if (pad is null) continue;
             hubs.Add(new NetworkHub(lot.Id, HubKind.Parking, lot.Id, pad));
+            if (station is null) continue;
             long length = WalkLengthCm(pad, station);
-            links.Add(new NetworkLink(LegKind.Walk, lot.Id, lot.Id, lift.Valley.Id, length, length, 0));
+            links.Add(new NetworkLink(LegKind.Walk, lot.Id, lot.Id, lift!.Valley.Id, length, length, 0));
         }
         foreach (var platform in state.Platforms)
             if (Pad(state, platform.TerrainEditId) is { } pad)

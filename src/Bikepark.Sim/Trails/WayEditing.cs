@@ -36,6 +36,7 @@ public static class WayEditing
     public static string? CannotRenaturalize(WorldState state, WayNetwork network, Way? way, long fromCm, long toCm)
     {
         if (CannotEdit(state, way) is { } reason) return reason;
+        if (way!.DeckWidthCm > 0) return "A bridge stays: it can't be renaturalized.";
         if (!network.TryGetGeometry(way!.Id, out var geometry)) return "No such trail or path.";
         if (fromCm < 0 || toCm > geometry.LengthCm || toCm - fromCm < 100) return "Mark a section along the way.";
         if (Land.LandMath.OwnedPredicate(state) is { } owned)
@@ -270,6 +271,7 @@ public static class WayEditing
             Name = name,
             Points = points,
             Origin = original.Origin,
+            Surface = original.Surface,
             Built = true,
             Closed = original.Closed,
         };
@@ -290,7 +292,7 @@ public static class WayEditing
     }
 
     private static long FeatureLength(WorldState state, TrailFeature feature) =>
-        TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId)?.LengthCm ?? 0;
+        TrailFeatures.FindType(state.TrailFeatureTypes, feature.TypeId) is { } type ? feature.LengthOn(type) : 0;
 
     /// <summary>Re-points every join onto <paramref name="wayId"/> (null: the joining way gets a loose end there).</summary>
     private static void RemapJoins(WorldState state, int wayId, Func<long, (int WayId, long DistanceCm)?> map)

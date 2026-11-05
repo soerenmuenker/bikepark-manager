@@ -8,7 +8,7 @@ uniform float roughness_value = 0.95;
 
 void vertex() {
 	POSITION = PROJECTION_MATRIX * (MODELVIEW_MATRIX * vec4(VERTEX, 1.0));
-	POSITION.z += depth_bias * POSITION.w;
+	POSITION.z += depth_bias * UV.x * POSITION.w; // UV.x is 0 over rock: the rock stands in front
 }
 
 void fragment() {

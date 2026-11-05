@@ -8,6 +8,8 @@ namespace Bikepark.Sim.Terrain;
 /// settings and seed give a bit-identical terrain everywhere. Passes:
 /// <list type="number">
 ///   <item>shape: main peak + radiating ridges + noise, rescaled to exactly the configured relief;</item>
+///   <item>or, with a <see cref="TerrainHeightmap"/>: its real heights, upsampled to 1 m, plus fine detail;</item>
+///   <item>with scenery on it: lakes and streams carved in (<see cref="TerrainSceneryBuilder"/>);</item>
 ///   <item>layers: slope, rock, tree density (below the tree line), roots. The water layer is reserved for
 ///         later features (ponds, streams) and is generated empty.</item>
 /// </list>
@@ -16,23 +18,31 @@ public static class TerrainGenerator
 {
     private readonly record struct Ridge(long Ux, long Uz, long LengthM, long WidthM, uint MeanderSeed);
 
-    public static TerrainGrid Generate(TerrainSettings settings, ulong worldSeed)
+    public static TerrainGrid Generate(TerrainSettings settings, ulong worldSeed) => Generate(settings, worldSeed, []);
+
+    /// <summary>With the scenario's height strokes on the ground before the water is carved, so water follows them (real maps).</summary>
+    internal static TerrainGrid Generate(TerrainSettings settings, ulong worldSeed, IReadOnlyList<TerrainStroke> heightStrokes)
     {
         var errors = settings.Validate();
         if (errors.Count > 0)
             throw new InvalidDataException($"Invalid terrain settings: {string.Join("; ", errors)}");
 
         ulong seed = settings.Seed ?? worldSeed;
-        int n = settings.SizeMeters + 1;
+        int nx = settings.SizeMeters + 1, nz = settings.Depth() + 1;
         var rng = SimRandom.FromSeed(seed, stream: 0x7E44A1);
         var seeds = new NoiseSeeds(rng);
 
-        int[] heights = Shape(settings, n, rng, seeds);
-        ushort[] slopes = ComputeSlopes(heights, n);
-        var (trees, rock, roots) = Layers(settings, heights, slopes, n, seeds);
-        var water = new byte[n * n];
+        int[] heights = settings.Heightmap is { } map ? FromHeightmap(map, settings, nx, nz, seeds) : Shape(settings, nx, nz, rng, seeds);
+        var water = new byte[nx * nz];
+        TerrainSculptor.ApplyHeights(heightStrokes, heights, nx, nz);
+        var scenery = settings.Heightmap?.Scenery;
+        var sceneryData = scenery is null ? null : TerrainSceneryBuilder.Carve(scenery, heights, water, nx, nz);
+        ushort[] slopes = ComputeSlopes(heights, nx, nz);
+        var (trees, rock, roots) = Layers(settings, heights, slopes, nx, nz, seeds);
+        if (scenery is not null) TerrainSceneryBuilder.Clear(scenery, sceneryData!, water, trees, rock, roots, nx, nz);
 
-        return new TerrainGrid(settings with { Seed = seed }, seed, heights, slopes, trees, rock, roots, water);
+        var formations = RockFormations.Build(settings, seed, rock, slopes, water, sceneryData, nx, nz);
+        return new TerrainGrid(settings with { Seed = seed }, seed, heights, slopes, trees, rock, roots, water, sceneryData, formations);
     }
 
     private sealed class NoiseSeeds(SimRandom rng)
@@ -48,7 +58,7 @@ public static class TerrainGenerator
 
     // ---------------------------------------------------------------- shape
 
-    private static int[] Shape(TerrainSettings s, int n, SimRandom rng, NoiseSeeds seeds)
+    private static int[] Shape(TerrainSettings s, int nx, int nz, SimRandom rng, NoiseSeeds seeds)
     {
         long radius = s.PeakRadiusMeters;
         var ridges = new Ridge[s.RidgeCount];
@@ -62,11 +72,11 @@ public static class TerrainGenerator
                 MeanderSeed: rng.NextUInt());
         }
 
-        var raw = new long[n * n];
+        var raw = new long[nx * nz];
         long min = long.MaxValue, max = long.MinValue;
-        for (int z = 0; z < n; z++)
+        for (int z = 0; z < nz; z++)
         {
-            for (int x = 0; x < n; x++)
+            for (int x = 0; x < nx; x++)
             {
                 long dx = x - s.PeakXMeters, dz = z - s.PeakZMeters;
 
@@ -112,18 +122,68 @@ public static class TerrainGenerator
                          + detail * s.RoughnessPermille * 2
                          + Mul(crag, dome) * s.RoughnessPermille
                          + undulation * 80;
-                raw[z * n + x] = v;
+                raw[z * nx + x] = v;
                 if (v < min) min = v;
                 if (v > max) max = v;
             }
         }
 
         // Rescale so the terrain spans exactly [BaseElevation, BaseElevation + Relief].
-        var heights = new int[n * n];
+        var heights = new int[nx * nz];
         long range = Math.Max(1, max - min);
         for (int i = 0; i < heights.Length; i++)
             heights[i] = s.BaseElevationCm + (int)((raw[i] - min) * s.ReliefCm / range);
         return heights;
+    }
+
+    /// <summary>Catmull-Rom through the samples (so the real heights are kept at every sample), then the detail noise.</summary>
+    private static int[] FromHeightmap(TerrainHeightmap map, TerrainSettings settings, int nx, int nz, NoiseSeeds seeds)
+    {
+        int roughnessPermille = settings.RoughnessPermille;
+        int[] source = map.DecodeHeights();
+        if (settings.ReliefScalePermille != 1000)
+        {
+            int low = source.Min();
+            for (int i = 0; i < source.Length; i++)
+                source[i] = low + (int)((long)(source[i] - low) * settings.ReliefScalePermille / 1000);
+        }
+        int mx = map.Samples, mz = map.Rows(), cell = map.CellMeters;
+        var heights = new int[nx * nz];
+        var row = new long[mx];
+        for (int z = 0; z < nz; z++)
+        {
+            int zi = Math.Min(z / cell, mz - 2);
+            long zt = (z - zi * cell) * One / cell;
+            int z0 = Math.Max(zi - 1, 0), z2 = zi + 1, z3 = Math.Min(zi + 2, mz - 1);
+            for (int c = 0; c < mx; c++)
+                row[c] = CatmullRom(source[z0 * mx + c], source[zi * mx + c], source[z2 * mx + c], source[z3 * mx + c], zt);
+            for (int x = 0; x < nx; x++)
+            {
+                int xi = Math.Min(x / cell, mx - 2);
+                long xt = (x - xi * cell) * One / cell;
+                long h = CatmullRom(row[Math.Max(xi - 1, 0)], row[xi], row[xi + 1], row[Math.Min(xi + 2, mx - 1)], xt);
+                long detail = (IntNoise.Fbm(x, z, 60, 4, seeds.Detail) - OneHalf) * roughnessPermille * 10 / 3 >> Shift;
+                heights[z * nx + x] = (int)Math.Max(0, h + detail);
+            }
+        }
+        return heights;
+    }
+
+    private static long CatmullRom(long p0, long p1, long p2, long p3, long t)
+    {
+        long t2 = Mul(t, t), t3 = Mul(t2, t);
+        return p1 + ((p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3 >> (Shift + 1));
+    }
+
+    /// <summary>A land cover mask at one 1 m sample, 0..One.</summary>
+    private static long MaskAt(byte[] mask, TerrainHeightmap map, int x, int z)
+    {
+        int m = map.Samples, cell = map.CellMeters;
+        int xi = Math.Min(x / cell, m - 2), zi = Math.Min(z / cell, map.Rows() - 2);
+        long xt = (x - xi * cell) * One / cell, zt = (z - zi * cell) * One / cell;
+        long top = Lerp(mask[zi * m + xi], mask[zi * m + xi + 1], xt);
+        long bottom = Lerp(mask[(zi + 1) * m + xi], mask[(zi + 1) * m + xi + 1], xt);
+        return Lerp(top * One / 255, bottom * One / 255, zt);
     }
 
     private static (long Ux, long Uz) RandomDirection(SimRandom rng)
@@ -139,52 +199,58 @@ public static class TerrainGenerator
 
     // ---------------------------------------------------------------- layers
 
-    internal static ushort[] ComputeSlopes(int[] heights, int n)
+    internal static ushort[] ComputeSlopes(int[] heights, int nx, int nz)
     {
-        var slopes = new ushort[n * n];
-        for (int z = 0; z < n; z++)
+        var slopes = new ushort[nx * nz];
+        for (int z = 0; z < nz; z++)
         {
-            int z0 = Math.Max(0, z - 1), z1 = Math.Min(n - 1, z + 1);
-            for (int x = 0; x < n; x++)
+            int z0 = Math.Max(0, z - 1), z1 = Math.Min(nz - 1, z + 1);
+            for (int x = 0; x < nx; x++)
             {
-                int x0 = Math.Max(0, x - 1), x1 = Math.Min(n - 1, x + 1);
+                int x0 = Math.Max(0, x - 1), x1 = Math.Min(nx - 1, x + 1);
                 // Gradient in cm per m, scaled by the (1 or 2 m) sample spacing.
-                long gx = (long)(heights[z * n + x1] - heights[z * n + x0]) * 1000 / (x1 - x0);
-                long gz = (long)(heights[z1 * n + x] - heights[z0 * n + x]) * 1000 / (z1 - z0);
+                long gx = (long)(heights[z * nx + x1] - heights[z * nx + x0]) * 1000 / (x1 - x0);
+                long gz = (long)(heights[z1 * nx + x] - heights[z0 * nx + x]) * 1000 / (z1 - z0);
                 // grade = |gradient| / 100 cm; permille = sqrt(gx² + gz²) * 1000 / 100 / 1000.
                 long grade = ISqrt(gx * gx + gz * gz) / 100;
-                slopes[z * n + x] = (ushort)Math.Min(ushort.MaxValue, grade);
+                slopes[z * nx + x] = (ushort)Math.Min(ushort.MaxValue, grade);
             }
         }
         return slopes;
     }
 
     private static (byte[] Trees, byte[] Rock, byte[] Roots) Layers(
-        TerrainSettings s, int[] heights, ushort[] slopes, int n, NoiseSeeds seeds)
+        TerrainSettings s, int[] heights, ushort[] slopes, int nx, int nz, NoiseSeeds seeds)
     {
-        int count = n * n;
+        int count = nx * nz;
         var trees = new byte[count];
         var rock = new byte[count];
         var roots = new byte[count];
 
+        var map = s.Heightmap;
+        byte[]? forestMask = map?.DecodeForest(), rockMask = map?.DecodeRock();
+
         // Forest patches: pick the noise threshold so that ForestCoverage of the map lies inside a patch.
+        // Real terrain: the mask is the forest, the noise only frays its edge.
         var patch = new long[count];
         var histogram = new int[1 << 10];
-        for (int z = 0; z < n; z++)
-            for (int x = 0; x < n; x++)
+        for (int z = 0; z < nz; z++)
+            for (int x = 0; x < nx; x++)
             {
-                long v = IntNoise.Fbm(x, z, 160, 4, seeds.Forest);
-                patch[z * n + x] = v;
-                histogram[(int)(v >> (Shift - 10))]++;
+                long v = forestMask is null
+                    ? IntNoise.Fbm(x, z, 160, 4, seeds.Forest)
+                    : Clamp01(MaskAt(forestMask, map!, x, z) + (IntNoise.Fbm(x, z, 30, 3, seeds.Forest) - OneHalf) / 2);
+                patch[z * nx + x] = v;
+                if (forestMask is null) histogram[(int)(v >> (Shift - 10))]++;
             }
-        long threshold = Quantile(histogram, count, 1000 - s.ForestCoveragePermille) << (Shift - 10);
+        long threshold = forestMask is null ? Quantile(histogram, count, 1000 - s.ForestCoveragePermille) << (Shift - 10) : OneHalf;
         long patchEdge = One / 20;
 
-        for (int z = 0; z < n; z++)
+        for (int z = 0; z < nz; z++)
         {
-            for (int x = 0; x < n; x++)
+            for (int x = 0; x < nx; x++)
             {
-                int i = z * n + x;
+                int i = z * nx + x;
                 long h = heights[i];
                 long slope = slopes[i];
 
@@ -198,7 +264,14 @@ public static class TerrainGenerator
                     outcrop = Math.Clamp((o - One * 68 / 100) * 255 / (One * 12 / 100), 0, 255);
                 }
                 long r = Math.Max(steepRock, Math.Max(summitRock, outcrop));
+                if (rockMask is not null) r = Math.Max(r, MaskAt(rockMask, map!, x, z) * 255 >> Shift);
                 rock[i] = (byte)r;
+
+                if (s.Biome == TerrainBiome.Desert)
+                {
+                    trees[i] = DesertPlants(x, z, slope, r, seeds);
+                    continue;
+                }
 
                 // Trees: inside forest patches, below a jittered tree line, not too steep.
                 long jitter = (IntNoise.Fbm(x, z, 70, 2, seeds.TreeLine) - OneHalf) * 3_000 >> Shift; // ±15 m
@@ -220,6 +293,17 @@ public static class TerrainGenerator
             }
         }
         return (trees, rock, roots);
+    }
+
+    private const uint DesertPlantSalt = 0x5EED_D3A7;
+
+    /// <summary>Sparse clumps of junipers and shrubs on open ground: always below the forest threshold, and no roots.</summary>
+    private static byte DesertPlants(int x, int z, long slope, long rock, NoiseSeeds seeds)
+    {
+        const long MaxDensity = 70;
+        long clumps = Clamp01((IntNoise.Fbm(x, z, 55, 3, seeds.Forest ^ DesertPlantSalt) - One * 48 / 100) * One / (One * 14 / 100));
+        long slopeF = Clamp01((1_000 - slope) * One / 600);
+        return (byte)((Mul(clumps, slopeF) * MaxDensity >> Shift) * (255 - rock) / 255);
     }
 
     /// <summary>Bucket index below which <paramref name="permille"/> of all values lie.</summary>

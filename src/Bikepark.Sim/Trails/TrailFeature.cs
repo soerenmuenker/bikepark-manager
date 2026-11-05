@@ -24,6 +24,12 @@ public enum FeatureKind : byte
     RockGarden = 7,
     LongJump = 8,
     BigDrop = 9,
+
+    /// <summary>Over rock: a wooden ramp, a free fall, a wooden landing.</summary>
+    FlatDrop = 10,
+
+    /// <summary>Over rock: a raised wooden chute with rollers in its deck.</summary>
+    WoodRoller = 11,
 }
 
 /// <summary>
@@ -83,6 +89,23 @@ public sealed class TrailFeatureType
     public int LandingMinGradient { get; set; } = -60;
     public int LandingMaxGradient { get; set; }
 
+    /// <summary>Over rock (chosen while drawing a trail): the biggest formation it may cross. None = an ordinary feature.</summary>
+    public Terrain.RockFormation CrossesRock { get; set; }
+
+    /// <summary>The widest rock it may cross, along the trail.</summary>
+    public int MaxSpanMeters { get; set; }
+
+    /// <summary>The most height the trail may lose over it: what keeps a drop or chute realistic.</summary>
+    public int MaxRockDropMeters { get; set; }
+
+    /// <summary>A flat drop: how far its level deck may reach up the trail from the rock to meet the hillside, and its landing; a placed one has its own length.</summary>
+    public int RampMeters { get; set; }
+    public int LandingDeckMeters { get; set; }
+
+    /// <summary>On top of <see cref="Wood"/> and <see cref="WorkMinutes"/>, per meter of a placed feature's length.</summary>
+    public int WoodPerMeter { get; set; }
+    public int WorkPerMeter { get; set; }
+
     public long LengthCm => LengthMeters * 100L;
 
     /// <summary>The feature plus its landing: the stretch of trail it takes up.</summary>
@@ -108,6 +131,12 @@ public sealed class TrailFeatureType
         if (Wood is < 0 or > 1000) errors.Add($"{p}.wood must be within 0..1000");
         if (MinDropMeters is < 0 or > 100) errors.Add($"{p}.minDropMeters must be within 0..100");
         if (GapMeters < 0 || GapMeters >= LengthMeters) errors.Add($"{p}.gapMeters must be within 0..lengthMeters-1");
+        if (CrossesRock is not (Terrain.RockFormation.None or Terrain.RockFormation.MediumRock or Terrain.RockFormation.RockFace))
+            errors.Add($"{p}.crossesRock must be mediumRock or rockFace");
+        if (CrossesRock != Terrain.RockFormation.None && (MaxSpanMeters is < 1 or > 100 || MaxRockDropMeters is < 1 or > 100))
+            errors.Add($"{p}: a feature over rock needs maxSpanMeters and maxRockDropMeters within 1..100");
+        if (RampMeters is < 0 or > 50 || LandingDeckMeters is < 0 or > 50 || WoodPerMeter is < 0 or > 100 || WorkPerMeter is < 0 or > 1000)
+            errors.Add($"{p}: rampMeters, landingDeckMeters, woodPerMeter or workPerMeter out of range");
         if (LandingMeters is < 0 or > 100) errors.Add($"{p}.landingMeters must be within 0..100");
         if (LandingMinGradient < -Gradient.MaxTenths || LandingMaxGradient > Gradient.MaxTenths || LandingMinGradient > LandingMaxGradient)
             errors.Add($"{p}: landing gradient window must satisfy -{Gradient.MaxTenths} <= landingMinGradient <= landingMaxGradient <= {Gradient.MaxTenths}");
@@ -128,6 +157,15 @@ public sealed class TrailFeature
 
     /// <summary>False while the feature is only planned (a crew job builds it); only built features count.</summary>
     public bool Built { get; set; } = true;
+
+    /// <summary>Its own length along the trail (features over rock); 0 = the type's.</summary>
+    public long LengthCm { get; set; }
+
+    /// <summary>A flat drop's level deck, from its start to the lip.</summary>
+    public long RampCm { get; set; }
+
+    /// <summary>The stretch of trail it covers.</summary>
+    public long LengthOn(TrailFeatureType type) => LengthCm > 0 ? LengthCm : type.LengthCm;
 
     /// <summary>Wear (see <see cref="TrailCondition"/>): millionths, 1,000,000 = perfect. Riders passing it wear it down.</summary>
     public int Condition { get; set; } = TrailCondition.Perfect;
@@ -172,7 +210,7 @@ public static class TrailFeatures
         var placed = new List<PlacedFeature>(way.Features.Count);
         foreach (var feature in way.Features)
             if (FindType(types, feature.TypeId) is { } type)
-                placed.Add(new PlacedFeature(feature, type, feature.DistanceCm, feature.DistanceCm + type.LengthCm));
+                placed.Add(new PlacedFeature(feature, type, feature.DistanceCm, feature.DistanceCm + feature.LengthOn(type)));
         return placed;
     }
 }

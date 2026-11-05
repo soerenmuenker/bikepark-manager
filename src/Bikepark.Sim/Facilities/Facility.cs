@@ -379,7 +379,7 @@ public static class FacilityMath
         int max = MaxFleet(type, station);
         if (station.Fleet.Count + count > max) return $"The rack holds {max} bikes ({station.Fleet.Count} there).";
         long cost = count * BikeCost(state, type);
-        if (state.Finance.MoneyCents < cost) return $"Not enough money: {count} bikes cost {cost / 100:N0} €.";
+        if (!state.Finance.CanAfford(cost)) return $"Not enough money: {count} bikes cost {cost / 100:N0} €.";
         return null;
     }
 
@@ -432,7 +432,7 @@ public static class FacilityMath
         if (NextUpgrade(type, facility) is not { } next) return $"{facility.Name} is fully upgraded.";
         if (state.Rules.UnlockLevel(level) < next.RequiredLevel)
             return $"The {next.Name.ToLowerInvariant()} needs park level {next.RequiredLevel} (you are level {level}).";
-        if (state.Finance.MoneyCents < UpgradeCost(state, type, next))
+        if (!state.Finance.CanAfford(UpgradeCost(state, type, next)))
             return $"Not enough money: the {next.Name.ToLowerInvariant()} costs {UpgradeCost(state, type, next) / 100:N0} €.";
         return null;
     }
@@ -563,7 +563,7 @@ public static class FacilityMath
     {
         if (state.Rules.UnlockLevel(level) < type.RequiredLevel)
             return $"The {type.Name.ToLowerInvariant()} needs park level {type.RequiredLevel} (you are level {level}).";
-        if (state.Finance.MoneyCents < BuildCost(state, type))
+        if (!state.Finance.CanAfford(BuildCost(state, type)))
             return $"Not enough money: the {type.Name.ToLowerInvariant()} costs {BuildCost(state, type) / 100:N0} €.";
         return null;
     }

@@ -76,7 +76,7 @@ internal sealed partial class LiftInspector : InspectorWindow
         {
             Text(body, "Rusty and out of service. Riders pedal up instead.", 13, UiTheme.Warn);
             string? why = !LiftWorks.StationsOwned(State, lift) ? "It stands on land you don't own."
-                : State.Finance.MoneyCents < type.RestoreCostCents ? "Not enough money." : null;
+                : !State.Finance.CanAfford(type.RestoreCostCents) ? "Not enough money." : null;
             var restore = UiTheme.Button($"Restore ({UiTheme.Money(type.RestoreCostCents)}, {type.RestoreDays} days)",
                 () => Ctx.Host.Enqueue(new RestoreLiftCommand(liftId)),
                 why ?? $"A contractor fixes it for half the price of a new {type.Name}; it runs from the next opening after the work");

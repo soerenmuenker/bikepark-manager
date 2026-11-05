@@ -62,6 +62,8 @@ public sealed class WayNetwork
     private readonly Dictionary<(int WayId, long DistanceCm), int> _nodeIndex = [];
     private readonly List<(int WayId, long DistanceCm)> _nodes = [];
     private readonly List<List<Edge>> _edges = [];
+    private const long DeckEndCm = 1_000;
+
     private readonly CorridorIndex _corridors = new();
     private readonly CorridorIndex _centerlines = new();
     private readonly List<WayCrossing> _crossings = [];
@@ -86,17 +88,20 @@ public sealed class WayNetwork
         foreach (var way in ways)
         {
             var geometry = geometries[way.Id];
-            if (way.Built) // a planned way's trees are still standing
+            if (way.Built && !geometry.IsDeck) // a planned way's trees are still standing; those under a deck stay
                 _corridors.Add(way.Id, geometry, CorridorWidth(rules, way.Kind));
-            _centerlines.Add(way.Id, geometry, 0);
+            // A deck can only be reached at its ends: what ends under it stays on the ground.
+            _centerlines.Add(way.Id, geometry, 0, geometry.IsDeck ? i => geometry.Distances[i] <= DeckEndCm || geometry.LengthCm - geometry.Distances[i] <= DeckEndCm : null);
         }
         BuildGraph();
         FindCrossings();
         FindTowCrossings();
 
-        var baseHub = hubs.FirstOrDefault(h => h.Kind == HubKind.Parking) ?? hubs.FirstOrDefault(h => h.Kind == HubKind.ValleyStation);
+        // Guests arrive at a parking lot; else on a scenario's real road, however many lifts the player adds; else at a lift.
+        bool onRoad = ways.Any(w => w.Kind == WayKind.AccessPath && w.Built && w.Origin == WayOrigin.Scenario);
+        var baseHub = hubs.FirstOrDefault(h => h.Kind == HubKind.Parking) ?? (onRoad ? null : hubs.FirstOrDefault(h => h.Kind == HubKind.ValleyStation));
         BaseHub = baseHub;
-        BaseWay = baseHub is null ? ways.FirstOrDefault(w => w.Kind == WayKind.AccessPath && w.Built) : null;
+        BaseWay = baseHub is null ? ways.FirstOrDefault(w => w.Kind == WayKind.AccessPath && w.Built && (!onRoad || w.Origin == WayOrigin.Scenario)) : null;
         BaseNode = baseHub is not null ? HubNode(baseHub.Id) : BaseWay is null ? -1 : NodeAt(BaseWay.Id, 0);
     }
 
@@ -118,7 +123,7 @@ public sealed class WayNetwork
             features[way.Id] = placed;
             // Only built features shape the trail (difficulty, rating); planned ones are listed but have no effect.
             var built = placed.Where(f => f.Feature.Built).ToList();
-            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, built);
+            geometries[way.Id] = WayGeometry.Build(grid, way.Kind, way.Points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, built, ignoreRocks: way.Origin == WayOrigin.Scenario, deck: way.DeckWidthCm > 0);
         }
         return new WayNetwork(ordered, geometries, features, hubs.OrderBy(h => h.Id).ToList(), links.ToList(), rules);
     }
@@ -206,7 +211,17 @@ public sealed class WayNetwork
     private bool[]? _reachable, _returnable;
 
     /// <summary>Riders may ride it: paths always; trails when open (<see cref="Way.IsRideable"/>) and connected.</summary>
-    public bool IsRideable(Way way) => way.Kind != WayKind.Trail || way.IsRideable && IsConnected(way);
+    public bool IsRideable(Way way) => way.Kind != WayKind.Trail || way.IsRideable && IsConnected(way) && !IsBlockedByRock(way);
+
+    /// <summary>A trail with rock on its line that no built wooden feature gets across yet (or any more).</summary>
+    public bool IsBlockedByRock(Way way)
+    {
+        if (way.Kind != WayKind.Trail || !_geometries.TryGetValue(way.Id, out var geometry)) return false;
+        var built = FeaturesOn(way.Id).Where(f => f.Feature.Built && f.Type.CrossesRock != Terrain.RockFormation.None).ToList();
+        foreach (var crossing in RockFeatures.Crossings(geometry))
+            if (!built.Any(f => f.StartCm <= crossing.FromCm && f.EndCm >= crossing.ToCm)) return true;
+        return false;
+    }
 
     /// <summary>Nodes reachable from the base (forward) or from which the base can be reached (backward), over all edges.</summary>
     private bool[] Reach(bool forward)

@@ -38,12 +38,14 @@ public partial class WayView : Node3D
     // Trees: a full refresh when built ways change, otherwise only the chunks around newly felled trees.
     private int _scatterRevision = -1;
     private Rect2? _felledArea;
+    private StandardMaterial3D _bridgeMaterial = null!;
 
     public override void _Ready()
     {
         _host = GetNode<SimHost>(SimHostPath);
         _terrain = GetNode<TerrainView>(TerrainPath);
         _material = WayMeshes.CreateMaterial();
+        _bridgeMaterial = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.9f };
         _blueprintMaterial = WayMeshes.CreateBlueprintMaterial();
         _featureMaterial = FeatureMeshes.CreateMaterial();
         _plannedFeatureMaterial = FeatureMeshes.CreatePlannedMaterial();
@@ -153,7 +155,7 @@ public partial class WayView : Node3D
         var rules = state.WearRules;
         long at = g.Distances[sample];
         var worn = way.Features.FirstOrDefault(f => f.Built && at >= f.DistanceCm
-            && TrailFeatures.FindType(state.TrailFeatureTypes, f.TypeId) is { } type && at < f.DistanceCm + type.LengthCm);
+            && TrailFeatures.FindType(state.TrailFeatureTypes, f.TypeId) is { } type && at < f.DistanceCm + f.LengthOn(type));
         int condition = worn is null ? 1000 : TrailCondition.Permille(worn);
         var color = condition < rules.WarnBelowPermille ? WornOutDirt
             : condition < rules.RoughBelowPermille ? WayMeshes.Dirt.Lerp(Rutted, (rules.RoughBelowPermille - condition) / (float)rules.RoughBelowPermille)
@@ -182,13 +184,24 @@ public partial class WayView : Node3D
             }
             if (way.Kind == WayKind.AccessPath)
             {
-                AddRibbon(WayMeshes.Ribbon(grid, g, 3.0f, 0.10f, followGround: false, _ => WayMeshes.Gravel), $"Path {way.Id}");
+                if (way.DeckWidthCm > 0)
+                {
+                    float deckWidth = way.DeckWidthCm / 100f;
+                    AddRibbon(WayMeshes.Ribbon(grid, g, deckWidth - 0.6f, 0.10f, followGround: false, _ => WayMeshes.Tarmac), $"Bridge {way.Id}");
+                    AddDeck(grid, g, deckWidth);
+                    continue;
+                }
+                bool tarmac = way.Surface == WaySurface.Tarmac;
+                AddRibbon(WayMeshes.Ribbon(grid, g, tarmac ? 4.5f : 3.0f, 0.10f, followGround: false, i => Planked(g, i, tarmac ? WayMeshes.Tarmac : WayMeshes.Gravel)), $"Path {way.Id}");
+                AddBridges(g, tarmac ? 5.2f : 3.6f);
                 continue;
             }
 
-            AddRibbon(WayMeshes.Ribbon(grid, g, 1.4f, 0.06f, followGround: true, i => DirtAt(state, way, g, i)), way.Name);
+            var inTheAir = InTheAir(sim.Network, way);
+            AddRibbon(WayMeshes.Ribbon(grid, g, 1.4f, 0.06f, followGround: true, i => Planked(g, i, DirtAt(state, way, g, i)), inTheAir), way.Name);
             var stripe = way.IsRideable ? WayMeshes.RatingColor(g.Rating) : ClosedStripe;
-            AddRibbon(WayMeshes.Ribbon(grid, g, 0.35f, 0.09f, followGround: true, _ => stripe), way.Name + " stripe");
+            AddRibbon(WayMeshes.Ribbon(grid, g, 0.35f, 0.09f, followGround: true, _ => stripe, inTheAir), way.Name + " stripe");
+            AddBridges(g, 2.0f);
             string status = way.WornOut ? "\nCLOSED · worn out" : way.Repairing ? "\nCLOSED · crew at work" : way.Closed ? "\nCLOSED" : "";
             AddLabel($"{way.Name}\n{g.Rating} · {g.LengthCm / 100} m{status}", WayMeshes.ToWorld(g.PositionAt(0)) + Vector3.Up * 4f,
                 way.IsRideable ? stripe : new Color(0.95f, 0.35f, 0.25f));
@@ -212,6 +225,82 @@ public partial class WayView : Node3D
         }
     }
 
+    /// <summary>The ribbon runs over a bridge's deck, so there it shows the boards.</summary>
+    private static Color Planked(WayGeometry g, int i, Color color)
+    {
+        foreach (var bridge in g.Bridges)
+            if (i >= bridge.From - WayGeometry.BridgeBankSamples && i <= bridge.To + WayGeometry.BridgeBankSamples)
+                return i % 2 == 0 ? PlankLight : PlankDark;
+        return color;
+    }
+
+    private static readonly Color PlankLight = new Color(0.56f, 0.40f, 0.25f).SrgbToLinear();
+    private static readonly Color PlankDark = new Color(0.44f, 0.30f, 0.18f).SrgbToLinear();
+
+    /// <summary>Plank decks with rails where the way crosses water, following its (levelled) height from bank to bank.</summary>
+    private void AddBridges(WayGeometry g, float width)
+    {
+        if (g.Bridges.Count == 0) return;
+        var mesh = new FlatMeshBuilder();
+        var wood = new Color(0.46f, 0.32f, 0.20f).SrgbToLinear();
+        var rail = new Color(0.36f, 0.25f, 0.16f).SrgbToLinear();
+        foreach (var bridge in g.Bridges)
+        {
+            int a = Math.Max(0, bridge.From - WayGeometry.BridgeBankSamples), b = Math.Min(g.SampleCount - 1, bridge.To + WayGeometry.BridgeBankSamples);
+            var from = new Vector3(g.Xs[a], g.Ys[a], g.Zs[a]) / 100f;
+            var to = new Vector3(g.Xs[b], g.Ys[b], g.Zs[b]) / 100f;
+            var flat = new Vector3(to.X - from.X, 0, to.Z - from.Z).Normalized();
+            var side = new Vector3(-flat.Z, 0, flat.X);
+            Bar(mesh, from, to, side, 0, width / 2, 0.05f, 0.25f, wood);
+            foreach (float edge in new[] { -width / 2, width / 2 })
+                Bar(mesh, from, to, side, edge, 0.06f, 0.25f, 1.05f, rail);
+        }
+        _content!.AddChild(new MeshInstance3D { Name = "Bridges", Mesh = mesh.ToMesh(), MaterialOverride = _bridgeMaterial });
+    }
+
+    /// <summary>A box from one point to another, <paramref name="offset"/> to the side, between two heights above them.</summary>
+    private static void Bar(FlatMeshBuilder mesh, Vector3 from, Vector3 to, Vector3 side, float offset, float halfWidth, float y0, float y1, Color color)
+    {
+        Vector3 P(Vector3 end, float s, float y) => end + side * (offset + s * halfWidth) + Vector3.Up * y;
+        var inside = (from + to) / 2 + side * offset + Vector3.Up * (y0 + y1) / 2;
+        var (a0, a1, b0, b1) = (P(from, -1, y0), P(from, 1, y0), P(to, -1, y0), P(to, 1, y0));
+        var (c0, c1, d0, d1) = (P(from, -1, y1), P(from, 1, y1), P(to, -1, y1), P(to, 1, y1));
+        foreach (var (q, r, s, t) in new[] { (c0, c1, d0, d1), (a0, b0, c0, d0), (a1, b1, c1, d1), (a0, a1, c0, c1), (b0, b1, d0, d1) })
+        {
+            mesh.Triangle(q, r, s, color, inside);
+            mesh.Triangle(r, t, s, color, inside);
+        }
+    }
+
+    private const int DeckStepSamples = 8;
+    private const float PierEveryMeters = 35f, PierMinHeight = 2f;
+
+    /// <summary>A real bridge: a concrete deck with parapets, on piers down to the ground wherever it runs high.</summary>
+    private void AddDeck(TerrainGrid grid, WayGeometry g, float width)
+    {
+        var mesh = new FlatMeshBuilder();
+        var concrete = new Color(0.60f, 0.59f, 0.56f).SrgbToLinear();
+        float sincePier = PierEveryMeters / 2;
+        for (int i = 0; i < g.SampleCount - 1; i += DeckStepSamples)
+        {
+            int j = Math.Min(i + DeckStepSamples, g.SampleCount - 1);
+            var from = new Vector3(g.Xs[i], g.Ys[i], g.Zs[i]) / 100f;
+            var to = new Vector3(g.Xs[j], g.Ys[j], g.Zs[j]) / 100f;
+            var flat = (to - from).Normalized();
+            var side = new Vector3(-flat.Z, 0, flat.X);
+            Bar(mesh, from, to, side, 0, width / 2, -0.9f, 0.05f, concrete);
+            foreach (float edge in new[] { -width / 2, width / 2 })
+                Bar(mesh, from, to, side, edge, 0.15f, 0.05f, 0.95f, concrete);
+            sincePier += (to - from).Length();
+            if (sincePier < PierEveryMeters) continue;
+            sincePier = 0;
+            float below = from.Y - grid.HeightAt(g.Xs[i], g.Zs[i]) / 100f;
+            if (below >= PierMinHeight)
+                Bar(mesh, from - flat * 0.8f, from + flat * 0.8f, side, 0, width * 0.35f, -below - 0.5f, -0.9f, concrete);
+        }
+        _content!.AddChild(new MeshInstance3D { Name = "Bridge deck", Mesh = mesh.ToMesh(), MaterialOverride = _bridgeMaterial });
+    }
+
     /// <summary>A planned way: dashed blueprint; while it is dug, the finished part (from the start) is solid.</summary>
     private void AddPlannedWay(Simulation sim, Way way, WayGeometry g)
     {
@@ -226,7 +315,7 @@ public partial class WayView : Node3D
         Color ColorAt(int i) => distances[i] <= doneCm
             ? solid
             : WayMeshes.Blueprint with { A = i / 3 % 2 == 0 ? 0.7f : 0.3f }; // ~3 m dashes
-        var mesh = WayMeshes.Ribbon(sim.Terrain, g, path ? 3.0f : 1.4f, path ? 0.10f : 0.06f, followGround: !path, ColorAt);
+        var mesh = WayMeshes.Ribbon(sim.Terrain, g, path ? 3.0f : 1.4f, path ? 0.10f : 0.06f, followGround: !path, ColorAt, InTheAir(sim.Network, way));
         if (mesh is not null)
             _content!.AddChild(new MeshInstance3D { Name = $"Way {way.Id} (planned)", Mesh = mesh, MaterialOverride = _blueprintMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
 
@@ -237,6 +326,11 @@ public partial class WayView : Node3D
         if (way.Kind == WayKind.Trail)
             AddFeatures(state, sim.Terrain, sim.Network, way, g);
     }
+
+    /// <summary>Where riders are on a flat drop's deck or over its gap: no trail on the ground there.</summary>
+    private static List<(long From, long To)> InTheAir(WayNetwork network, Way way) =>
+        network.FeaturesOn(way.Id).Where(f => f.Type.Kind == FeatureKind.FlatDrop)
+            .Select(f => (f.StartCm, f.EndCm - f.Type.LandingDeckMeters * 100L)).ToList();
 
     private void AddFeatures(WorldState state, TerrainGrid grid, WayNetwork network, Way way, WayGeometry g)
     {
@@ -249,7 +343,7 @@ public partial class WayView : Node3D
             {
                 Name = $"{way.Name} {feature.Type.Name} {feature.Feature.Id}",
                 Mesh = FeatureMeshes.Build(grid, g, feature.Type, feature.StartCm,
-                    built ? FeatureMeshes.BaseColor(feature.Type.Material) : FeatureMeshes.ProgressColor(feature.Type.Material, progress)),
+                    built ? FeatureMeshes.BaseColor(feature.Type.Material) : FeatureMeshes.ProgressColor(feature.Type.Material, progress), feature.EndCm - feature.StartCm, feature.Feature.RampCm),
                 MaterialOverride = built ? _featureMaterial : _plannedFeatureMaterial,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, // the depth bias would self-shadow
             });

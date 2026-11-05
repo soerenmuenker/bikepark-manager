@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Bikepark.Sim;
 using Bikepark.Sim.Land;
 using Bikepark.Sim.Terrain;
+using Bikepark.Sim.Trails;
 using Godot;
 
 namespace Bikepark.Game.Terrain;
@@ -32,7 +33,8 @@ public partial class TerrainView : Node3D
 
     private ShaderMaterial _terrainMaterial = null!;
     private ArrayMesh _treeMesh = null!;
-    private ArrayMesh _rockMesh = null!;
+    private ArrayMesh _juniperMesh = null!, _shrubMesh = null!;
+    private ArrayMesh[] _rockMeshes = [], _stoneMeshes = [];
     private StandardMaterial3D _scatterMaterial = null!;
     private Node3D? _chunks;
     private readonly List<(Node3D Node, int X0, int Z0, int SizeX, int SizeZ)> _chunkInfo = [];
@@ -75,7 +77,10 @@ public partial class TerrainView : Node3D
     {
         _terrainMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/terrain.gdshader") };
         _treeMesh = ScatterMeshes.CreateTree();
-        _rockMesh = ScatterMeshes.CreateRock();
+        _juniperMesh = ScatterMeshes.CreateJuniper();
+        _shrubMesh = ScatterMeshes.CreateShrub();
+        _rockMeshes = Enum.GetValues<RockShape>().Select(shape => ScatterMeshes.CreateRock(shape, detail: 2)).ToArray();
+        _stoneMeshes = Enum.GetValues<RockShape>().Select(shape => ScatterMeshes.CreateRock(shape, detail: 1)).ToArray();
         _scatterMaterial = ScatterMeshes.CreateMaterial();
 
         _host = GetNode<SimHost>(SimHostPath);
@@ -88,7 +93,7 @@ public partial class TerrainView : Node3D
         // Structures flatten the ground (terrain edits): rebuild the chunks whose samples changed.
         var grid = _host.Sim.Terrain;
         UpdateOwnership();
-        if (Grid is not null && !ReferenceEquals(grid, Grid) && grid.SizeMeters == Grid.SizeMeters)
+        if (Grid is not null && !ReferenceEquals(grid, Grid) && grid.WidthMeters == Grid.WidthMeters && grid.DepthMeters == Grid.DepthMeters)
             RebuildChangedChunks(grid);
     }
 
@@ -120,13 +125,14 @@ public partial class TerrainView : Node3D
     private static bool ChunkChanged(TerrainGrid a, TerrainGrid b, int x0, int z0, int sizeX, int sizeZ)
     {
         // Include the skirt/normal neighbourhood: one sample around the chunk.
-        int xa = Math.Max(0, x0 - 1), xb = Math.Min(a.SizeMeters, x0 + sizeX + 1);
-        for (int z = Math.Max(0, z0 - 1); z <= Math.Min(a.SizeMeters, z0 + sizeZ + 1); z++)
+        int xa = Math.Max(0, x0 - 1), xb = Math.Min(a.WidthMeters, x0 + sizeX + 1);
+        for (int z = Math.Max(0, z0 - 1); z <= Math.Min(a.DepthMeters, z0 + sizeZ + 1); z++)
         {
             int start = a.Index(xa, z), length = xb - xa + 1;
             if (!a.Heights.Slice(start, length).SequenceEqual(b.Heights.Slice(start, length))) return true;
             if (!a.TreeDensity.Slice(start, length).SequenceEqual(b.TreeDensity.Slice(start, length))) return true;
             if (!a.Rock.Slice(start, length).SequenceEqual(b.Rock.Slice(start, length))) return true;
+            if (!a.WaterDepth.Slice(start, length).SequenceEqual(b.WaterDepth.Slice(start, length))) return true;
         }
         return false;
     }
@@ -158,18 +164,18 @@ public partial class TerrainView : Node3D
     {
         var state = _host.Sim.State;
         if (Grid is null) return;
-        string signature = $"{state.Parcels.Count}|{string.Join(',', state.OwnedParcelIds)}|{Grid.SizeMeters}";
+        string signature = $"{state.Parcels.Count}|{string.Join(',', state.OwnedParcelIds)}|{Grid.WidthMeters}x{Grid.DepthMeters}";
         if (signature == _ownSignature) return;
         _ownSignature = signature;
         const int cell = 4;
-        int n = Math.Max(1, Grid.SizeMeters / cell);
-        var image = Image.CreateEmpty(n, n, false, Image.Format.R8);
-        for (int z = 0; z < n; z++)
-            for (int x = 0; x < n; x++)
+        int nx = Math.Max(1, Grid.WidthMeters / cell), nz = Math.Max(1, Grid.DepthMeters / cell);
+        var image = Image.CreateEmpty(nx, nz, false, Image.Format.R8);
+        for (int z = 0; z < nz; z++)
+            for (int x = 0; x < nx; x++)
                 image.SetPixel(x, z, LandMath.IsOwned(state, (x * cell + cell / 2) * 100L, (z * cell + cell / 2) * 100L) ? Colors.White : Colors.Black);
         _ownMask = ImageTexture.CreateFromImage(image);
         _terrainMaterial.SetShaderParameter("own_mask", _ownMask);
-        _terrainMaterial.SetShaderParameter("map_size_m", (float)Grid.SizeMeters);
+        _terrainMaterial.SetShaderParameter("map_size_m", new Vector2(Grid.WidthMeters, Grid.DepthMeters));
         ApplyLandDim();
     }
 
@@ -195,7 +201,7 @@ public partial class TerrainView : Node3D
         for (float t = step; t <= maxDistance; t += step)
         {
             var p = origin + direction * t;
-            if (p.X < -50 || p.Z < -50 || p.X > Grid.SizeMeters + 50 || p.Z > Grid.SizeMeters + 50) break;
+            if (p.X < -50 || p.Z < -50 || p.X > Grid.WidthMeters + 50 || p.Z > Grid.DepthMeters + 50) break;
             if (p.Y > HeightAt(p.X, p.Z)) { previous = p; continue; }
 
             // Bisect between the last point above and this point below the ground.
@@ -228,12 +234,13 @@ public partial class TerrainView : Node3D
         _chunks = new Node3D { Name = "Chunks" };
         AddChild(_chunks);
         _terrainMaterial.SetShaderParameter("tree_line_m", grid.Settings.TreeLineCm / 100f);
+        _terrainMaterial.SetShaderParameter("desert", grid.Settings.Biome == TerrainBiome.Desert);
 
         var scatter = new List<ScatterInstance>();
         int chunkCount = 0;
-        for (int z0 = 0; z0 < grid.SizeMeters; z0 += ChunkSizeMeters)
+        for (int z0 = 0; z0 < grid.DepthMeters; z0 += ChunkSizeMeters)
         {
-            for (int x0 = 0; x0 < grid.SizeMeters; x0 += ChunkSizeMeters)
+            for (int x0 = 0; x0 < grid.WidthMeters; x0 += ChunkSizeMeters)
             {
                 _chunks.AddChild(BuildChunk(grid, x0, z0, scatter));
                 chunkCount++;
@@ -248,8 +255,8 @@ public partial class TerrainView : Node3D
 
     private Node3D BuildChunk(TerrainGrid grid, int x0, int z0, List<ScatterInstance> scatter)
     {
-        int sizeX = Math.Min(ChunkSizeMeters, grid.SizeMeters - x0);
-        int sizeZ = Math.Min(ChunkSizeMeters, grid.SizeMeters - z0);
+        int sizeX = Math.Min(ChunkSizeMeters, grid.WidthMeters - x0);
+        int sizeZ = Math.Min(ChunkSizeMeters, grid.DepthMeters - z0);
         float centerHeight = grid.HeightAtSample(x0 + sizeX / 2, z0 + sizeZ / 2) / 100f;
         var center = new Vector3(x0 + sizeX / 2f, centerHeight, z0 + sizeZ / 2f);
 
@@ -261,7 +268,6 @@ public partial class TerrainView : Node3D
             Mesh = TerrainMeshBuilder.Build(grid, x0, z0, sizeX, sizeZ, 1, center),
             MaterialOverride = _terrainMaterial,
             VisibilityRangeEnd = DetailDistance,
-            VisibilityRangeEndMargin = 10f,
         };
         var far = new MeshInstance3D
         {
@@ -269,7 +275,6 @@ public partial class TerrainView : Node3D
             Mesh = TerrainMeshBuilder.Build(grid, x0, z0, sizeX, sizeZ, FarStep, center),
             MaterialOverride = _terrainMaterial,
             VisibilityRangeBegin = DetailDistance,
-            VisibilityRangeBeginMargin = 10f,
         };
         chunk.AddChild(near);
         chunk.AddChild(far);
@@ -281,18 +286,74 @@ public partial class TerrainView : Node3D
     private void AddScatter(TerrainGrid grid, Node3D chunk, int x0, int z0, int sizeX, int sizeZ, Vector3 center, List<ScatterInstance> scatter)
     {
         // Scatter cells are owned by the chunk containing their origin; the last row/column also owns the map edge.
-        int maxX = x0 + sizeX >= grid.SizeMeters ? grid.SizeMeters + 1 : x0 + sizeX;
-        int maxZ = z0 + sizeZ >= grid.SizeMeters ? grid.SizeMeters + 1 : z0 + sizeZ;
+        int maxX = x0 + sizeX >= grid.WidthMeters ? grid.WidthMeters + 1 : x0 + sizeX;
+        int maxZ = z0 + sizeZ >= grid.DepthMeters ? grid.DepthMeters + 1 : z0 + sizeZ;
         scatter.Clear();
         TerrainScatter.Collect(grid, x0, z0, maxX, maxZ, scatter);
         if (_cleared is { } cleared)
-            scatter.RemoveAll(s => cleared(s.XCm, s.ZCm));
+            scatter.RemoveAll(s => cleared(s.XCm, s.ZCm) && !DenseFieldOnTrail(grid, s) && !UnderFlatDrop(s));
         var treeItems = scatter.Where(s => s.Kind == ScatterKind.Tree).ToList();
         var rockItems = scatter.Where(s => s.Kind == ScatterKind.Rock).ToList();
-        if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
-        if (rockItems.Count > 0) chunk.AddChild(BuildInstances("Rocks", _rockMesh, rockItems, center, RockDrawDistance, RockTint));
+        bool desert = grid.Settings.Biome == TerrainBiome.Desert;
+        Func<ScatterInstance, Color> rockTint = desert ? DesertRockTint : RockTint;
+        if (desert)
+        {
+            var junipers = treeItems.Where(s => s.Variant % 2 == 0).ToList();
+            var shrubs = treeItems.Where(s => s.Variant % 2 != 0).ToList();
+            if (junipers.Count > 0) chunk.AddChild(BuildInstances("Junipers", _juniperMesh, junipers, center, TreeDrawDistance, TreeTint));
+            if (shrubs.Count > 0) chunk.AddChild(BuildInstances("Shrubs", _shrubMesh, shrubs, center, RockDrawDistance, TreeTint));
+        }
+        else if (treeItems.Count > 0) chunk.AddChild(BuildInstances("Trees", _treeMesh, treeItems, center, TreeDrawDistance, TreeTint));
+        foreach (var shape in Enum.GetValues<RockShape>())
+        {
+            var big = rockItems.Where(s => s.Shape == shape && s.ScalePermille >= StoneMaxScale).ToList();
+            var small = rockItems.Where(s => s.Shape == shape && s.ScalePermille < StoneMaxScale).ToList();
+            if (big.Count > 0) chunk.AddChild(BuildInstances($"Rocks {shape}", _rockMeshes[(int)shape], big, center, TreeDrawDistance, rockTint));
+            if (small.Count > 0) chunk.AddChild(BuildInstances($"Stones {shape}", _stoneMeshes[(int)shape], small, center, RockDrawDistance, rockTint));
+        }
         _treeCount += treeItems.Count;
         _rockCount += rockItems.Count;
+    }
+
+    /// <summary>A dense stone field stays on a trail: it is what makes the trail black. A gravel path clears it.</summary>
+    private bool DenseFieldOnTrail(TerrainGrid grid, ScatterInstance item)
+    {
+        if (item.Kind != ScatterKind.Rock || grid.RockFormationAt(item.XCm, item.ZCm) != RockFormation.DenseStones) return false;
+        var network = _host.Sim.Network;
+        return network.Nearest(item.XCm, item.ZCm, 300) is { } near && network.FindWay(near.WayId) is { Kind: WayKind.Trail };
+    }
+
+    /// <summary>A flat drop's deck rests on the rock: it stays, also while the drop is only planned.</summary>
+    private bool UnderFlatDrop(ScatterInstance item)
+    {
+        if (item.Kind != ScatterKind.Rock || _host.Sim.Terrain.RockFormationAt(item.XCm, item.ZCm) < RockFormation.MediumRock) return false;
+        var network = _host.Sim.Network;
+        return network.NearestTrail(item.XCm, item.ZCm, RockKeepRadiusCm) is { } near
+            && network.FeaturesOn(near.WayId).Any(f => f.Type.Kind == FeatureKind.FlatDrop && near.DistanceCm >= f.StartCm && near.DistanceCm <= f.EndCm);
+    }
+
+    private const int RockKeepRadiusCm = 800;
+
+    /// <summary>Smaller rocks are the many small stones: a coarser mesh, and not drawn as far.</summary>
+    private const int StoneMaxScale = 1000;
+
+    /// <summary>Red see-through copies of these rocks, on top of everything (the rock the trail tool is asking about).</summary>
+    public Node3D BuildRockHighlight(IEnumerable<ScatterInstance> rocks, Material material)
+    {
+        var root = new Node3D { Name = "RockHighlight" };
+        foreach (var rock in rocks)
+        {
+            float scale = rock.ScalePermille / 1000f * 1.04f;
+            root.AddChild(new MeshInstance3D
+            {
+                Mesh = (rock.ScalePermille >= StoneMaxScale ? _rockMeshes : _stoneMeshes)[(int)rock.Shape],
+                MaterialOverride = material,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                Transform = new Transform3D(new Basis(Vector3.Up, rock.YawPermille / 1000f * Mathf.Tau).Scaled(Vector3.One * scale),
+                    new Vector3(rock.XCm / 100f, rock.YCm / 100f - 0.15f, rock.ZCm / 100f)),
+            });
+        }
+        return root;
     }
 
     private MultiMeshInstance3D BuildInstances(
@@ -332,6 +393,8 @@ public partial class TerrainView : Node3D
         2 => new Color(1.1f, 1.05f, 0.85f),
         _ => new Color(0.9f, 0.9f, 1f),
     };
+
+    private static Color DesertRockTint(ScatterInstance item) => new(0.98f - item.Variant * 0.03f, 0.50f - item.Variant * 0.02f, 0.31f);
 
     private static Color RockTint(ScatterInstance item) => new(1f - item.Variant * 0.05f, 1f - item.Variant * 0.05f, 1f - item.Variant * 0.04f);
 }

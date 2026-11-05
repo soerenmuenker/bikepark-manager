@@ -62,7 +62,14 @@ public static class TerrainSculptor
     {
         if (strokes.Count == 0) return baseGrid;
 
-        int n = baseGrid.Samples;
+        // Water sits on the ground: on a map with scenery the height strokes go in before it is carved.
+        if (baseGrid.Settings.Heightmap?.Scenery is not null && strokes.Any(s => s.Tool != SculptTool.Paint))
+        {
+            baseGrid = TerrainGenerator.Generate(baseGrid.Settings, baseGrid.Seed, strokes.Where(s => s.Tool != SculptTool.Paint).ToList());
+            strokes = strokes.Where(s => s.Tool == SculptTool.Paint).ToList();
+        }
+
+        int nx = baseGrid.SamplesX, nz = baseGrid.SamplesZ;
         int[] heights = baseGrid.Heights.ToArray();
         byte[] trees = baseGrid.TreeDensity.ToArray();
         byte[] rock = baseGrid.Rock.ToArray();
@@ -72,7 +79,7 @@ public static class TerrainSculptor
         foreach (var stroke in strokes)
         {
             var (tTrees, tRock, tRoots) = PaintTarget(stroke.Surface);
-            ForEachWeight(stroke, n, (i, weight) =>
+            ForEachWeight(stroke, nx, nz, (i, weight) =>
             {
                 switch (stroke.Tool)
                 {
@@ -87,27 +94,36 @@ public static class TerrainSculptor
             });
         }
 
-        ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, n);
-        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water);
+        ushort[] slopes = TerrainGenerator.ComputeSlopes(heights, nx, nz);
+        var formations = RockFormations.Build(baseGrid.Settings, baseGrid.Seed, rock, slopes, water, baseGrid.Scenery, nx, nz);
+        return new TerrainGrid(baseGrid.Settings, baseGrid.Seed, heights, slopes, trees, rock, roots, water, baseGrid.Scenery, formations);
+    }
+
+    /// <summary>Raises and lowers the heights by the height strokes, in list order.</summary>
+    internal static void ApplyHeights(IReadOnlyList<TerrainStroke> strokes, int[] heights, int nx, int nz)
+    {
+        foreach (var stroke in strokes)
+            ForEachWeight(stroke, nx, nz, (i, weight) =>
+                heights[i] += (stroke.Tool == SculptTool.Raise ? 1 : -1) * (int)((long)stroke.HeightCm * weight / 1000));
     }
 
     private static byte Blend(byte value, int target, long weight) => (byte)(value + (target - value) * weight / 1000);
 
     /// <summary>Calls <paramref name="apply"/> for every sample the stroke reaches with its weight (1..1000, permille).</summary>
-    public static void ForEachWeight(TerrainStroke stroke, int samples, Action<int, long> apply)
+    public static void ForEachWeight(TerrainStroke stroke, int samplesX, int samplesZ, Action<int, long> apply)
     {
         long r = stroke.RadiusCm;
         long minX = stroke.Points.Min(p => p.X) - r, maxX = stroke.Points.Max(p => p.X) + r;
         long minZ = stroke.Points.Min(p => p.Z) - r, maxZ = stroke.Points.Max(p => p.Z) + r;
-        int x0 = (int)Math.Clamp((minX + 99) / 100, 0, samples - 1), x1 = (int)Math.Clamp(maxX / 100, 0, samples - 1);
-        int z0 = (int)Math.Clamp((minZ + 99) / 100, 0, samples - 1), z1 = (int)Math.Clamp(maxZ / 100, 0, samples - 1);
+        int x0 = (int)Math.Clamp((minX + 99) / 100, 0, samplesX - 1), x1 = (int)Math.Clamp(maxX / 100, 0, samplesX - 1);
+        int z0 = (int)Math.Clamp((minZ + 99) / 100, 0, samplesZ - 1), z1 = (int)Math.Clamp(maxZ / 100, 0, samplesZ - 1);
         for (int z = z0; z <= z1; z++)
             for (int x = x0; x <= x1; x++)
             {
                 long d = DistanceToPath(stroke.Points, x * 100L, z * 100L);
                 if (d >= r) continue;
                 long weight = Weight(stroke.Tool, d, r);
-                if (weight > 0) apply(z * samples + x, weight);
+                if (weight > 0) apply(z * samplesX + x, weight);
             }
     }
 

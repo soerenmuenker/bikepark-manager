@@ -25,10 +25,10 @@ public class FeatureTests
     {
         var state = ScenarioLoader.CreateWorld(TestWorlds.LiftScenario());
         var ids = state.TrailFeatureTypes.Select(t => t.Id).ToList();
-        Assert.Equal(["berm", "rollers", "table", "double", "wall_ride", "kicker", "drop", "rock_garden", "long_jump", "big_drop"], ids);
+        Assert.Equal(["berm", "rollers", "table", "double", "wall_ride", "kicker", "drop", "rock_garden", "long_jump", "big_drop", "flat_drop"], ids);
         Assert.All(state.TrailFeatureTypes, t => Assert.Empty(t.Validate()));
-        Assert.Equal(4, state.TrailFeatureTypes.Count(t => t.Material == FeatureMaterial.Wood));
-        Assert.Equal(4, state.TrailFeatureTypes.Count(t => t.Rating == TrailRating.Black));
+        Assert.Equal(5, state.TrailFeatureTypes.Count(t => t.Material == FeatureMaterial.Wood));
+        Assert.Equal(5, state.TrailFeatureTypes.Count(t => t.Rating == TrailRating.Black));
     }
 
     [Fact]

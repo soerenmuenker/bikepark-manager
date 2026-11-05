@@ -31,6 +31,9 @@ public sealed class WayPlan
     /// <summary>True if the input was drawn the other way round and has been flipped.</summary>
     public bool Reversed { get; init; }
 
+    /// <summary>Rock on a trail's line that needs a flat drop, and what fits (see <see cref="RockFeatures"/>).</summary>
+    public IReadOnlyList<RockCrossing> RockCrossings { get; init; } = [];
+
     public int TreesToClear { get; init; }
     public int RocksToClear { get; init; }
     public required List<WayIssue> Issues { get; init; }
@@ -49,8 +52,10 @@ public sealed class WayPlan
 public static class WayPlanner
 {
     /// <param name="onOwnLand">The park's land (<see cref="Land.LandMath.OwnedPredicate"/>); null = no land limits.</param>
+    /// <param name="rockChoice">The feature types over rock this park may use; null = none, so a trail can't cross medium rocks or faces.</param>
+    /// <param name="mayStandAlone">A scenario's real tracks: they exist, so a gravel path needn't touch the network, may touch lakes and buildings and may be steeper than players may build.</param>
     public static WayPlan Plan(TerrainGrid grid, WayNetwork network, TrailRules rules, WayKind kind, IReadOnlyList<PointCm> input,
-        Func<long, long, bool>? onOwnLand = null)
+        Func<long, long, bool>? onOwnLand = null, bool mayStandAlone = false, RockFeatureChoice? rockChoice = null, bool deck = false)
     {
         var issues = new List<WayIssue>();
         var points = input.ToList();
@@ -105,7 +110,8 @@ public static class WayPlanner
         if (kind == WayKind.Trail)
             AlignWithTrailEnds(network, points, ref startJoin, ref endJoin);
 
-        var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters);
+        var geometry = WayGeometry.Build(grid, kind, points, rules.SegmentLengthMeters * 100, rules.PathGradingMeters, ignoreRocks: mayStandAlone, deck: deck);
+        if (deck) CheckDeckEnds(grid, geometry, issues);
 
         if (onOwnLand is not null)
             for (int i = 0; i < geometry.SampleCount; i++)
@@ -115,12 +121,23 @@ public static class WayPlanner
                     break;
                 }
 
+        if (!mayStandAlone && grid.Scenery is not null)
+            for (int i = 0; i < geometry.SampleCount; i++)
+                if (grid.BlockedAt(geometry.Xs[i], geometry.Zs[i]) is var blocked and not 0)
+                {
+                    issues.Add(blocked == TerrainSceneryData.Lake
+                        ? Error("lake", "Can't build across a lake.", geometry.Distances[i], geometry.Distances[i])
+                        : Error("building", "A building stands in the way.", geometry.Distances[i], geometry.Distances[i]));
+                    break;
+                }
+
         long length = geometry.LengthCm;
         if (length > rules.MaxLengthMeters * 100L)
             issues.Add(Error("tooLong", $"Too long: at most {rules.MaxLengthMeters} m."));
 
         CheckGrades(kind, rules, geometry, issues);
-        CheckConnections(kind, network, startJoin is not null || startHub != 0, endJoin is not null || endHub != 0, issues);
+        CheckRocks(grid, kind, geometry, rules, rockChoice, issues);
+        if (!mayStandAlone) CheckConnections(kind, network, startJoin is not null || startHub != 0, endJoin is not null || endHub != 0, issues);
         if (kind == WayKind.Trail && geometry.EndHeightCm >= geometry.StartHeightCm)
             issues.Add(Error("noDrop", "A trail must end lower than it starts."));
 
@@ -140,6 +157,8 @@ public static class WayPlanner
         if (trees + rocks > 0)
             issues.Add(Warning("clearing", $"Clears {trees} trees and {rocks} rocks along the way."));
 
+        if (mayStandAlone) issues.RemoveAll(i => i.Code == "pathTooSteep");
+
         return new WayPlan
         {
             Kind = kind,
@@ -152,6 +171,7 @@ public static class WayPlanner
             Reversed = reversed,
             TreesToClear = trees,
             RocksToClear = rocks,
+            RockCrossings = RockFeatures.Crossings(geometry),
             Issues = issues,
         };
     }
@@ -243,6 +263,46 @@ public static class WayPlanner
         Flush();
     }
 
+    /// <summary>A bridge's ends stand on land: their pads flatten what is there.</summary>
+    private static void CheckDeckEnds(TerrainGrid grid, WayGeometry geometry, List<WayIssue> issues)
+    {
+        foreach (var (name, x, z) in new[] { ("start", geometry.Xs[0], geometry.Zs[0]), ("end", geometry.Xs[^1], geometry.Zs[^1]) })
+        {
+            if (grid.Sample(x, z).WaterDepthCm > 0) issues.Add(Error("deckInWater", $"The bridge's {name} is in water: move it onto the bank."));
+            else if (grid.BlockedAt(x, z) != 0) issues.Add(Error("deckOnBuilding", $"The bridge's {name} is on a building: move it."));
+        }
+    }
+
+    private static void CheckRocks(TerrainGrid grid, WayKind kind, WayGeometry geometry, TrailRules rules, RockFeatureChoice? choice, List<WayIssue> issues)
+    {
+        if (kind == WayKind.AccessPath)
+            foreach (var rock in geometry.Rocks)
+            {
+                long from = geometry.Distances[rock.From], to = geometry.Distances[rock.To];
+                if (rock.Kind == RockFormation.RockFace)
+                    issues.Add(Error("rockFace", "A rock face is in the way: build around it.", from, to));
+                else if (rock.Kind == RockFormation.MediumRock)
+                    issues.Add(Error("mediumRock", "A big rock is in the way: a gravel path has to go around it.", from, to));
+            }
+        foreach (var crossing in RockFeatures.Crossings(geometry))
+        {
+            var options = choice is null ? [] : RockFeatures.Options(grid, geometry, rules, choice, crossing);
+            if (options.Any(o => o.Reason is null))
+                issues.Add(new WayIssue(IssueSeverity.Warning, "rockCrossing", $"Rock at {crossing.FromCm / 100} m: you place a flat drop when you finish the trail.", crossing.FromCm, crossing.ToCm));
+            else
+            {
+                string code = crossing.Kind == RockFormation.RockFace ? "rockFace" : "rockTooBig";
+                string what = crossing.Kind == RockFormation.RockFace ? "A rock face" : "A big rock";
+                string why = options.Count == 0 ? "" : " " + string.Join(" ", options.Select(o => $"{o.Type.Name}: {o.Reason}"));
+                issues.Add(Error(code, $"{what} is in the way ({crossing.SpanCm / 100} m wide, {crossing.DropCm / 100} m down): build around it.{why}", crossing.FromCm, crossing.ToCm));
+            }
+        }
+        if (kind == WayKind.Trail && geometry.RockMeters(RockFormation.DenseStones) > 0)
+            issues.Add(Warning("stoneField", $"Runs through a dense stone field ({geometry.RockMeters(RockFormation.DenseStones)} m): this trail will be black."));
+        if (geometry.StoneMeters > 0)
+            issues.Add(Warning("clearStones", $"The crew clears stones along {geometry.StoneMeters} m: extra work."));
+    }
+
     private static string GradeMessage(string code, int worst, TrailRules rules) => code switch
     {
         "pathTooSteep" => $"Too steep for a gravel path: {Gradient.Format(worst)} (limit {Gradient.Format(rules.PathMaxGradient)}). Try a switchback.",
@@ -293,7 +353,7 @@ public static class WayPlanner
         foreach (var item in scatter)
         {
             if (!corridor.Contains(item.XCm, item.ZCm) || network.IsInCorridor(item.XCm, item.ZCm)) continue;
-            if (item.Kind == ScatterKind.Tree) trees++; else rocks++;
+            if (item.Kind == ScatterKind.Tree) trees++; else if (grid.RockFormationAt(item.XCm, item.ZCm) == RockFormation.None) rocks++;
         }
         return (trees, rocks);
     }

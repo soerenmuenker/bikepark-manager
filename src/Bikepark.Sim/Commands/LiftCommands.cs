@@ -162,7 +162,7 @@ public sealed record BuildFacilityCommand(string TypeId, PointCm Center, PointCm
             if (Facilities.FacilityMath.CannotBuild(ctx.State, level, type) is { } locked) return locked;
             if (type.Upgrades.Take(Level).FirstOrDefault(u => ctx.State.Rules.UnlockLevel(level) < u.RequiredLevel) is { } gated)
                 return $"The {gated.Name.ToLowerInvariant()} needs park level {gated.RequiredLevel} (you are level {level}).";
-            if (ctx.State.Finance.MoneyCents < Cost(ctx.State, type)) return $"Not enough money: it costs {Cost(ctx.State, type) / 100:N0} €.";
+            if (!ctx.State.Finance.CanAfford(Cost(ctx.State, type))) return $"Not enough money: it costs {Cost(ctx.State, type) / 100:N0} €.";
         }
         return Plan(ctx).FirstError;
     }
@@ -303,7 +303,7 @@ public sealed record RestoreLiftCommand(int LiftId) : ICommand
         if (!LiftWorks.StationsOwned(state, lift)) return $"{lift.Name} stands on land the park doesn't own.";
         var type = LiftNetwork.FindType(state, lift.TypeId);
         if (type is null) return "Unknown lift type.";
-        if (state.Finance.MoneyCents < LiftWorks.RestoreCost(state, type)) return $"Not enough money: restoring costs {LiftWorks.RestoreCost(state, type) / 100:N0} €.";
+        if (!state.Finance.CanAfford(LiftWorks.RestoreCost(state, type))) return $"Not enough money: restoring costs {LiftWorks.RestoreCost(state, type) / 100:N0} €.";
         return null;
     }
 
@@ -334,7 +334,7 @@ public static class LiftWorks
     public static string? CannotBuild(State.WorldState state, int level, LiftType type)
     {
         if (state.Rules.UnlockLevel(level) < type.RequiredLevel) return $"A {type.Name} needs park level {type.RequiredLevel} (you are level {level}).";
-        if (state.Finance.MoneyCents < BuildCost(state, type)) return $"Not enough money: a {type.Name} costs {BuildCost(state, type) / 100:N0} €.";
+        if (!state.Finance.CanAfford(BuildCost(state, type))) return $"Not enough money: a {type.Name} costs {BuildCost(state, type) / 100:N0} €.";
         return null;
     }
 

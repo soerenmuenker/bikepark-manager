@@ -2,6 +2,11 @@
   "id": "starter_valley",
   "name": "Starter Valley",
   "description": "Career: you start on the old beginner ski hill at the foot of the mountain, with a rusty T-bar and a gravel track. Restore the lift, build your first trails, earn a reputation and buy more land: the Alpine Lift Co. gondola only rents you bike access once you own the land at both its stations.",
+  "menu": {
+    "title": "Starter Valley",
+    "blurb": "The snow is gone and the old beginner ski hill is yours: a rusty T-bar, a gravel track, a half-finished blue trail and 25,000 €. Finish Easy Peasy, hire a crew, take a bank loan to restore the lift, build bars and trails, earn a reputation to unlock more and buy the land around you. Keep an eye on the books: 14 days in the red and the bank closes the park.",
+    "defaultParkName": "Old Ski Hill Bikepark"
+  },
   "seed": 1337,
   "parkName": "Old Ski Hill Bikepark",
   "startingMoneyCents": 2500000,
@@ -99,6 +104,7 @@
   },
   // Terrain is regenerated from these settings; "seed" defaults to the scenario seed.
   "terrain": {
+    "rockFormations": true,
     "sizeMeters": 1000,
     "baseElevationCm": 80000,
     "reliefCm": 35000,

@@ -4,7 +4,7 @@ namespace Bikepark.Game.Ui;
 
 /// <summary>
 /// The title screen (shown when the game runs without world-setting debug arguments, and after "Back to menu"): start a
-/// new Starter Valley career with a park name, continue or delete a saved career, or play the Demo sandbox (never
+/// new career on one of the maps with a park name, continue or delete a saved career, or play the Demo sandbox (never
 /// saved). Whatever world was loaded waits, paused, behind it.
 /// </summary>
 public partial class StartScreen : PanelContainer
@@ -12,6 +12,9 @@ public partial class StartScreen : PanelContainer
     private readonly SimHost _host;
     private LineEdit _name = null!;
     private VBoxContainer _careers = null!;
+    private Label _mapTitle = null!, _mapBlurb = null!, _mapCredits = null!;
+    private readonly List<(string File, string Id, Bikepark.Sim.Scenarios.ScenarioMenu Menu)> _maps = [];
+    private int _map;
 
     public StartScreen() : this(null!) { }
 
@@ -47,20 +50,27 @@ public partial class StartScreen : PanelContainer
     {
         var (card, box) = Card(520);
         box.AddChild(UiTheme.Label("CAREER", 12, UiTheme.Accent, bold: true));
-        box.AddChild(UiTheme.Label("Starter Valley", 26, bold: true));
-        var text = UiTheme.Label("The snow is gone and the old beginner ski hill is yours: a rusty T-bar, a gravel track, a half-finished " +
-                                 "blue trail and 25,000 €. Finish Easy Peasy, hire a crew, take a bank loan to restore the lift, build " +
-                                 "bars and trails, earn a reputation to unlock more and buy the land around you. Keep an eye on the " +
-                                 "books: 14 days in the red and the bank closes the park.", 14, UiTheme.TextDim);
-        text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        text.CustomMinimumSize = new Vector2(476, 0);
-        box.AddChild(text);
+        _maps.AddRange(SimHost.CareerMaps());
+        var picker = new OptionButton { FocusMode = FocusModeEnum.None };
+        foreach (var map in _maps) picker.AddItem(map.Menu.Title);
+        picker.ItemSelected += index => ShowMap((int)index);
+        box.AddChild(picker);
+        _mapTitle = UiTheme.Label("", 26, bold: true);
+        box.AddChild(_mapTitle);
+        _mapBlurb = UiTheme.Label("", 14, UiTheme.TextDim);
+        _mapBlurb.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _mapBlurb.CustomMinimumSize = new Vector2(476, 0);
+        box.AddChild(_mapBlurb);
+        _mapCredits = UiTheme.Label("", 11, UiTheme.TextDim);
+        _mapCredits.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _mapCredits.CustomMinimumSize = new Vector2(476, 0);
+        box.AddChild(_mapCredits);
 
         var start = new HBoxContainer();
         start.AddThemeConstantOverride("separation", 8);
         _name = new LineEdit
         {
-            Text = "Old Ski Hill Bikepark",
+            Text = _maps[0].Menu.DefaultParkName,
             PlaceholderText = "Park name",
             MaxLength = Bikepark.Sim.Commands.RenameParkCommand.MaxLength,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
@@ -78,13 +88,27 @@ public partial class StartScreen : PanelContainer
         _careers.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(_careers);
         box.AddChild(scroll);
+        ShowMap(0);
         return card;
+    }
+
+    private void ShowMap(int index)
+    {
+        // A name the player typed stays; the map's default name follows the map.
+        if (_name.Text == _maps[_map].Menu.DefaultParkName) _name.Text = _maps[index].Menu.DefaultParkName;
+        _map = index;
+        var menu = _maps[index].Menu;
+        _mapTitle.Text = menu.Title;
+        _mapBlurb.Text = menu.Blurb;
+        _mapCredits.Text = menu.Credits ?? "";
+        _mapCredits.Visible = menu.Credits is not null;
     }
 
     private void StartCareer()
     {
         string name = _name.Text.Trim();
-        _host.NewCareer(name.Length == 0 ? "Old Ski Hill Bikepark" : name);
+        var map = _maps[_map];
+        _host.NewCareer(name.Length == 0 ? map.Menu.DefaultParkName : name, map.File);
     }
 
     /// <summary>Re-reads the saved careers (call when the screen is shown again).</summary>
@@ -116,6 +140,9 @@ public partial class StartScreen : PanelContainer
         texts.AddThemeConstantOverride("separation", 0);
         bool current = career.Id == _host.CurrentCareerId;
         texts.AddChild(UiTheme.Label(career.ParkName + (current ? "  (open)" : ""), 15, bold: true));
+        foreach (var map in _maps)
+            if (map.Id == career.ScenarioId)
+                texts.AddChild(UiTheme.Label(map.Menu.Title, 11, UiTheme.TextDim));
         string rating = career.RatingTenths is { } r ? $" · {r / 10}.{r % 10}★" : "";
         texts.AddChild(career.Bankrupt
             ? UiTheme.Label($"Bankrupt on day {career.Day + 1} · level {career.Level}{rating}", 12, UiTheme.Bad)
@@ -162,9 +189,9 @@ public partial class StartScreen : PanelContainer
         var (card, box) = Card(340);
         box.AddChild(UiTheme.Label("SANDBOX", 12, UiTheme.Accent, bold: true));
         box.AddChild(UiTheme.Label("Demo", 26, bold: true));
-        var text = UiTheme.Label("The whole mountain is yours and everything is unlocked: the gondola runs with rented bike access, two " +
-                                 "demo trails with features, bars and shops are built, and there is plenty of money. Try everything, " +
-                                 "untangle the trail crossings with the bulldozer. The Demo is never saved.", 14, UiTheme.TextDim);
+        var text = UiTheme.Label("Zen mode: nothing costs money. The whole mountain is yours and everything is unlocked: the gondola " +
+                                 "runs, three demo trails (a blue, a red and a black one with flat drops over rock), bars and shops are " +
+                                 "built. Try anything. The Demo is never saved.", 14, UiTheme.TextDim);
         text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         text.CustomMinimumSize = new Vector2(296, 0);
         box.AddChild(text);

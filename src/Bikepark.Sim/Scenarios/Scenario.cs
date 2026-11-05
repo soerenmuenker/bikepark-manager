@@ -17,7 +17,13 @@ public sealed class ScenarioDefinition
     public string Description { get; set; } = "";
     public ulong Seed { get; set; }
     public string ParkName { get; set; } = "Unnamed Bikepark";
+    /// <summary>How the start screen offers it as a career map; presentation only, not copied into the world.</summary>
+    public ScenarioMenu? Menu { get; set; }
+
     public long StartingMoneyCents { get; set; }
+
+    /// <summary>Start in Zen mode: nothing costs money (<see cref="State.FinanceState.ZenMode"/>; sandboxes only, <see cref="State.ParkRules.UnlockAll"/>).</summary>
+    public bool ZenMode { get; set; }
     public long EntryFeeCents { get; set; }
     public long LiftTicketCents { get; set; }
     public ParkRules Rules { get; set; } = new();
@@ -107,6 +113,17 @@ public sealed class ScenarioDefinition
     public List<TimedCommand> Commands { get; set; } = [];
 }
 
+/// <summary>The start screen's card for a career map.</summary>
+public sealed class ScenarioMenu
+{
+    public string Title { get; set; } = "";
+    public string Blurb { get; set; } = "";
+    public string DefaultParkName { get; set; } = "";
+
+    /// <summary>Credit line the map's data asks for, or null.</summary>
+    public string? Credits { get; set; }
+}
+
 public static class ScenarioLoader
 {
     public static ScenarioDefinition Parse(string json) =>
@@ -118,6 +135,15 @@ public static class ScenarioLoader
     {
         var scenario = Parse(File.ReadAllText(path));
         string directory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
+        if (scenario.Terrain.HeightmapFile is { Length: > 0 } heightmap)
+        {
+            scenario.Terrain = scenario.Terrain with
+            {
+                Heightmap = JsonSerializer.Deserialize<TerrainHeightmap>(File.ReadAllText(Path.Combine(directory, heightmap)), SimJson.Indented)
+                            ?? throw new InvalidDataException($"Heightmap file {heightmap} is empty."),
+                HeightmapFile = null,
+            };
+        }
         if (scenario.LiftTypesFile is { Length: > 0 } catalog)
         {
             scenario.LiftTypes = [.. scenario.LiftTypes, .. LoadCatalog<LiftType>(Path.Combine(directory, catalog), "Lift")];
@@ -212,7 +238,7 @@ public static class ScenarioLoader
             CrashRules = scenario.CrashRules,
             Parcels = scenario.Parcels,
             OwnedParcelIds = scenario.Parcels.Where(p => p.OwnedAtStart).Select(p => p.Id).ToList(),
-            Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents },
+            Finance = new FinanceState { MoneyCents = scenario.StartingMoneyCents, ZenMode = scenario.ZenMode },
             LoanRules = scenario.LoanRules,
             Welcome = scenario.Welcome,
         };
@@ -233,6 +259,7 @@ public static class ScenarioLoader
         var r = s.Rules;
         errors.AddRange(r.Validate());
         if (s.EntryFeeCents < 0 || s.EntryFeeCents > r.MaxEntryFeeCents) errors.Add("entryFeeCents out of range");
+        if (s.ZenMode && !r.UnlockAll) errors.Add("zenMode is only for sandboxes (rules.unlockAll)");
         if (s.LiftTicketCents < 0 || s.LiftTicketCents > r.MaxEntryFeeCents) errors.Add("liftTicketCents out of range");
 
         errors.AddRange(s.Terrain.Validate());

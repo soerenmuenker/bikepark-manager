@@ -22,7 +22,7 @@ internal sealed class LoanSystem : ISimSystem
             if (loan.NextDueDay != day) continue;
             loan.NextDueDay += LoanMath.DaysPerInstallment;
             long due = loan.NextPaymentCents;
-            if (state.Finance.MoneyCents < due)
+            if (!state.Finance.CanAfford(due))
             {
                 long fee = due * state.LoanRules.LateFeePermille / 1000;
                 loan.RemainingCents += fee;

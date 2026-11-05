@@ -298,6 +298,15 @@ public sealed record ArrivalPoint(int Minute, int Permille);
 public sealed class FinanceState
 {
     public long MoneyCents { get; set; }
+
+    /// <summary>
+    /// Zen mode (sandbox only, see <see cref="Commands.SetZenModeCommand"/>): nothing costs money. Spending is not booked at
+    /// all, so the balance never drops and every "not enough money" check passes (<see cref="CanAfford"/>); income still comes in.
+    /// </summary>
+    public bool ZenMode { get; set; }
+
+    /// <summary>Whether the park can pay this now: always in <see cref="ZenMode"/>, else with the money on hand.</summary>
+    public bool CanAfford(long cents) => ZenMode || MoneyCents >= cents;
     public long TotalRevenueCents { get; set; }
     public long TotalExpensesCents { get; set; }
     public long RevenueTodayCents { get; set; }
@@ -402,6 +411,7 @@ public sealed class FinanceState
 
     public void Spend(MoneyCategory category, long cents)
     {
+        if (ZenMode) return; // nothing costs money
         MoneyCents -= cents;
         TotalExpensesCents += cents;
         ExpensesTodayCents += cents;
@@ -411,6 +421,7 @@ public sealed class FinanceState
     /// <summary>A one-off expense: spent and listed in <see cref="Transactions"/>.</summary>
     public void Invest(MoneyCategory category, long cents, long tick, string label)
     {
+        if (ZenMode) return;
         Spend(category, cents);
         Log(tick, category, -cents, label);
     }

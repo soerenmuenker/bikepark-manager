@@ -36,7 +36,7 @@
 <body>
 <div id="map"><canvas id="cv"></canvas><div id="hint"></div><div id="status"></div></div>
 <div id="side">
-  <div class="row"><b id="title">Scenario</b></div>
+  <div class="row"><a id="back" href="#" style="display:none;color:inherit">← Map maker</a> <b id="title">Scenario</b></div>
   <div class="row tabs"><button id="mLand" class="on">Land &amp; structures</button><button id="mTerrain">Terrain</button></div>
   <div class="row">
     <select id="mode"><option>relief</option><option>slope</option><option>surface</option></select>
@@ -62,6 +62,13 @@
     <button id="tSplit" title="Select a parcel, click its border, optional points inside, then its border again">Split parcel</button>
     <button id="undo" title="Ctrl/Cmd+Z">Undo</button>
   </div>
+  <div id="wayTools" class="row">
+    <button id="tArrival" title="Click a track or road: guests arrive there (no parking lot may exist: a parking lot wins)">Set arrival</button>
+    <button id="tParking" title="Click where the starter parking lot goes: guests arrive there, a gravel link joins it to the nearest way">Starter parking</button>
+    <button id="tGravel" title="Click points, Enter to finish">New gravel path</button>
+    <button id="tTarmac" title="Click points, Enter to finish">New road</button>
+    <button id="tCut" title="Click a way: it becomes two ways there, so a section can be deleted">Cut way</button>
+  </div>
   <div class="row">
     <button id="validate">Validate</button>
     <button id="save" class="primary">Save to scenario</button>
@@ -78,11 +85,12 @@
   <div id="checks"></div>
   <h2>Controls</h2>
   <div class="small">
+    Green dot: where guests arrive. Select a way or structure, then <kbd>Del</kbd> deletes it.<br>
     Drag map: pan · wheel: zoom · Terrain tab: drag to brush, right-/middle-drag to pan<br>
     Drag a corner: move it (shared corners of neighbours move along; <kbd>Alt</kbd> at drag start moves only this one). Snaps to other corners/borders, else the grid.<br>
     Double-click a border: add a corner (on shared borders in both parcels) · right-click a corner: remove it<br>
     Structures: select, drag their points (lift stations, parking centre/direction, way points); double-click a way: add a point; right-click: remove<br>
-    <kbd>Esc</kbd> cancel tool · <kbd>Del</kbd> delete selected parcel
+    <kbd>Esc</kbd> cancel tool · <kbd>Del</kbd> delete the selected parcel, way or structure
   </div>
   </div>
 </div>
@@ -90,7 +98,7 @@
 'use strict';
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
-let data = null, sizeCm = 100000, liftTypes = [];
+let mapBiome = 'alpine', data = null, sizeXCm = 100000, sizeZCm = 100000, liftTypes = [];
 let editMode = 'land';                       // 'land' | 'terrain'
 let brush = 'raise', stroke = null;          // stroke being drawn (terrain mode)
 let scale = 0.008, ox = 0, oy = 0;          // screen = world * scale + offset
@@ -105,8 +113,10 @@ const PALETTE = ['#f2c94c', '#f2994a', '#bb6bd9', '#56ccf2', '#eb5757', '#6fcf97
 async function load() {
   const r = await (await fetch('/api/scenario')).json();
   if (r.error) return alert(r.error);
+  mapBiome = r.biome;
   data = { parcels: r.parcels, commands: r.commands, terrainSculpt: r.terrainSculpt };
-  sizeCm = r.sizeMeters * 100; liftTypes = r.liftTypes;
+  sizeXCm = r.sizeMeters * 100; sizeZCm = (r.depthMeters || r.sizeMeters) * 100; liftTypes = r.liftTypes; scenery = r.scenery;
+  if (r.back) { $('back').href = r.back; $('back').style.display = ''; }
   $('title').textContent = r.path;
   hintText('Loading the terrain …');
   const raw = await (await fetch('/api/raw')).arrayBuffer();
@@ -115,8 +125,8 @@ async function load() {
 }
 function fit() {
   const w = cv.clientWidth, h = cv.clientHeight;
-  scale = Math.min(w, h) / sizeCm * 0.96;
-  ox = (w - sizeCm * scale) / 2; oy = (h - sizeCm * scale) / 2;
+  scale = Math.min(w / sizeXCm, h / sizeZCm) * 0.96;
+  ox = (w - sizeXCm * scale) / 2; oy = (h - sizeZCm * scale) / 2;
 }
 
 // ------------------------------------------------------------ geometry helpers
@@ -151,7 +161,7 @@ function centroid(poly) {
 }
 const gridStep = () => $('snap10').classList.contains('on') ? 1000 : 100;
 const snapGrid = w => { const g = gridStep(); return { x: Math.round(w.x / g) * g, z: Math.round(w.z / g) * g }; };
-const clampW = w => ({ x: Math.max(0, Math.min(sizeCm, w.x)), z: Math.max(0, Math.min(sizeCm, w.z)) });
+const clampW = w => ({ x: Math.max(0, Math.min(sizeXCm, w.x)), z: Math.max(0, Math.min(sizeZCm, w.z)) });
 const parcelAt = w => data.parcels.findIndex(p => contains(p.outline, w.x, w.z));
 const parcelName = w => { const i = parcelAt(w); return i < 0 ? 'no parcel' : data.parcels[i].name; };
 const ownedAtStart = w => data.parcels.length === 0 || data.parcels.some(p => p.ownedAtStart && contains(p.outline, w.x, w.z));
@@ -248,7 +258,7 @@ function cmdHandles(ci) {
   return hs;
 }
 const editableCmd = ci => cmdHandles(ci).length > 0;
-const cmdLabel = c => `${c.name || c.type}`;
+const cmdLabel = c => c.name || (c.deckWidthCm ? 'Bridge' : c.kind === 'accessPath' ? (c.surface === 'tarmac' ? 'Road' : 'Gravel track') : c.type);
 const liftType = c => liftTypes.find(t => t.id === c.typeId);
 function cmdLength(c) {
   if (c.valley && c.mountain) return Math.hypot(c.mountain.x - c.valley.x, c.mountain.z - c.valley.z);
@@ -258,11 +268,12 @@ function cmdLength(c) {
 
 // ------------------------------------------------------------ coverage (gaps and overlaps, 5 m cells)
 function computeCoverage() {
-  const cell = 500, n = Math.ceil(sizeCm / cell);
-  const off = document.createElement('canvas'); off.width = off.height = n;
-  const c2 = off.getContext('2d'), im = c2.createImageData(n, n);
+  if (!data.parcels.length) { coverage = null; coverageStats = { gapsM2: 0, overlapsM2: 0 }; return; } // no parcels: all land is the park's
+  const cell = 500, n = Math.ceil(sizeXCm / cell), rows = Math.ceil(sizeZCm / cell);
+  const off = document.createElement('canvas'); off.width = n; off.height = rows;
+  const c2 = off.getContext('2d'), im = c2.createImageData(n, rows);
   let gaps = 0, overlaps = 0;
-  for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
+  for (let z = 0; z < rows; z++) for (let x = 0; x < n; x++) {
     let k = 0; const wx = x * cell + cell / 2, wz = z * cell + cell / 2;
     for (const p of data.parcels) if (contains(p.outline, wx, wz)) k++;
     const i = (z * n + x) * 4;
@@ -275,6 +286,41 @@ function computeCoverage() {
 }
 
 // ------------------------------------------------------------ drawing
+// What really stands on a real map (read only): water, streets and buildings, to draw parcels around.
+let scenery = null;
+function drawScenery() {
+  if (!scenery) return;
+  const line = (pts, closed) => { ctx.beginPath(); pts.forEach((p, k) => { const s = w2s(p); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); if (closed) ctx.closePath(); };
+  ctx.setLineDash([]); ctx.lineCap = 'round';
+  ctx.strokeStyle = '#3a3e44';
+  for (const s of scenery.streets || []) { ctx.lineWidth = Math.max(1, s.widthCm * scale); line(s.points); ctx.stroke(); }
+  ctx.fillStyle = '#2f7fb8';
+  for (const l of scenery.lakes) { line(l.outline, true); ctx.fill(); }
+  ctx.strokeStyle = '#2f7fb8';
+  for (const s of scenery.streams) { ctx.lineWidth = Math.max(1, s.widthCm * scale); line(s.points); ctx.stroke(); }
+  ctx.fillStyle = '#7a3b2e';
+  for (const b of scenery.buildings) {
+    const lx = b.halfLengthCm * b.dirX / 1000, lz = b.halfLengthCm * b.dirZ / 1000, wx = -b.halfWidthCm * b.dirZ / 1000, wz = b.halfWidthCm * b.dirX / 1000;
+    line([[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([u, v]) => ({ x: b.centerX + u * lx + v * wx, z: b.centerZ + u * lz + v * wz })), true);
+    ctx.fill();
+  }
+  ctx.lineCap = 'butt';
+}
+// Same rule as WayNetwork: the first parking lot, else the low end of the first way.
+function arrivalPoint() {
+  const lot = data.commands.find(t => t.command.type === 'buildParkingLot');
+  if (lot) return lot.command.center;
+  const way = data.commands.find(t => t.command.kind === 'accessPath');
+  if (way) { const p = way.command.points; return heightAt(p[0]) <= heightAt(p[p.length - 1]) ? p[0] : p[p.length - 1]; }
+  return data.commands.find(t => t.command.valley)?.command.valley ?? null;
+}
+const heightAt = p => T.h[Math.round(p.z / 100) * T.nx + Math.round(p.x / 100)];
+function drawArrival() {
+  const at = T && arrivalPoint(); if (!at) return;
+  const s = w2s(at);
+  ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, 7); ctx.fillStyle = '#2ecc71'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+  label('Guests arrive', s.x, s.y - 13);
+}
 function parcelColor(p, i) { return p.ownedAtStart ? '#2ec4b6' : PALETTE[i % PALETTE.length]; }
 function draw() {
   const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
@@ -282,17 +328,22 @@ function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#111'; ctx.fillRect(0, 0, w, h);
   if (!data) return;
-  if (T) { ctx.imageSmoothingEnabled = scale * 100 < 2; ctx.drawImage(T.canvas, ox - 50 * scale, oy - 50 * scale, T.n * 100 * scale, T.n * 100 * scale); }
+  if (T) { ctx.imageSmoothingEnabled = scale * 100 < 2; ctx.drawImage(T.canvas, ox - 50 * scale, oy - 50 * scale, T.nx * 100 * scale, T.nz * 100 * scale); }
   if (coverage && $('coverage').classList.contains('on') && editMode === 'land') {
     ctx.imageSmoothingEnabled = false;
-    const s = coverage.canvas.width * coverage.cell * scale; ctx.drawImage(coverage.canvas, ox, oy, s, s);
+    const s = coverage.cell * scale; ctx.drawImage(coverage.canvas, ox, oy, coverage.canvas.width * s, coverage.canvas.height * s);
   }
   // grid every 100 m
   ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
-  for (let g = 0; g <= sizeCm; g += 10000) {
-    const a = w2s({ x: g, z: 0 }), b = w2s({ x: g, z: sizeCm }), c = w2s({ x: 0, z: g }), d = w2s({ x: sizeCm, z: g });
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
+  for (let g = 0; g <= sizeXCm; g += 10000) {
+    const a = w2s({ x: g, z: 0 }), b = w2s({ x: g, z: sizeZCm });
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
+  for (let g = 0; g <= sizeZCm; g += 10000) {
+    const c = w2s({ x: 0, z: g }), d = w2s({ x: sizeXCm, z: g });
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
+  }
+  drawScenery();
   // parcels
   data.parcels.forEach((p, i) => {
     const col = parcelColor(p, i), isSel = sel?.kind === 'parcel' && sel.pi === i;
@@ -329,12 +380,13 @@ function draw() {
       ctx.strokeStyle = '#fff8'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
       label(cmdLabel(c), a.x, a.y - r - 6);
     } else if (c.points) {
-      ctx.strokeStyle = c.kind === 'accessPath' ? '#f4ede1' : '#1565c0';
+      ctx.strokeStyle = c.deckWidthCm ? '#7e57c2' : c.surface === 'tarmac' ? '#30343a' : c.kind === 'accessPath' ? '#f4ede1' : '#1565c0';
       ctx.beginPath(); c.points.forEach((p, k) => { const s = w2s(p); k ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.stroke();
     } else if (c.center) {
       const a = w2s(c.center); ctx.fillStyle = '#d7ccc8'; ctx.fillRect(a.x - 5, a.y - 5, 10, 10);
     }
   });
+  drawArrival();
   // handles
   if (editMode === 'terrain') return drawBrush();
   for (const hnd of allHandles()) {
@@ -385,19 +437,95 @@ function setHandle(h, w) {
 function setTool(name) {
   tool = name && tool?.name !== name ? { name, pts: [] } : null;
   if (tool?.name === 'split' && sel?.kind !== 'parcel') { tool = null; return hintText('Select the parcel to split first.'); }
-  $('tDraw').classList.toggle('on', tool?.name === 'draw');
-  $('tSplit').classList.toggle('on', tool?.name === 'split');
-  hintText(tool?.name === 'draw' ? 'New parcel: click corners (snapping to neighbours), click the first corner or Enter to finish, Esc to cancel.'
+  for (const [id, n] of [['tDraw', 'draw'], ['tSplit', 'split'], ['tArrival', 'arrival'], ['tParking', 'parking'], ['tGravel', 'gravel'], ['tTarmac', 'tarmac'], ['tCut', 'cut']])
+    $(id).classList.toggle('on', tool?.name === n);
+  hintText(tool?.name === 'arrival' ? 'Click a track or road where guests should arrive.'
+    : tool?.name === 'parking' ? 'Click where the starter parking lot goes. Guests arrive there.'
+    : tool?.name === 'cut' ? 'Click a way where it should become two.'
+    : tool?.name === 'gravel' || tool?.name === 'tarmac' ? 'Click points (ends snap onto other ways), Enter to finish, Esc to cancel.'
+    : tool?.name === 'draw' ? 'New parcel: click corners (snapping to neighbours), click the first corner or Enter to finish, Esc to cancel.'
     : tool?.name === 'split' ? `Split ${selected().name}: click its border, optionally points inside, then its border again. Esc cancels.` : '');
   draw();
 }
-function toolPoint(sp) { return snapLand(sp); }
+const isWayTool = () => tool?.name === 'gravel' || tool?.name === 'tarmac';
+function toolPoint(sp) { return isWayTool() ? wayPoint(sp) : snapLand(sp); }
+const wayIndexes = () => data.commands.flatMap((t, ci) => t.command.kind === 'accessPath' ? [ci] : []);
+// The closest spot on any gravel path or road: {ci, i (segment end), w, d in screen pixels}.
+function nearestWay(sp) {
+  let best = null;
+  for (const ci of wayIndexes()) {
+    const pts = data.commands[ci].command.points;
+    for (let i = 1; i < pts.length; i++) {
+      const pr = segProject(sp, w2s(pts[i - 1]), w2s(pts[i]));
+      if (!best || pr.d < best.d) { const w = s2w(pr.q.x, pr.q.y); best = { ci, i, d: pr.d, w: { x: Math.round(w.x), z: Math.round(w.z) } }; }
+    }
+  }
+  return best;
+}
+function wayPoint(sp) { const n = nearestWay(sp); return n && n.d < 10 ? n.w : snapGrid(clampW(s2w(sp.x, sp.y))); }
+// Cuts a way at its spot; returns the two commands, in order along the old way.
+function cutWay(n) {
+  const t = data.commands[n.ci], pts = t.command.points;
+  const near = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) < 100;
+  const head = pts.slice(0, n.i), tail = pts.slice(n.i);
+  if (!near(head[head.length - 1], n.w)) head.push({ ...n.w });
+  if (!near(tail[0], n.w)) tail.unshift({ ...n.w });
+  const second = JSON.parse(JSON.stringify(t)); t.command.points = head; second.command.points = tail;
+  return head.length > 1 && tail.length > 1 && [t, second];
+}
+function setArrivalOn(sp) {
+  const n = nearestWay(sp);
+  if (!n || n.d > 12) return hintText('Click on a track or road.');
+  if (data.commands.some(t => t.command.type === 'buildParkingLot')) return hintText('A parking lot is where guests arrive: delete it first, or drag it here.');
+  snapshot();
+  const end = n.w, pts = data.commands[n.ci].command.points;
+  const atEnd = !!(Math.hypot(pts[0].x - end.x, pts[0].z - end.z) < 100 || Math.hypot(pts[pts.length - 1].x - end.x, pts[pts.length - 1].z - end.z) < 100);
+  const pieces = atEnd ? [data.commands[n.ci]] : cutWay(n);
+  if (atEnd) data.commands.splice(n.ci, 1); else if (pieces) data.commands.splice(n.ci, 1, pieces[1]);
+  // A way starts at its low end: the piece must climb away from the arrival.
+  const up = pieces && pieces.find(t => { const p = t.command.points, far = Math.hypot(p[0].x - end.x, p[0].z - end.z) < 100 ? p[p.length - 1] : p[0]; return heightAt(far) > heightAt(end); });
+  if (!up) { undo(); return hintText('No way climbs from here (a high point): pick a lower spot.'); }
+  if (!atEnd && up === pieces[1]) { data.commands.splice(data.commands.indexOf(pieces[1]), 1, pieces[0]); }
+  const firstWay = data.commands.findIndex(t => t.command.kind === 'accessPath');
+  data.commands.splice(firstWay < 0 ? data.commands.length : firstWay, 0, up);
+  sel = null; setTool(null); changed();
+}
+function placeParking(sp) {
+  snapshot();
+  const center = snapGrid(clampW(s2w(sp.x, sp.y))), n = nearestWay(w2s(center));
+  const toward = n && Math.hypot(n.w.x - center.x, n.w.z - center.z) > 100 ? n.w : { x: center.x + 1000, z: center.z };
+  const old = data.commands.filter(t => t.command.type === 'buildParkingLot').length;
+  data.commands.unshift({ tick: 0, command: { type: 'buildParkingLot', name: old ? `Parking ${old + 1}` : 'Parking', origin: 'scenario', spaces: 40, center, toward } });
+  if (n) data.commands.push({ tick: 0, command: { type: 'buildWay', kind: 'accessPath', name: '', origin: 'scenario', points: [{ ...center }, n.w] } });
+  sel = { kind: 'cmd', ci: 0 }; setTool(null); changed();
+  post('/api/validate'); // pads have the most rules: say at once if the game refuses this spot
+}
+function finishWay() {
+  if (tool.pts.length < 2) return hintText('Place at least two points.');
+  snapshot();
+  const command = { type: 'buildWay', kind: 'accessPath', name: '', origin: 'scenario', points: tool.pts };
+  if (tool.name === 'tarmac') command.surface = 'tarmac';
+  data.commands.push({ tick: 0, command });
+  sel = { kind: 'cmd', ci: data.commands.length - 1 }; setTool(null); changed();
+}
 function onBorder(pi, w) {
   const o = data.parcels[pi].outline, sp = w2s(w);
   return o.some((v, vi) => segProject(sp, w2s(v), w2s(o[(vi + 1) % o.length])).d < 1.5);
 }
 function toolClick(sp) {
+  if (tool.name === 'arrival') return setArrivalOn(sp);
+  if (tool.name === 'parking') return placeParking(sp);
+  if (tool.name === 'cut') {
+    const n = nearestWay(sp);
+    if (!n || n.d > 12) return hintText('Click on a way.');
+    if (data.commands[n.ci].command.deckWidthCm) return hintText('A bridge is one piece: move its ends instead.');
+    snapshot();
+    const pieces = cutWay(n);
+    if (!pieces) { undoStack.pop(); return hintText('That is the end of the way already.'); }
+    data.commands.splice(n.ci, 1, ...pieces); sel = null; setTool(null); return changed();
+  }
   const w = toolPoint(sp);
+  if (isWayTool()) { tool.pts.push({ x: w.x, z: w.z }); return draw(); }
   if (tool.name === 'draw') {
     if (tool.pts.length >= 3 && dist(sp, w2s(tool.pts[0])) < 10) return finishDraw();
     tool.pts.push({ x: w.x, z: w.z });
@@ -426,21 +554,21 @@ function finishDraw() {
 }
 
 // ------------------------------------------------------------ terrain (same math as Bikepark.Sim TerrainSculptor)
-let T = null; // { n, base: {h, trees, rock, roots}, h, trees, rock, roots, min, max, canvas, image }
+let T = null; // { nx, nz, base: {h, trees, rock, roots}, h, trees, rock, roots, min, max, canvas, image }
 const PAINT = { grass: [0, 0, 0], forest: [220, 0, 60], roots: [200, 0, 230], rock: [0, 255, 0] }; // trees, rock, roots
 function terrainFromRaw(buf) {
-  const n = new DataView(buf).getInt32(0, true), c = n * n;
-  const base = { h: new Int32Array(buf, 4, c), trees: new Uint8Array(buf, 4 + 4 * c, c), rock: new Uint8Array(buf, 4 + 5 * c, c), roots: new Uint8Array(buf, 4 + 6 * c, c) };
+  const view = new DataView(buf), nx = view.getInt32(0, true), nz = view.getInt32(4, true), c = nx * nz;
+  const base = { h: new Int32Array(buf, 8, c), trees: new Uint8Array(buf, 8 + 4 * c, c), rock: new Uint8Array(buf, 8 + 5 * c, c), roots: new Uint8Array(buf, 8 + 6 * c, c) };
   let min = Infinity, max = -Infinity; for (const v of base.h) { if (v < min) min = v; if (v > max) max = v; }
-  const canvas = document.createElement('canvas'); canvas.width = canvas.height = n;
-  T = { n, base, min, max, canvas, cctx: canvas.getContext('2d') };
-  T.image = T.cctx.createImageData(n, n);
+  const canvas = document.createElement('canvas'); canvas.width = nx; canvas.height = nz;
+  T = { nx, nz, base, min, max, canvas, cctx: canvas.getContext('2d') };
+  T.image = T.cctx.createImageData(nx, nz);
   rebuildTerrain();
 }
 function rebuildTerrain() {
   T.h = T.base.h.slice(); T.trees = T.base.trees.slice(); T.rock = T.base.rock.slice(); T.roots = T.base.roots.slice();
   for (const s of data.terrainSculpt) applyStroke(s);
-  renderTerrain(0, 0, T.n - 1, T.n - 1);
+  renderTerrain(0, 0, T.nx - 1, T.nz - 1);
 }
 const isqrt = v => v <= 0 ? 0 : Math.floor(Math.sqrt(v));
 function segDistance(ax, az, bx, bz, x, z) {
@@ -455,9 +583,9 @@ function weight(tool, d, r) {
 }
 // Visits samples within reach of segment a-b (a single point if b is a), calling fn(i, weight).
 function forSegment(s, a, b, fn) {
-  const r = s.radiusCm, n = T.n;
+  const r = s.radiusCm, n = T.nx;
   const x0 = Math.max(0, Math.ceil((Math.min(a.x, b.x) - r) / 100)), x1 = Math.min(n - 1, Math.floor((Math.max(a.x, b.x) + r) / 100));
-  const z0 = Math.max(0, Math.ceil((Math.min(a.z, b.z) - r) / 100)), z1 = Math.min(n - 1, Math.floor((Math.max(a.z, b.z) + r) / 100));
+  const z0 = Math.max(0, Math.ceil((Math.min(a.z, b.z) - r) / 100)), z1 = Math.min(T.nz - 1, Math.floor((Math.max(a.z, b.z) + r) / 100));
   for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
     const d = segDistance(a.x, a.z, b.x, b.z, x * 100, z * 100);
     if (d >= r) continue;
@@ -476,7 +604,7 @@ function setSample(s, before, i, w) {
 }
 function applyStroke(s) {
   const before = { h: T.h.slice(), trees: T.trees.slice(), rock: T.rock.slice(), roots: T.roots.slice() };
-  const best = new Uint16Array(T.n * T.n);
+  const best = new Uint16Array(T.nx * T.nz);
   const pts = s.points, segs = pts.length === 1 ? [[pts[0], pts[0]]] : pts.slice(1).map((p, k) => [pts[k], p]);
   for (const [a, b] of segs) forSegment(s, a, b, (i, w) => { if (w > best[i]) { best[i] = w; setSample(s, before, i, w); } });
 }
@@ -484,7 +612,7 @@ function applyStroke(s) {
 // Live stroke: each new segment only raises the per-sample weight (the strongest effect along the path wins).
 function strokeStart(w) {
   const p = { x: Math.round(w.x / 10) * 10, z: Math.round(w.z / 10) * 10 };
-  stroke = { s: { tool: brush, radiusCm: radiusCm() }, best: new Uint16Array(T.n * T.n),
+  stroke = { s: { tool: brush, radiusCm: radiusCm() }, best: new Uint16Array(T.nx * T.nz),
     before: { h: T.h.slice(), trees: T.trees.slice(), rock: T.rock.slice(), roots: T.roots.slice() } };
   if (brush === 'paint') stroke.s.surface = $('surface').value; else stroke.s.heightCm = heightCm();
   stroke.s.points = [p];
@@ -510,12 +638,12 @@ const heightCm = () => parseInt($('height').value, 10);
 
 function terrainInfo(w) {
   if (!T) return '';
-  const x = Math.round(w.x / 100), z = Math.round(w.z / 100); if (x < 0 || z < 0 || x >= T.n || z >= T.n) return '';
-  const i = z * T.n + x;
+  const x = Math.round(w.x / 100), z = Math.round(w.z / 100); if (x < 0 || z < 0 || x >= T.nx || z >= T.nz) return '';
+  const i = z * T.nx + x;
   return `${(T.h[i] / 100).toFixed(1)} m · ${Math.round(Math.atan(slopeAt(x, z) / 1000) * 180 / Math.PI)}° · ${SURFACES[classify(i)]}`;
 }
 function slopeAt(x, z) {
-  const n = T.n, h = T.h, x0 = Math.max(0, x - 1), x1 = Math.min(n - 1, x + 1), z0 = Math.max(0, z - 1), z1 = Math.min(n - 1, z + 1);
+  const n = T.nx, h = T.h, x0 = Math.max(0, x - 1), x1 = Math.min(n - 1, x + 1), z0 = Math.max(0, z - 1), z1 = Math.min(T.nz - 1, z + 1);
   const gx = Math.trunc((h[z * n + x1] - h[z * n + x0]) * 1000 / (x1 - x0)), gz = Math.trunc((h[z1 * n + x] - h[z0 * n + x]) * 1000 / (z1 - z0));
   return Math.floor(isqrt(gx * gx + gz * gz) / 100);
 }
@@ -526,11 +654,11 @@ const SURFACE_RGB = [[0.55, 0.75, 0.35], [0.15, 0.42, 0.18], [0.55, 0.38, 0.20],
 const SLOPE_RAMP = [[141, [0.18, 0.55, 0.20]], [268, [0.55, 0.75, 0.25]], [466, [0.95, 0.85, 0.25]], [700, [0.95, 0.55, 0.15]], [1000, [0.85, 0.20, 0.15]], [Infinity, [0.50, 0.15, 0.55]]];
 const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 function renderTerrain(x0, z0, x1, z1) {
-  const n = T.n, h = T.h, data8 = T.image.data, mode = $('mode').value;
-  x0 = Math.max(0, x0); z0 = Math.max(0, z0); x1 = Math.min(n - 1, x1); z1 = Math.min(n - 1, z1);
+  const n = T.nx, rows = T.nz, h = T.h, data8 = T.image.data, mode = $('mode').value;
+  x0 = Math.max(0, x0); z0 = Math.max(0, z0); x1 = Math.min(n - 1, x1); z1 = Math.min(rows - 1, z1);
   for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
     const i = z * n + x;
-    const xa = Math.max(0, x - 1), xb = Math.min(n - 1, x + 1), za = Math.max(0, z - 1), zb = Math.min(n - 1, z + 1);
+    const xa = Math.max(0, x - 1), xb = Math.min(n - 1, x + 1), za = Math.max(0, z - 1), zb = Math.min(rows - 1, z + 1);
     const dx = (h[z * n + xb] - h[z * n + xa]) / 100 / (xb - xa), dz = (h[zb * n + x] - h[za * n + x]) / 100 / (zb - za);
     const len = Math.sqrt(dx * dx + 1 + dz * dz);
     const shade = 0.35 + 0.65 * Math.max(0, (-dx * -0.5 + 0.7071 - dz * -0.5) / len) / 0.7071;
@@ -539,12 +667,18 @@ function renderTerrain(x0, z0, x1, z1) {
     else if (mode === 'surface') c = SURFACE_RGB[classify(i)].map(v => v * (0.55 + 0.45 * shade));
     else {
       const t = (h[i] - T.min) / Math.max(1, T.max - T.min);
+      if (mapBiome === 'desert') { // same as SimRunner's desert relief colours
+        c = lerp3([0.66, 0.50, 0.33], [0.58, 0.36, 0.23], Math.min(1, Math.max(0, (slopeAt(x, z) - 120) / 280)));
+        c = lerp3(c, [0.42, 0.32, 0.22], T.trees[i] / 255);
+        c = lerp3(c, [0.62, 0.36, 0.24], T.rock[i] / 255);
+      } else {
       c = t < 0.6 ? lerp3([0.60, 0.76, 0.42], [0.72, 0.74, 0.48], Math.max(0, t) / 0.6) : lerp3([0.72, 0.74, 0.48], [0.82, 0.80, 0.72], Math.min(1, (t - 0.6) / 0.4));
       c = lerp3(c, [0.20, 0.42, 0.20], T.trees[i] / 255 * 0.85);
       c = lerp3(c, [0.45, 0.32, 0.18], T.roots[i] / 255 * 0.4);
       c = lerp3(c, [0.62, 0.61, 0.60], T.rock[i] / 255);
+      }
       c = c.map(v => v * shade);
-      if (x + 1 < n && z + 1 < n) {
+      if (x + 1 < n && z + 1 < rows) {
         for (const nb of [h[i + 1], h[i + n]]) {
           if (Math.floor(h[i] / 5000) !== Math.floor(nb / 5000)) { c = c.map(v => v * 0.55); break; }
           if (Math.floor(h[i] / 1000) !== Math.floor(nb / 1000)) { c = c.map(v => v * 0.82); break; }
@@ -566,7 +700,7 @@ function setEditMode(m) {
   editMode = m; setTool(null); hover = null;
   $('mLand').classList.toggle('on', m === 'land'); $('mTerrain').classList.toggle('on', m === 'terrain');
   $('terrainPanel').style.display = m === 'terrain' ? '' : 'none';
-  $('landPanel').style.display = $('landTools').style.display = $('coverage').style.display = $('snap10').style.display = m === 'land' ? '' : 'none';
+  $('landPanel').style.display = $('landTools').style.display = $('wayTools').style.display = $('coverage').style.display = $('snap10').style.display = m === 'land' ? '' : 'none';
   cv.style.cursor = m === 'terrain' ? 'none' : 'crosshair';
   draw();
 }
@@ -613,6 +747,9 @@ cv.addEventListener('mousedown', e => {
   const h = handleAt(sp);
   snapshot();
   let group = [h];
+  // A parking lot takes its link along.
+  if (h.kind === 'cmd' && h.key === 'center')
+    data.commands.forEach((t, ci) => { for (const g of cmdHandles(ci)) if (ci !== h.ci && g.idx !== undefined && eq(g.w, h.w)) group.push(g); });
   if (h.kind === 'parcel' && !e.altKey)
     data.parcels.forEach((p, pi) => p.outline.forEach((v, vi) => { if (pi !== h.pi && eq(v, h.w)) group.push({ kind: 'parcel', pi, vi, w: v }); }));
   drag = { handle: h, group, moved: false };
@@ -636,7 +773,7 @@ window.addEventListener('mousemove', e => {
     renderDetail();
   } else if (editMode === 'land') hover = handleAt(sp);
   const wp = s2w(sp.x, sp.y);
-  if (data && wp.x >= 0 && wp.z >= 0 && wp.x <= sizeCm && wp.z <= sizeCm)
+  if (data && wp.x >= 0 && wp.z >= 0 && wp.x <= sizeXCm && wp.z <= sizeZCm)
     $('status').textContent = `x ${Math.round(wp.x)} · z ${Math.round(wp.z)} cm  (${(wp.x / 100).toFixed(0)}, ${(wp.z / 100).toFixed(0)} m) · ${terrainInfo(wp)} · ${parcelName(wp)}${drag?.how ? ' · snap: ' + drag.how : ''}`;
   draw();
 });
@@ -700,10 +837,14 @@ window.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
   else if (e.key === 'Escape') setTool(null);
   else if (e.key === 'Enter' && tool?.name === 'draw') finishDraw();
-  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel?.kind === 'parcel' && !tool && editMode === 'land') deleteParcel();
+  else if (e.key === 'Enter' && isWayTool()) finishWay();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel && !tool && editMode === 'land') sel.kind === 'parcel' ? deleteParcel() : deleteCommand();
 });
 window.addEventListener('resize', draw);
 window.addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
+function deleteCommand() {
+  snapshot(); data.commands.splice(sel.ci, 1); sel = null; changed();
+}
 function deleteParcel() {
   if (!confirm(`Delete parcel ${selected().name}?`)) return;
   snapshot(); data.parcels.splice(sel.pi, 1); sel = null; changed();
@@ -732,6 +873,19 @@ function renderSide() {
   $('strokeCount').textContent = `${data.terrainSculpt.length} stroke${data.terrainSculpt.length === 1 ? '' : 's'} in this scenario.`;
 }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// What the game makes of a bridge: level at the middle of its ends' ground, the ground meeting it there.
+function deckInfo(c) {
+  const a = c.points[0], b = c.points[c.points.length - 1], ha = heightAt(a), hb = heightAt(b), level = (ha + hb) / 2;
+  let above = 0;
+  for (let i = 1; i < c.points.length; i++) {
+    const p = c.points[i - 1], q = c.points[i], steps = Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / 100);
+    for (let k = 0; k < steps; k++) if (heightAt({ x: p.x + (q.x - p.x) * k / steps, z: p.z + (q.z - p.z) * k / steps }) > level) above++;
+  }
+  const gap = Math.abs(ha - hb) / 100;
+  return `<div class="small">Bridge: deck at ${(level / 100).toFixed(1)} m, ground at its ends ${(ha / 100).toFixed(1)} and ${(hb / 100).toFixed(1)} m.</div>`
+    + (gap > 3 ? `<div class="small" style="color:#ff9d8a">The ends are ${gap.toFixed(1)} m apart in height: the ground is reshaped by half of that at each. Drag an end to where the bank matches.</div>` : '')
+    + (above > 5 ? `<div class="small" style="color:#ff9d8a">The ground stands above the deck for ${above} m: it would run through the hill. Drag the ends onto higher ground, or closer together.</div>` : '');
+}
 function renderDetail() {
   const el = $('detail'), it = selected();
   if (document.activeElement && el.contains(document.activeElement)) return; // don't clobber typing
@@ -765,7 +919,15 @@ function renderDetail() {
     if (c.points) html += `<div class="small">${c.points.length} points (double-click the way to add, right-click to remove)</div>`;
     for (const [k, v] of Object.entries(c)) if (['name', 'spaces'].includes(k))
       html += `<div class="field"><label>${k}</label><input type="${typeof v === 'number' ? 'number' : 'text'}" data-k="${k}" value="${esc(v)}"></div>`;
+    if (c.deckWidthCm) html += deckInfo(c);
+    else if (c.kind === 'accessPath') html += `<div class="field"><label>surface</label><select id="surfacePick"><option value="gravel">gravel</option><option value="tarmac">tarmac</option></select></div>`;
+    html += '<div class="row"><button id="delCmd">Delete</button></div>';
     el.innerHTML = html;
+    $('delCmd').onclick = deleteCommand;
+    if ($('surfacePick')) {
+      $('surfacePick').value = c.surface === 'tarmac' ? 'tarmac' : 'gravel';
+      $('surfacePick').onchange = e => { snapshot(); if (e.target.value === 'tarmac') c.surface = 'tarmac'; else delete c.surface; e.target.blur(); changed(); };
+    }
     el.querySelectorAll('[data-k]').forEach(inp => inp.addEventListener('change', () => {
       snapshot(); c[inp.dataset.k] = inp.type === 'number' ? parseInt(inp.value, 10) : inp.value; inp.blur(); changed();
     }));
@@ -809,7 +971,8 @@ $('save').onclick = () => post('/api/save');
 $('undo').onclick = undo;
 $('tDraw').onclick = () => setTool('draw');
 $('tSplit').onclick = () => setTool('split');
-$('mode').onchange = () => { renderTerrain(0, 0, T.n - 1, T.n - 1); draw(); };
+for (const [id, n] of [['tArrival', 'arrival'], ['tParking', 'parking'], ['tGravel', 'gravel'], ['tTarmac', 'tarmac'], ['tCut', 'cut']]) $(id).onclick = () => setTool(n);
+$('mode').onchange = () => { renderTerrain(0, 0, T.nx - 1, T.nz - 1); draw(); };
 $('coverage').onclick = () => { $('coverage').classList.toggle('on'); draw(); };
 $('snap10').onclick = () => $('snap10').classList.toggle('on');
 hintText('');

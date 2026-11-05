@@ -13,6 +13,29 @@ internal static class TerrainMeshBuilder
 {
     private const float SkirtDepth = 4f;
 
+    /// <summary>
+    /// A coarse mesh's height: the ground, or the bed of a brook within half a step. Coarse samples miss a narrow bed, and
+    /// on steep ground the water would float over the mesh.
+    /// </summary>
+    private static int CoarseHeight(TerrainGrid grid, int x, int z, int step)
+    {
+        const int LakeDepthCm = 150;
+        int n = grid.SamplesX, rows = grid.SamplesZ, reach = step / 2, best = int.MaxValue, height = grid.HeightAtSample(x, z);
+        if (grid.Scenery is null) return height;
+        var water = grid.WaterDepth;
+        for (int dz = -reach; dz <= reach; dz++)
+            for (int dx = -reach; dx <= reach; dx++)
+            {
+                int sx = x + dx, sz = z + dz;
+                if (sx < 0 || sz < 0 || sx >= n || sz >= rows) continue;
+                int depth = water[sz * n + sx], distance = dx * dx + dz * dz;
+                if (depth is 0 or >= LakeDepthCm || distance >= best) continue;
+                best = distance;
+                height = grid.HeightAtSample(sx, sz);
+            }
+        return height;
+    }
+
     /// <param name="x0">West edge of the chunk in meters (sample index).</param>
     /// <param name="z0">North edge of the chunk in meters (sample index).</param>
     /// <param name="sizeX">Chunk width in meters, already clipped to the map.</param>
@@ -37,7 +60,7 @@ internal static class TerrainMeshBuilder
                 int sx = Math.Min(x0 + ix * step, x0 + sizeX), sz = Math.Min(z0 + iz * step, z0 + sizeZ);
                 int v = iz * sideX + ix;
                 var sample = grid.SampleAt(sx, sz);
-                vertices[v] = new Vector3(sx, sample.HeightCm / 100f, sz) - center;
+                vertices[v] = new Vector3(sx, (step > 1 ? CoarseHeight(grid, sx, sz, step) : sample.HeightCm) / 100f, sz) - center;
                 normals[v] = Normal(grid, sx, sz);
                 colors[v] = new Color(sample.TreeDensity / 255f, sample.Rock / 255f, sample.Roots / 255f, sample.WaterDepthCm / 255f);
                 uv2[v] = new Vector2((float)sample.Surface, sample.SlopePermille / 1000f);
@@ -96,8 +119,8 @@ internal static class TerrainMeshBuilder
     /// <summary>Normal from central differences on the full-resolution grid, so chunk borders match.</summary>
     private static Vector3 Normal(TerrainGrid grid, int x, int z)
     {
-        int x0 = Math.Max(0, x - 1), x1 = Math.Min(grid.SizeMeters, x + 1);
-        int z0 = Math.Max(0, z - 1), z1 = Math.Min(grid.SizeMeters, z + 1);
+        int x0 = Math.Max(0, x - 1), x1 = Math.Min(grid.WidthMeters, x + 1);
+        int z0 = Math.Max(0, z - 1), z1 = Math.Min(grid.DepthMeters, z + 1);
         float dx = (grid.HeightAtSample(x1, z) - grid.HeightAtSample(x0, z)) / 100f / (x1 - x0);
         float dz = (grid.HeightAtSample(x, z1) - grid.HeightAtSample(x, z0)) / 100f / (z1 - z0);
         return new Vector3(-dx, 1f, -dz).Normalized();

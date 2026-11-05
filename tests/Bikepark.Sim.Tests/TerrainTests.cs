@@ -97,23 +97,23 @@ public class TerrainTests(DefaultTerrainFixture fixture) : IClassFixture<Default
     {
         int maxTreeHeight = DefaultTerrainFixture.Settings.TreeLineCm + 1_500; // tree line jitter is ±15 m
         int forested = 0;
-        for (int z = 0; z < Grid.Samples; z++)
-            for (int x = 0; x < Grid.Samples; x++)
+        for (int z = 0; z < Grid.SamplesX; z++)
+            for (int x = 0; x < Grid.SamplesX; x++)
             {
                 var s = Grid.SampleAt(x, z);
                 if (s.TreeDensity == 0) continue;
                 forested++;
                 Assert.True(s.HeightCm < maxTreeHeight, $"tree density {s.TreeDensity} at {s.HeightCm} cm ({x},{z})");
             }
-        Assert.True(forested > Grid.Samples * Grid.Samples / 4, "less than a quarter of the map has trees");
+        Assert.True(forested > Grid.SamplesX * Grid.SamplesX / 4, "less than a quarter of the map has trees");
     }
 
     [Fact]
     public void AllLandSurfaceTypes_Occur_AndWaterLayerIsEmpty()
     {
         var seen = new HashSet<TerrainSurface>();
-        for (int z = 0; z < Grid.Samples; z += 2)
-            for (int x = 0; x < Grid.Samples; x += 2)
+        for (int z = 0; z < Grid.SamplesX; z += 2)
+            for (int x = 0; x < Grid.SamplesX; x += 2)
                 seen.Add(Grid.SurfaceAtSample(x, z));
         Assert.Equal(new HashSet<TerrainSurface> { TerrainSurface.Grass, TerrainSurface.Forest, TerrainSurface.Roots, TerrainSurface.Rock }, seen);
         Assert.True(Grid.WaterDepth.IndexOfAnyExcept((byte)0) < 0);
@@ -123,8 +123,8 @@ public class TerrainTests(DefaultTerrainFixture fixture) : IClassFixture<Default
     public void Rock_IsWhereItIsSteepOrHigh()
     {
         long rockSlope = 0, rockCount = 0, allSlope = 0, all = 0;
-        for (int z = 0; z < Grid.Samples; z += 3)
-            for (int x = 0; x < Grid.Samples; x += 3)
+        for (int z = 0; z < Grid.SamplesX; z += 3)
+            for (int x = 0; x < Grid.SamplesX; x += 3)
             {
                 var s = Grid.SampleAt(x, z);
                 allSlope += s.SlopePermille;
@@ -153,10 +153,10 @@ public class TerrainTests(DefaultTerrainFixture fixture) : IClassFixture<Default
     {
         var grid = Synthetic((x, z) => x * 10 + z);
         Assert.Equal(grid.HeightAtSample(0, 0), grid.HeightAt(-500, -500));
-        Assert.Equal(grid.HeightAtSample(grid.SizeMeters, grid.SizeMeters), grid.HeightAt(1_000_000, 1_000_000));
-        Assert.Equal(grid.HeightAtSample(grid.SizeMeters, 0), grid.HeightAt(grid.SizeMeters * 100L, 0));
+        Assert.Equal(grid.HeightAtSample(grid.WidthMeters, grid.WidthMeters), grid.HeightAt(1_000_000, 1_000_000));
+        Assert.Equal(grid.HeightAtSample(grid.WidthMeters, 0), grid.HeightAt(grid.WidthMeters * 100L, 0));
         Assert.False(grid.Contains(-1, 0));
-        Assert.True(grid.Contains(grid.SizeMeters * 100L, 0));
+        Assert.True(grid.Contains(grid.WidthMeters * 100L, 0));
     }
 
     [Fact]
@@ -189,8 +189,8 @@ public class TerrainTests(DefaultTerrainFixture fixture) : IClassFixture<Default
     {
         var all = TerrainScatter.CollectAll(Grid);
         var chunked = new List<ScatterInstance>();
-        for (int z = 0; z <= Grid.SizeMeters; z += 64)
-            for (int x = 0; x <= Grid.SizeMeters; x += 64)
+        for (int z = 0; z <= Grid.WidthMeters; z += 64)
+            for (int x = 0; x <= Grid.WidthMeters; x += 64)
                 TerrainScatter.Collect(Grid, x, z, x + 64, z + 64, chunked);
 
         Assert.True(all.Count > 1000);

@@ -6,7 +6,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
 ## Layout
 
 - `src/Bikepark.Sim/` – simulation library (WorldState, Simulation tick loop, SimRandom, commands, events, save/load, scenarios, KPIs)
-  - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks),
+  - `Terrain/` – `TerrainGenerator` (integer-only heightmap + layers, generated or from a `TerrainHeightmap`: real land as content), `TerrainGrid` (queries), `TerrainScatter` (trees/rocks),
     `TerrainSculpt` (`TerrainStroke`/`TerrainSculptor`: the scenario's hand-made raise / lower / paint strokes),
     `TerrainEdit`/`TerrainEditor` (stored flattened pads applied on top of the generated grid)
   - `Trails/` – `Way` (player-built access paths and trails), `WayGeometry` (integer spline, segments, rating),
@@ -57,6 +57,7 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   - `Systems/ParkSchedule.cs` – the daily timetable (opening hours, which guests, lifts and crew keep, then the last rides
     until the last rider is down; quiet nights and the next wake-up); arrivals follow `ParkRules.ArrivalProfile`, guests take one planned lunch break
 - `src/Bikepark.SimRunner/` – headless console runner: KPIs as JSON, `terrain` subcommand renders top-down PNG maps
+- `tools/terrain-import/` – makes career maps from real places: `server.py` + `index.html` (browser map maker on OpenStreetMap), `import.py` (the work: elevation tiles, OpenStreetMap forest, rock, major routes, lifts and parking → `data/terrain/<id>.json` + `data/scenarios/<id>.json`; Python stdlib + curl)
 - `tools/scenario-editor/` – local browser editor for a scenario's parcels, tick-0 structures and terrain sculpting (Python stdlib server + one HTML page)
 - `tests/Bikepark.Sim.Tests/` – xUnit tests (determinism, commands, persistence, RNG, terrain)
 - `game/` – Godot project (`Bikepark.csproj`, `scripts/SimHost.cs` drives the sim, `scripts/ui/` HUD (bottom bar + menus incl. `ReputationPanel` (rating, sub-ratings, review browser) and `FinancePanel` (the budget), drawn icons, theme in code,
@@ -66,13 +67,13 @@ deterministic C# simulation library. Full rationale: [docs/design/architecture.m
   `scripts/terrain/` chunked terrain view, `scripts/camera/RtsCamera.cs`, `scripts/ways/` way view + build tool + feature tool/meshes,
   `scripts/riders/RiderView.cs`, `scripts/lifts/` lift/parking view + debug structure tool, `scripts/crew/` crew figures +
   felling tool, `scripts/world/` time-of-day + weather light (`DayLight`) and rain (`RainView`), `shaders/`)
-- `data/` – JSON content (`scenarios/`: `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
+- `data/` – JSON content (`terrain/`: imported real terrain; `scenarios/`: `auer_berg.json` = the second career map, real terrain with its real tracks and roads (made with the map maker); `demo_valley.json` = the sandbox "Demo" (no parcels: all land owned, gondola
   rented; tests and demo scripts use it) and `starter_valley.json` = the career (25,000 € start, bank loans, bankruptcy after 14 days in the red; old ski hill with
   a derelict T-bar, the unfinished blue Easy Peasy (built, then its bottom quarter renaturalized at tick 0: loose end,
   closed until the player connects it), parcels to buy, company gondola locked; a `welcome` note (`Scenarios/WelcomeNote`,
   copied to `WorldState.Welcome`, presentation only) that the HUD's `WelcomeDialog` shows at tick 0); `lift_types.json` (T-bar, chairlift, gondola with costs, levels, build days),
   `trail_features.json`, `tools.json`, `facility_types.json` (snack bar, beer rondel, bike café, campground, bike shop, each with upgrades),
-  `products.json` (lunch, coffee, beer, radler, snack, park merch, clothing, campground night, bike rental, protectors, parts, bikes, repair, tune-up, suspension setup), `scripts/` command scripts such as `demo_lift_network.json`, `demo_features.json`,
+  `products.json` (lunch, coffee, beer, radler, snack, park merch, clothing, campground night, bike rental, protectors, parts, bikes, repair, tune-up, suspension setup), `scripts/` command scripts such as `demo_trails.json` + `demo_trail_features.json` (the game's Demo: three trails, no crossings, flat drops on the black one), `demo_lift_network.json`, `demo_features.json` (older test fixtures),
   `demo_crew.json`, `career_opening.json`)
 - `Bikepark.sln` – root solution; Godot uses it via `project/solution_directory="../"`
 
@@ -91,10 +92,24 @@ dotnet run --project src/Bikepark.SimRunner -- --scenario data/scenarios/demo_va
 # (applies the scenario's own commands too: pads, lift line, parking and the hiking route are drawn)
 dotnet run --project src/Bikepark.SimRunner -- terrain --scenario data/scenarios/demo_valley.json --out out/map.png --mode all [--seed N] [--scatter] [--commands data/scripts/demo_lift_network.json] [--bare] [--raw grid.bin]
 # (parcel borders are drawn too: owned at start teal, for sale yellow; --bare: terrain only)
+# Map maker (browser, http://localhost:8767): find a place, pick a shape (1:1, 2:3, 1:2, 1:3), drag the map and turn it (the arrow is the map's top), see the real routes / lifts / parking, click where guests
+# arrive, click tracks or roads to leave them out, create the map. Real maps build only what OpenStreetMap has (no made-up infrastructure); the game's validators report refusals.
+# Land: a 3 x 3 grid of parcels to redraw, or don't split (no parcels: the whole map is owned, also --no-parcels on the command line).
+# After creating, its button starts the scenario editor on that map (first free port from 8765; stopped with the map maker, one at a time).
+# Any scenario with a "menu" block is on the start screen (SimHost.CareerMaps).
+python3 tools/terrain-import/server.py
+# The same from the command line (--offset: meters east,south of the peak; --arrival: map meters x,z)
+python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --scenario --title Farrenpoint --arrival 987,1244
+# --biome desert: sand and red rock, sparse plants, seasonal streams stay dry (looks only)
+# --size is the long side (along the map's X; at most 3 km for 1:1, 4 km for 2:3, 5 km for 1:2 and 1:3), --ratio 1:1|2:3|1:2|1:3 short:long, --rotation degrees clockwise from north that the map's top edge faces
+# Refresh only the terrain file (water, buildings, streets) of an existing map, with the same --size, --ratio and --rotation; its parcels and commands stay
+python3 tools/terrain-import/import.py --peak Farrenpoint --near 47.74,12.04 --offset -550,0 --id farrenpoint --refresh-scenery
 # Scenario map editor (browser, http://localhost:8765): drag/split/draw land parcels and move the tick-0 structures
 # (lift stations, parking lots, way points) on the terrain map; Terrain tab: raise / lower / paint-surface brushes
 # (same integer math as TerrainSculptor, live on the raw grid from `terrain --raw`); Validate runs the scenario commands,
-# Save rewrites only the scenario's "parcels", "commands" and "terrainSculpt" blocks (comments elsewhere are kept)
+# Save rewrites only the scenario's "parcels", "commands" and "terrainSculpt" blocks (comments elsewhere are kept); a real map's
+# water, streets and buildings are drawn for reference; --back <url> adds a link back (the map maker uses it). Also: set where guests
+# arrive (green dot; cuts the way there and makes the climbing piece the first way), starter parking lot, draw, cut, delete ways and change their surface
 python3 tools/scenario-editor/server.py data/scenarios/starter_valley.json
 # Reputation: the output's "reputation" block (stars overall/per group, demand parts, XP parts, level, influencer posts,
 # a log of influencer visits and level changes); --daily adds reviews, rating, demand, XP and level per day
@@ -153,6 +168,30 @@ tools/release/export.sh 0.1.0
    `Simulation.Terrain` (lazy, cached in `TerrainCache`). Anything derived must be a pure function of `WorldState`;
    future terrain edits must be stored as changes in `WorldState`, not by mutating the grid. Order: generated →
    `WorldState.TerrainSculpt` (scenario content; = `BaseTerrain`) → `TerrainEdits` (pads) = `Simulation.Terrain`.
+9a. **Real terrain:** A map may be a rectangle (`TerrainSettings.DepthMeters`, 0 = square; `TerrainHeightmap.SamplesZ`; `TerrainGrid.WidthMeters`/`DepthMeters`, `SamplesX`/`SamplesZ`). Turning a map happens only in the importer (`Frame`): for the sim its +X and +Z are just the map's axes. `TerrainSettings.Heightmap` (coarse heights + forest and rock masks, deflated base64, loaded from the
+    scenario's `heightmapFile`, so it lives in `WorldState` and every save) replaces the generated shape and forest patches:
+    Catmull-Rom to 1 m (exact at every sample) plus `RoughnessPermille` detail; rock = the usual slope rules + the mask. Peak,
+    ridge, relief and coverage settings are ignored. `TerrainSettings.ReliefScalePermille` multiplies the height above the lowest point
+    before upsampling (real mountains read flat against grading tuned to Starter Valley; the map maker suggests a value per map). Scenario tracks may stand alone (`WayPlanner` `mayStandAlone`: real routes not
+    connected to the arrival). Every real road is a tarmac way (`Way.Surface`: looks only, behaves like a gravel path: riders use it, trails start and end on it; the Build menu's Tarmac road makes more); `SceneryStreet` remains only for older saves. Where scenario tracks exist and there is no parking lot, guests arrive at the low end of the first one,
+    even after the player adds lifts (`WayNetwork` base: parking → scenario road → valley station → any path). A scenario's parking lot needs no valley station (`LiftId` 0; its ways connect it), a player's does.
+9e. **Biome** (`TerrainSettings.Biome`, `Alpine` by default; `--biome desert` / the map maker's Climate): looks only, no new `TerrainSurface` and no effect on riding. `Desert`: `TerrainGenerator.DesertPlants` replaces forest and roots with sparse clumps (salted noise, below the Forest threshold; they are ordinary scatter trees: felled, wood), rock rules unchanged. View: soil by slope in `terrain.gdshader` (`desert`: sand, hardpan, banded red sandstone), `ScatterMeshes.CreateJuniper`/`CreateShrub`, red rock tint; the runner's and the editor's relief colours follow. The importer leaves out `intermittent=yes` streams in a desert.
+9d. **Real bridges** (`Way.DeckWidthCm`, `BuildWayCommand.DeckWidthCm`; scenario tarmac ways only, 0 = a way on the ground): the importer turns OSM bridges of at least `MIN_BRIDGE_METERS` that lie whole on the map into these (roads and paths, `bridge_ways`; a road's bridge wins over footways beside it; railways no). `WayGeometry.IsDeck`: level at the middle of the ground at its two ends, and the command adds a `TerrainPad` at each end so the ground meets it (`OwnerId` = the way). Ways don't cross a deck (`Crossings`), only join at its ends (`WayNetwork.DeckEndCm`), trees under it stand, it can't be renaturalized. View: `WayView.AddDeck`. To correct an end, drag it in the scenario editor, whose way panel shows the deck height and warns about mismatched ends or ground above the deck.
+9b. **Scenery** (`Terrain/TerrainScenery.cs`, `TerrainHeightmap.Scenery`; real maps only, generated maps are untouched): what really
+    stands there, static, nothing simulated. `TerrainSceneryBuilder` (in the generator, integer-only, after the scenario's height strokes: `TerrainSculptor.Apply` regenerates, so water follows them) carves lakes (flat at the lowest
+    shore) and streams (a never-rising fit to the ground, flow direction from the heights) and fills `WaterDepth`, clears vegetation
+    under water, buildings and streets (so `TerrainScatter`/`Forest` need no rule) and fills `TerrainSceneryData.Blocked`
+    (`grid.BlockedAt`: lake, building). `WayPlanner` refuses lakes and buildings (not scenario ways), `StructurePlanner.CheckPad` any water
+    or building (scenario too). Ways may cross streams: `WayGeometry.Bridges` (derived; the way's height is levelled from bank to bank),
+    `WorkCosts.BridgeWood`/`BridgeMinutesPerMeter`; a `BuildWay` job fells first, then needs `Job.Wood` in stock (`JobSystem`). Every real road
+    is a way (`Way.Surface` tarmac, looks only); `SceneryStreet` remains only for older saves.
+    View: `game/scripts/world/SceneryView.cs` (merged water and street meshes, `shaders/water.gdshader`, houses as instanced unit
+    meshes per chunk), bridges in `WayView.AddBridges`. Stream ribbons drape onto the ground and coarse terrain meshes follow brook beds (`TerrainMeshBuilder.CoarseHeight`), so water never hangs in the air.
+9c. **Rock formations** (`Terrain/RockFormations.cs`, `TerrainSettings.RockFormations`, off by default; on in every shipped map, so older saves keep their terrain):
+    a derived layer (`grid.RockFormationAt`, rebuilt after sculpting, cleared under pads). Fields and medium rocks need grey ground (rock layer), grass gets only thin scatter; faces need strong rock on very steep ground; every rock is one `ScatterInstance` (`ScatterKind.Rock`: size + `RockShape`; `Terrain/RockShapes.cs`: slab, block, wedge, fin, split, on faces ledged stacks of those, radius and height the meshes are fitted to, `ScatterMeshes.CreateRock`); `TerrainScatter` sizes them by slope, what a rock means for a way comes from its formation. `WayGeometry.Rocks` (derived; `ignoreRocks` for scenario ways, they already exist):
+    sparse stones: `StoneMeters`, extra work; dense stones: a trail is black (`StoneFieldDifficulty`, `RatingCause.Rock`), a path clears them; medium rock or rock face: a path is refused, a
+    trail needs a flat drop over it, placed while drawing (`Trails/RockFeatures.cs`: `CrossesRock`, `MaxSpanMeters`, `MaxRockDropMeters` in `trail_features.json`; flat drop = level deck on posts resting on top of the rock (`RockFeatures.RockTopCm`, from the scatter rocks) and reaching back until it meets the hillside (`DeckStart`, at most `RampMeters`; `TrailFeature.RampCm`), then gap + landing, black, may cross faces; the rock under it stays (`TerrainView.UnderFlatDrop`); `TrailFeature.LengthCm` is its own length, wood and work per meter). They come in `BuildWayCommand.RockFeatures`; if none fits, `WayPlanner` refuses the trail; `WayNetwork.IsBlockedByRock` keeps the trail closed until they are built. Checks in `WayPlanner.CheckRocks`; `CheckPad` refuses medium rocks and faces
+    for the player. Neighbouring big rocks less than `RockFeatures.NeighbourGapCm` apart are one crossing. View: ribbons get no depth pull over rock (UV.x 0, so rocks stand in front) and none are drawn under a flat drop's deck and gap (`WayView.InTheAir`); posts are left out on a rock's footprint. The runner's surface map colors the formations and `rockFormationsPercent` counts them.
 10. **Terrain generation is integer-only** (Q16 fixed point in `FixedMath`/`IntNoise`, heights in cm, slopes as
     grade permille). Changing the generator changes every map: check the 2D maps before and after.
 11. **Ways store only player input** (oriented, snapped control points + joins). Geometry, segments, ratings, the
@@ -350,6 +389,9 @@ tools/release/export.sh 0.1.0
     taken or repaid early) are also listed in `Finance.Transactions` (labelled, signed, the last `MaxTransactions`). The
     Finances menu shows yesterday's (or today's) budget per area, loan installments per day, the levers (entrance fee, lift
     pass), loans, recent transactions and the balance; the runner's `--daily` adds `dailyBudget` and always lists `transactions`.
+    **Zen mode** (`Finance.ZenMode`, scenario `zenMode` or `SetZenModeCommand`; only with `Rules.UnlockAll`): `Spend`/`Invest`
+    book nothing, so the balance never drops; every money check goes through `Finance.CanAfford` (true in Zen mode), never
+    compares `MoneyCents` itself.
 19a. **Entrance fee and lift pass:** `Park.EntryFeeCents` is paid on arrival (drives demand); `Park.LiftTicketCents` (0 = free
     lifts, the Demo) is a day pass bought once per visit when a guest first boards a lift (`RiderSystem.BuyLiftPass`,
     `Guest.HasLiftPass`, revenue in `Finance.TotalLiftTicketsCents`). `BestRoute` adds the unbought pass to the lift cost
@@ -397,10 +439,10 @@ tools/release/export.sh 0.1.0
 ## Game controls (debug build)
 
 Start screen (when run without world-setting debug args): start a new career (park name), continue or delete a saved
-career, or play the Demo (sandbox, demo trails built, never saved; started from the menu it opens with a welcome: untangle the crossings with the bulldozer, Instant build in the ☰ menu). A new career opens with the scenario's welcome
+career, or play the Demo (sandbox, demo trails built, never saved, Zen mode on: nothing costs money, `FinanceState.ZenMode` via `SetZenModeCommand`, sandboxes only, queued game-side by `SimHost.LoadDemoNetwork` so the scenario and tests keep real costs; ☰ menu toggles it; started from the menu it opens with a welcome: Zen mode, the three trails, Instant build in the ☰ menu). A new career opens with the scenario's welcome
 (pauses; "Show me Easy Peasy" points the camera at the trail's loose end). Careers are saved automatically, one file each
 (`game/scripts/CareerStore.cs`: `user://careers/<id>.json` + `<id>.meta.json`, on macOS in
-`~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`), when the window closes / the game quits
+`~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`; exported builds use `user://release-careers` instead, so a release starts empty and never touches the editor's careers; saves are never in the repo, and `tools/release/export.sh` ships only the git-tracked files of `data/`), when the window closes / the game quits
 (`SimHost._ExitTree`, WM close) and on System menu → Save & back to menu; there is no manual save. Saves are written
 atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · H park (entrance fee, lift pass, parking fee and lots, beer hours, staff
 summary, opening hours) · C crew (tabs Workers: each worker's grade, speed, wage and job, applicants to hire · Park staff:
@@ -416,7 +458,7 @@ Finances · Reviews · Info), lift (Overview · Bike access · Finances (lift pa
 Features (repairs, cameras, clip price) · Safety · Sponsor · Reviews); clicking the park name in the bar opens the Park menu;
 the Trails and Lifts menus link to them · Space pause, 1–4 speed · WASD/arrows/screen edge/middle-drag
 pan · zoom: wheel, trackpad pinch / two-finger scroll, +/- keys (by character, any layout) or the bar's zoom buttons · Q/E or right-drag orbit · F1 cycles terrain overlay (natural / slope / surface) ·
-P draw gravel access path, T draw trail (click or drag points, Backspace undo, Enter finishes it: a trail asks for its name
+P draw gravel access path, Build → Tarmac road (the same, paved), T draw trail (click or drag points, Backspace undo, Enter finishes it: rock on the line asks for a flat drop first (click the lip on the rock, then the landing's start; the rock in question is shown in red and the camera goes to it); a trail asks for its name
 in a pop-up (not when it continues a trail), then it is planned for the crew; Esc cancel; preview colored by gradient, tool
 panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's ends onto loose trail ends, joined in line) · lifts: pick T-bar / chairlift / gondola in Build (price, level, lock state), L place it (valley, then top), Enter orders it from the contractor (paid at once, running after its build days; debug Instant build: free, at once) · Lifts menu: restore a rusty lift, construction countdown, upkeep · K place parking lot (centre, then direction) · Build → Gravel platform (centre, then direction; link paths and trails) · Build → Buildings: snack bar, beer rondel, bike café, campground, bike shop (centre near a gravel path, platform, station or parking lot, then direction, Enter builds; click one in the world → its window: prices, upgrades, fleet; a bike shop's Store tab: shelves, range, workshop services) · Finances menu: budget, last days, income by place (click → window), sponsors (offers Accept / No, running deals End, brands to apply to: Park / best trail), loans, transactions, balance · Rating menu: Overview (trend, sub-ratings per group, biggest complaints → the lowest-rated place), Reviews (sort, filter by stars, group, influencers, what they mention), Level & social · trail window Features: Camera on jumps and drops · Build → Renaturalize (click where a section of a trail or gravel path starts and ends: it's removed, a trail cut in two becomes Part 1 / Part 2 and the pieces stay closed until connected; draw a trail from a loose end to join it again, or put a gravel path or platform between them; click a lift station, parking lot or platform to tear it down, lifts and parking lots for a fee) · a warning lists unconnected trails when you leave the Build menu, the Trails menu marks them ·
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
@@ -428,7 +470,7 @@ their stats; ✕ or panning stops following; influencers wear pink; injured ride
 block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·
 1x = 1 game minute per 8 seconds (speeds 1x/4x/16x/60x). Gradients are shown on the game's -10..+10 scale
 (`Trails/Gradient.cs`, 1 point = 9°). Debug args after `--`: `--new-career=<park name>` / `--career=<id>` (start or continue a career, saved on quit), `--list-careers`, `--scenario=<demo|starter|file>` (default the Demo; skips the start screen like `--demo`, `--script=`, `--advance=`), `--demo`, `--speed=N`, `--report`, `--advance=<ticks>`,
-`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-welcome` (the Demo's welcome pop-up, normally only when started from the start screen), `--demo-crew`, `--instant`, `--panel=<menu>[:<focus>]` (e.g. `reputation:reviews`), `--inspect=<facility|lift|trail>:<id>[:<tab>]` (open a window; id 0 = the first one), `--hover=<x>,<y>` (rest the mouse there, screen pixels, to screenshot a hover tip), `--tool=<trail|path|fell|lift|parking|platform|renaturalize|featureId>`, `--rename=<wayId>` (opens the rename pop-up), `--pick=<x>,<z>` (after 2 s points the mouse at that spot, meters, and clicks it), `--look=<x>,<z>,<distance>` (camera focus, meters),
+`--demo-planned` (demo trails as crew jobs), `--demo-features` (after `--demo`), `--demo-welcome` (the Demo's welcome pop-up, normally only when started from the start screen), `--demo-crew`, `--instant`, `--panel=<menu>[:<focus>]` (e.g. `reputation:reviews`), `--inspect=<facility|lift|trail>:<id>[:<tab>]` (open a window; id 0 = the first one), `--hover=<x>,<y>` (rest the mouse there, screen pixels, to screenshot a hover tip), `--tool=<trail|path|road|fell|lift|parking|platform|renaturalize|featureId>`, `--rename=<wayId>` (opens the rename pop-up), `--pick=<x>,<z>` (after 2 s points the mouse at that spot, meters, and clicks it), `--look=<x>,<z>,<distance>` (camera focus, meters),
 `--features=<wayId>` (open the feature overview), `--follow` (follow the first rider, shows the rider card), `--screenshot=<file.png>` (windowed run; saves after ~4 s and quits — use it to check UI changes), `--script=<file>`
 (queue a command script, before `--advance`), `--no-night-skip`
 (turn off the automatic night skip, e.g. for screenshots at night with `--speed=0`).

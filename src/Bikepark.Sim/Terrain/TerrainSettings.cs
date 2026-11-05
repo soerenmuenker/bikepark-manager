@@ -1,5 +1,14 @@
 namespace Bikepark.Sim.Terrain;
 
+/// <summary>The land's climate: how it looks and what grows. Soils have no effect on riding.</summary>
+public enum TerrainBiome
+{
+    Alpine = 0,
+
+    /// <summary>Sand, hardpan and red sandstone, with sparse junipers and shrubs instead of forest and roots.</summary>
+    Desert = 1,
+}
+
 /// <summary>
 /// Parameters for <see cref="TerrainGenerator"/>. Stored in <see cref="State.WorldState.Terrain"/>; the generated
 /// <see cref="TerrainGrid"/> itself is derived data and is never saved. Heights are absolute elevations in cm.
@@ -9,8 +18,14 @@ public sealed record TerrainSettings
     /// <summary>Terrain seed. Null means "use the world seed".</summary>
     public ulong? Seed { get; set; }
 
-    /// <summary>Edge length in meters. The grid has SizeMeters + 1 samples per side at 1 m spacing.</summary>
+    /// <summary>East-west length in meters (of a square map: both). The grid has one more sample than meters per side, at 1 m spacing.</summary>
     public int SizeMeters { get; set; } = 1000;
+
+    /// <summary>North-south length in meters; 0 = square.</summary>
+    public int DepthMeters { get; set; }
+
+    /// <summary>North-south length in meters, also of a square map.</summary>
+    public int Depth() => DepthMeters > 0 ? DepthMeters : SizeMeters;
 
     /// <summary>Elevation of the lowest point.</summary>
     public int BaseElevationCm { get; set; } = 80_000;
@@ -38,17 +53,41 @@ public sealed record TerrainSettings
     /// <summary>Approximate share of the map inside forest patches, in permille, before elevation/slope limits.</summary>
     public int ForestCoveragePermille { get; set; } = 650;
 
+    /// <summary>
+    /// Real terrain instead of the generated peak and ridges (which are then ignored): shape and forest come from here;
+    /// <see cref="RoughnessPermille"/> is the fine detail added on top (90 ≈ ±1.5 m). Null = fully generated.
+    /// </summary>
+    public TerrainHeightmap? Heightmap { get; set; }
+
+    /// <summary>
+    /// Real terrain only: height above the lowest point, in permille of the real one. Real mountains read flat next to the
+    /// game's grading, which is tuned to Starter Valley's steepness (the map maker suggests a value per map).
+    /// </summary>
+    public int ReliefScalePermille { get; set; } = 1000;
+
+    /// <summary>Stone fields, medium rocks and rock faces that ways must deal with (<see cref="RockFormation"/>). Off: only the old decorative rocks.</summary>
+    public bool RockFormations { get; set; }
+
+    public TerrainBiome Biome { get; set; }
+
+    /// <summary>Scenario files only: the heightmap's file, relative to the scenario. <c>ScenarioLoader.LoadFile</c> resolves it.</summary>
+    public string? HeightmapFile { get; set; }
+
     public List<string> Validate()
     {
         var errors = new List<string>();
-        if (SizeMeters < 32 || SizeMeters > 4000) errors.Add("terrain.sizeMeters must be within 32..4000");
+        if (SizeMeters < 32 || SizeMeters > 5000) errors.Add("terrain.sizeMeters must be within 32..5000");
+        if (DepthMeters != 0 && (DepthMeters < 32 || DepthMeters > 5000)) errors.Add("terrain.depthMeters must be within 32..5000");
         if (ReliefCm <= 0) errors.Add("terrain.reliefCm must be > 0");
         if (BaseElevationCm < 0) errors.Add("terrain.baseElevationCm must be >= 0");
-        if (PeakXMeters < 0 || PeakXMeters > SizeMeters || PeakZMeters < 0 || PeakZMeters > SizeMeters)
+        if (Heightmap is null && (PeakXMeters < 0 || PeakXMeters > SizeMeters || PeakZMeters < 0 || PeakZMeters > Depth()))
             errors.Add("terrain peak must lie inside the map");
         if (PeakRadiusMeters < 50) errors.Add("terrain.peakRadiusMeters must be >= 50");
         if (RidgeCount is < 0 or > 8) errors.Add("terrain.ridgeCount must be within 0..8");
         if (ForestCoveragePermille is < 0 or > 1000) errors.Add("terrain.forestCoveragePermille must be within 0..1000");
+        if (ReliefScalePermille is < 500 or > 3000) errors.Add("terrain.reliefScalePermille must be within 500..3000");
+        if (HeightmapFile is not null) errors.Add("terrain.heightmapFile was not loaded");
+        if (Heightmap is not null) errors.AddRange(Heightmap.Validate(SizeMeters, Depth()));
         return errors;
     }
 }
