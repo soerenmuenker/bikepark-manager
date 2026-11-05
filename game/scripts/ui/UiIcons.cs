@@ -55,6 +55,7 @@ public enum UiIcon
     Gate,
     Toolbox,
     Power,
+    Spot,
 }
 
 /// <summary>Line icons drawn with canvas primitives (no image assets), scaled to any square.</summary>
@@ -178,6 +179,12 @@ internal static class UiIcons
             case UiIcon.Parking:
                 ci.DrawRect(new Rect2(P(0.18f, 0.18f), new Vector2(0.64f, 0.64f) * s), color, false, w);
                 ci.DrawString(UiTheme.Bold, P(0.30f, 0.71f), "P", HorizontalAlignment.Center, s * 0.4f, (int)(s * 0.5f), color);
+                break;
+            case UiIcon.Spot: // a round gravel junction with three ways leading off
+                Line(0.50f, 0.50f, 0.16f, 0.24f);
+                Line(0.50f, 0.50f, 0.86f, 0.30f);
+                Line(0.50f, 0.50f, 0.46f, 0.88f);
+                Disc(0.50f, 0.50f, 0.17f, color);
                 break;
             case UiIcon.Demo: // sparkle
                 Poly(0.5f, 0.12f, 0.58f, 0.42f, 0.88f, 0.5f, 0.58f, 0.58f, 0.5f, 0.88f, 0.42f, 0.58f, 0.12f, 0.5f, 0.42f, 0.42f);

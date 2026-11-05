@@ -23,7 +23,7 @@ public partial class StructureTool : Node3D
         Lift,
         Parking,
 
-        /// <summary>A small square gravel platform to connect paths and trails (click the centre, then a direction).</summary>
+        /// <summary>A small square gravel spot to connect paths and trails (click the centre, then a direction).</summary>
         Platform,
 
         /// <summary>A bar or shop (<see cref="FacilityTypeId"/>) next to a gravel path or hub (click the centre, then a direction).</summary>
@@ -85,9 +85,9 @@ public partial class StructureTool : Node3D
         {
             ToolMode.Lift => "Lift: click the valley station, then the top station",
             ToolMode.Parking => $"Parking lot ({ParkingSpaces} spaces): click the centre, then where it should point",
-            ToolMode.Platform => "Gravel platform: click the centre, then where one side should point",
+            ToolMode.Platform => "Gravel spot: click the centre, then where one side should point",
             ToolMode.Facility => $"{Bikepark.Sim.Facilities.FacilityMath.FindType(_host.Sim.State, FacilityTypeId)?.Name ?? "Building"}: " +
-                                 "click the centre next to a gravel path, platform or station, then where its front should point",
+                                 "click the centre next to a gravel path, gravel spot or station, then where its front should point",
             _ => "",
         };
     }
@@ -216,7 +216,7 @@ public partial class StructureTool : Node3D
             var plan = StructurePlanner.PlanPlatform(grid, sim.Network, sim.State, _points[0], _points[1]);
             if (!plan.IsValid) { Status = plan.FirstError ?? "Not valid."; return; }
             _host.Enqueue(new BuildPlatformCommand("", _points[0], _points[1]));
-            Status = "Built a gravel platform: start or end paths and trails on it.";
+            Status = "Built a gravel spot: start or end paths and trails on it.";
         }
         else
         {

@@ -319,14 +319,14 @@ public partial class BuildPanel : HudPanel
             () => ToggleStructure(StructureTool.ToolMode.Parking));
         _fell = new ToolCard(UiIcon.Felling, "Fell trees", "area", "Fell trees\nMark an area of forest: the crew cuts the trees.\n\n• Each tree gives wood for features and signs",
             () => Ctx.Clearing.SetActive(!Ctx.Clearing.Active));
-        _platform = new ToolCard(UiIcon.Parking, "Gravel platform", "12 × 12 m", "Gravel platform\nA small gravel pad where paths and trails can start and end, to link them up.\n\n• 12 × 12 m, free, on your land",
+        _platform = new ToolCard(UiIcon.Spot, "Gravel spot", "junction", "Gravel spot\nA small gravel junction where paths and trails meet: start or end them on it to link them up.\n\n• 8 × 8 m, free, on your land\n• Stone-set edge: barely changes the slope around it, even on steep ground",
             () => ToggleStructure(StructureTool.ToolMode.Platform));
         _renaturalize = new ToolCard(UiIcon.Bulldozer, "Renaturalize", "remove anything",
             "Renaturalize (bulldozer)\nRemove anything you built and give the land back to nature.\n\n" +
             "• Trails and gravel paths (free): click where a section starts, then where it ends\n" +
             "• A trail cut in two becomes Part 1 and Part 2 and stays closed until connected again\n" +
             "• Lifts and parking lots: click them; a contractor tears them down for a fee\n" +
-            "• Platforms: free",
+            "• Gravel spots: free",
             () => ToggleTrailEdit(TrailEditTool.ToolMode.Renaturalize), UiTheme.Warn);
         foreach (var card in new[] { _path, _road, _trail, _fell, _parking, _platform }) cards.AddChild(card);
         // Removing things sits apart, at the right end of the row.
@@ -367,7 +367,7 @@ public partial class BuildPanel : HudPanel
                 buildings.AddChild(card);
                 _facilities.Add((type, card));
             }
-            Body.AddChild(UiTheme.Label("Click the centre near a gravel path, platform, station or parking lot, then where its front points · Enter builds it (paid at once) · prices and upgrades: click the building", 12, UiTheme.TextDim));
+            Body.AddChild(UiTheme.Label("Click the centre near a gravel path, gravel spot, station or parking lot, then where its front points · Enter builds it (paid at once) · prices and upgrades: click the building", 12, UiTheme.TextDim));
         }
 
         Body.AddChild(UiTheme.Separator());
@@ -521,7 +521,7 @@ public partial class BuildPanel : HudPanel
         var lines = new List<string>(facts)
         {
             $"Build {UiTheme.Money(type.BuildCostCents)}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)} a day",
-            $"{type.LengthMeters} × {type.WidthMeters} m, within {state.FacilityRules.AccessReachMeters} m of a gravel path, platform, station or parking lot",
+            $"{type.LengthMeters} × {type.WidthMeters} m, within {state.FacilityRules.AccessReachMeters} m of a gravel path, gravel spot, station or parking lot",
         };
         if (type.Upgrades.Count > 0)
             lines.Add("Upgrades: " + string.Join(" → ", type.Upgrades.Select(u => $"{u.Name} ({UiTheme.Money(u.CostCents)})")));

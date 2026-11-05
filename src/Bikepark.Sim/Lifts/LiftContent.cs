@@ -143,6 +143,13 @@ public sealed class LiftRules
     /// <summary>Steepest embankment around pads, in tenths of the gradient score.</summary>
     public int EmbankmentGradient { get; set; } = 35;
 
+    /// <summary>
+    /// Gravel spots (small junction pads) disturb as little ground as possible: a steeper, stone-set edge in tenths of
+    /// the gradient score, and less cut or fill under them.
+    /// </summary>
+    public int SpotEmbankmentGradient { get; set; } = 50;
+    public int MaxSpotCutFillCm { get; set; } = 500;
+
     /// <summary>Waiting this long costs no mood; every further minute costs <see cref="QueueMoodPenaltyPerMinute"/>.</summary>
     public int QueueGraceMinutes { get; set; } = 5;
     public int QueueMoodPenaltyPerMinute { get; set; } = 3;
@@ -170,6 +177,8 @@ public sealed class LiftRules
         if (StationReachMeters <= 0) errors.Add("liftRules.stationReachMeters must be > 0");
         if (MaxPadCutFillCm <= 0) errors.Add("liftRules.maxPadCutFillCm must be > 0");
         if (EmbankmentGradient is <= 0 or >= Gradient.MaxTenths) errors.Add($"liftRules.embankmentGradient must be within 1..{Gradient.MaxTenths - 1}");
+        if (SpotEmbankmentGradient is <= 0 or >= Gradient.MaxTenths) errors.Add($"liftRules.spotEmbankmentGradient must be within 1..{Gradient.MaxTenths - 1}");
+        if (MaxSpotCutFillCm <= 0) errors.Add("liftRules.maxSpotCutFillCm must be > 0");
         if (QueueGraceMinutes < 0 || QueueMoodPenaltyPerMinute < 0 || RestEnergyPerMinute < 0) errors.Add("liftRules queue values must be >= 0");
         if (RemovalPermille is < 0 or > 10_000 || ParkingRemovalCentsPerSpace < 0) errors.Add("liftRules removal costs must be >= 0 (removalPermille <= 10000)");
         if (LiftRideCostCmPerMinute < 0 || LiftWaitCostCmPerMinute < 0 || LiftTicketCostCmPerCent < 0) errors.Add("liftRules routing costs must be >= 0");

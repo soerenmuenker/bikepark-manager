@@ -14,7 +14,7 @@ internal sealed record WorldPick(string Text, Action Open);
 /// <summary>
 /// Click on (almost) anything in the world to open its menu, scrolled to it and highlighted: a rider (follow + rider card),
 /// a worker (Crew menu, their job), a lift station, line or parking lot (Lifts menu: stats, lift pass), a trail or one of
-/// its features (the feature overview), a planned way (Crew menu, its job), a gravel path or platform (a short note),
+/// its features (the feature overview), a planned way (Crew menu, its job), a gravel path or gravel spot (a short note),
 /// land for sale (Land menu, the parcel). While hovering, the cursor turns into a hand and a tip names the thing. Only
 /// when no build tool is active and the mouse isn't over the HUD. Reads the sim only.
 /// </summary>
@@ -120,8 +120,8 @@ internal sealed partial class WorldPicker : Node
                 return new WorldPick($"{lot.Name} · {lot.Spaces} spaces · click for the Park menu (fees, parking)",
                     () => _ctx.Inspect(new InspectTarget(InspectKind.Park, 0, "Arrivals")));
             if (state.Platforms.FirstOrDefault(p => p.Id == owner) is { } platform)
-                return new WorldPick("Gravel platform",
-                    () => _note($"{platform.Name}: a gravel platform where paths and trails start and end. Build → Renaturalize removes it."));
+                return new WorldPick("Gravel spot",
+                    () => _note($"{platform.Name}: a gravel spot where paths and trails meet. Build → Renaturalize removes it."));
         }
 
         // Bars and shops: standing on their pad.

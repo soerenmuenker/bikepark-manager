@@ -364,7 +364,7 @@ public sealed record RenaturalizeStructureCommand(int StructureId) : ICommand
     public void Apply(SimContext ctx) => StructureRemoval.Remove(ctx, StructureId);
 }
 
-/// <summary>Builds a small square gravel platform (instant, free) where paths and trails can start and end.</summary>
+/// <summary>Builds a small square gravel spot (instant, free) where paths and trails can start and end, to link them up.</summary>
 public sealed record BuildPlatformCommand(string Name, PointCm Center, PointCm Toward) : ICommand
 {
     public string? Validate(SimContext ctx)
@@ -384,20 +384,20 @@ public sealed record BuildPlatformCommand(string Name, PointCm Center, PointCm T
         state.Platforms.Add(new Platform
         {
             Id = id,
-            Name = string.IsNullOrWhiteSpace(Name) ? $"Platform {state.Platforms.Count + 1}" : Name.Trim(),
+            Name = string.IsNullOrWhiteSpace(Name) ? $"Gravel spot {state.Platforms.Count + 1}" : Name.Trim(),
             TerrainEditId = edit.Id,
         });
         ctx.Publish(new PlatformBuilt(ctx.Tick, id));
     }
 }
 
-/// <summary>Removes a gravel platform. Rejected while paths or trails attach to it.</summary>
+/// <summary>Removes a gravel spot. Rejected while paths or trails attach to it.</summary>
 public sealed record DeletePlatformCommand(int PlatformId) : ICommand
 {
     public string? Validate(SimContext ctx)
     {
         var state = ctx.State;
-        if (state.Platforms.All(p => p.Id != PlatformId)) return "No such platform.";
+        if (state.Platforms.All(p => p.Id != PlatformId)) return "No such gravel spot.";
         var way = state.Ways.FirstOrDefault(w => w.StartHubId == PlatformId || w.EndHubId == PlatformId);
         return way is null ? null : $"{way.Label} is attached to it; remove that first.";
     }

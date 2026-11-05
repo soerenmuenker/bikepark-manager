@@ -295,6 +295,46 @@ public class TrailEditingTests
     }
 
     [Fact]
+    public void GravelSpots_OnSteepGround_TouchLittleTerrain()
+    {
+        var sim = Valley();
+        var grid = sim.Terrain;
+        var rules = sim.State.LiftRules;
+        // The steepest open place a gravel spot still fits.
+        (PointCm Center, int Slope)? best = null;
+        for (int z = 20; z < grid.DepthMeters - 20; z += 15)
+            for (int x = 20; x < grid.WidthMeters - 20; x += 15)
+            {
+                var c = new PointCm(x * 100, z * 100);
+                int slope = grid.SlopeAtSample(x, z);
+                if (best is { } b && slope <= b.Slope) continue;
+                if (StructurePlanner.PlanPlatform(grid, sim.Network, sim.State, c, new PointCm(c.X + 100, c.Z)).IsValid)
+                    best = (c, slope);
+            }
+        Assert.NotNull(best);
+        var center = best!.Value.Center;
+        Assert.True(best.Value.Slope >= 300, $"steepest spot found: {best.Value.Slope} permille");
+
+        var spot = StructurePlanner.PlanPlatform(grid, sim.Network, sim.State, center, new PointCm(center.X + 100, center.Z)).Pad!;
+        Assert.Equal(StructurePlanner.PlatformMeters * 50, spot.HalfLengthCm);
+        Assert.Equal(rules.SpotEmbankmentGradient, spot.EmbankmentGradient);
+        // The old platform: 12 × 12 m with the station embankment.
+        var old = StructurePlanner.MakePad(grid, rules, center, 12, 12, spot.DirX, spot.DirZ);
+
+        int Changed(Bikepark.Sim.Terrain.TerrainPad pad)
+        {
+            var edited = Bikepark.Sim.Terrain.TerrainEditor.Apply(grid, [new Bikepark.Sim.Terrain.TerrainEdit(1, 1, pad)]);
+            int n = 0;
+            for (int z = 0; z <= grid.DepthMeters; z++)
+                for (int x = 0; x <= grid.WidthMeters; x++)
+                    if (edited.HeightAtSample(x, z) != grid.HeightAtSample(x, z)) n++;
+            return n;
+        }
+        int spotArea = Changed(spot), oldArea = Changed(old);
+        Assert.True(spotArea * 3 < oldArea, $"gravel spot changes {spotArea} m², the old platform {oldArea} m²");
+    }
+
+    [Fact]
     public void Platforms_NeedYourLand()
     {
         var sim = new Simulation(Bikepark.Sim.Scenarios.ScenarioLoader.CreateWorld(TestWorlds.CareerScenario()));

@@ -163,22 +163,28 @@ public static class StructurePlanner
         CheckPad(grid, network, state, rules, pad, type.Name, issues, checkLand: !scenario);
         int reach = state.FacilityRules.AccessReachMeters;
         if (!Facilities.FacilityMath.HasAccess(network, pad, reach * 100L))
-            issues.Add(Error("noAccess", $"Place it within {reach} m of a gravel path, a platform, a station or a parking lot: guests and supplies need a way there."));
+            issues.Add(Error("noAccess", $"Place it within {reach} m of a gravel path, a gravel spot, a station or a parking lot: guests and supplies need a way there."));
         return new ParkingPlan { Pad = pad, Issues = issues };
     }
 
-    /// <summary>Side of a gravel platform (square).</summary>
-    public const int PlatformMeters = 12;
+    /// <summary>Side of a gravel spot (square): just big enough for paths and trails to meet.</summary>
+    public const int PlatformMeters = 8;
 
-    /// <summary>A square gravel platform centred at <paramref name="center"/>, turned towards <paramref name="toward"/>; on the park's land.</summary>
+    /// <summary>
+    /// A square gravel spot (a <see cref="Platform"/>) centred at <paramref name="center"/>, turned towards
+    /// <paramref name="toward"/>; on the park's land. Small, with a steep stone-set edge
+    /// (<see cref="LiftRules.SpotEmbankmentGradient"/>) and at most <see cref="LiftRules.MaxSpotCutFillCm"/> of cut or
+    /// fill, so it barely changes the slope around it.
+    /// </summary>
     public static ParkingPlan PlanPlatform(TerrainGrid grid, WayNetwork network, WorldState state, PointCm center, PointCm toward)
     {
         var issues = new List<WayIssue>();
         if (!grid.Contains(center.X, center.Z))
-            return new ParkingPlan { Issues = [Error("outsideMap", "The platform must be on the map.")] };
+            return new ParkingPlan { Issues = [Error("outsideMap", "The gravel spot must be on the map.")] };
+        var rules = state.LiftRules;
         var (dirX, dirZ) = TerrainPad.Direction(toward.X - center.X, toward.Z - center.Z);
-        var pad = MakePad(grid, state.LiftRules, center, PlatformMeters, PlatformMeters, dirX, dirZ);
-        CheckPad(grid, network, state, state.LiftRules, pad, "Platform", issues);
+        var pad = MakePad(grid, rules, center, PlatformMeters, PlatformMeters, dirX, dirZ, rules.SpotEmbankmentGradient);
+        CheckPad(grid, network, state, rules, pad, "Gravel spot", issues, maxCutFillCm: rules.MaxSpotCutFillCm);
         return new ParkingPlan { Pad = pad, Issues = issues };
     }
 
@@ -189,9 +195,11 @@ public static class StructurePlanner
     // ---------------------------------------------------------------- pads
 
     /// <summary>A pad at the average natural height under it (cut and fill roughly balance).</summary>
-    public static TerrainPad MakePad(TerrainGrid grid, LiftRules rules, PointCm center, int lengthMeters, int widthMeters, int dirX, int dirZ)
+    public static TerrainPad MakePad(TerrainGrid grid, LiftRules rules, PointCm center, int lengthMeters, int widthMeters, int dirX, int dirZ,
+        int embankmentGradient = 0)
     {
-        var probe = new TerrainPad(center.X, center.Z, lengthMeters * 50, widthMeters * 50, dirX, dirZ, 0, rules.EmbankmentGradient);
+        var probe = new TerrainPad(center.X, center.Z, lengthMeters * 50, widthMeters * 50, dirX, dirZ, 0,
+            embankmentGradient > 0 ? embankmentGradient : rules.EmbankmentGradient);
         long sum = 0, count = 0;
         ForEachSampleInside(grid, probe, (x, z) => { sum += grid.HeightAtSample(x, z); count++; });
         int target = count == 0 ? grid.HeightAt(center.X, center.Z) : (int)(sum / count);
@@ -199,8 +207,9 @@ public static class StructurePlanner
     }
 
     private static void CheckPad(TerrainGrid grid, WayNetwork network, WorldState state, LiftRules rules, TerrainPad pad, string what,
-        List<WayIssue> issues, bool checkLand = true)
+        List<WayIssue> issues, bool checkLand = true, int maxCutFillCm = 0)
     {
+        int limit = maxCutFillCm > 0 ? maxCutFillCm : rules.MaxPadCutFillCm;
         if (pad.Corners().Any(c => !grid.Contains(c.X, c.Z)))
         {
             issues.Add(Error("outsideMap", $"{what} must lie on the map."));
@@ -211,8 +220,8 @@ public static class StructurePlanner
 
         int worst = 0;
         ForEachSampleInside(grid, pad, (x, z) => worst = Math.Max(worst, Math.Abs(grid.HeightAtSample(x, z) - pad.TargetHeightCm)));
-        if (worst > rules.MaxPadCutFillCm)
-            issues.Add(Error("tooUneven", $"{what}: ground too uneven ({worst / 100} m cut or fill, limit {rules.MaxPadCutFillCm / 100} m)."));
+        if (worst > limit)
+            issues.Add(Error("tooUneven", $"{what}: ground too uneven ({worst / 100}.{worst % 100 / 10} m cut or fill, limit {limit / 100}.{limit % 100 / 10} m)."));
 
         if (grid.Scenery is not null)
         {

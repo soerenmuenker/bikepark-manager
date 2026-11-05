@@ -706,7 +706,7 @@ public partial class Hud : CanvasLayer
         if (!active) return;
 
         var (icon, name) = _ctx.TrailEdit.Mode == TrailEditTool.ToolMode.Renaturalize ? (UiIcon.Bulldozer, "Renaturalize")
-            : _ctx.Structures.Mode == StructureTool.ToolMode.Platform ? (UiIcon.Parking, "Gravel platform")
+            : _ctx.Structures.Mode == StructureTool.ToolMode.Platform ? (UiIcon.Spot, "Gravel spot")
             : _ctx.Clearing.Active ? (UiIcon.Felling, "Fell trees")
             : _ctx.Features.Active && TrailFeatures.FindType(_ctx.Sim.State.TrailFeatureTypes, _ctx.Features.TypeId!) is { } type
                 ? (BuildPanel.FeatureIcon(type.Kind), $"Feature: {type.Name}")
@@ -1024,7 +1024,7 @@ public partial class Hud : CanvasLayer
         }));
         _subscriptions.Add(events.Subscribe<TrailRenamed>(e => Toast($"Renamed to {e.Name}", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<TrailsJoined>(e => Toast($"Joined into {TrailName(e.WayId)}", UiTheme.Good)));
-        _subscriptions.Add(events.Subscribe<PlatformBuilt>(_ => Toast("Built a gravel platform", UiTheme.Accent)));
+        _subscriptions.Add(events.Subscribe<PlatformBuilt>(_ => Toast("Built a gravel spot", UiTheme.Accent)));
         _subscriptions.Add(events.Subscribe<ParcelBought>(e => Toast(
             $"Bought {_ctx.Sim.State.Parcels.FirstOrDefault(p => p.Id == e.ParcelId)?.Name} for {UiTheme.Money(e.PriceCents)}: you can build there now", UiTheme.Good)));
         _subscriptions.Add(events.Subscribe<LiftConstructionStarted>(e => Toast(
@@ -1103,7 +1103,7 @@ public partial class Hud : CanvasLayer
         var network = _ctx.Sim.Network;
         var loose = _ctx.Sim.State.Ways.Where(w => w.Kind == WayKind.Trail && w.Built && !network.IsConnected(w)).Select(w => w.Name).ToList();
         if (loose.Count > 0)
-            Toast($"Not connected, closed until connected: {string.Join(", ", loose)}. Draw a trail from a loose end to a path, trail, platform or station.", UiTheme.Warn);
+            Toast($"Not connected, closed until connected: {string.Join(", ", loose)}. Draw a trail from a loose end to a path, trail, gravel spot or station.", UiTheme.Warn);
     }
 
     private string LiftName(int liftId) => _ctx.Sim.State.Lifts.FirstOrDefault(l => l.Id == liftId)?.Name ?? "The lift";

@@ -9,7 +9,7 @@ using Godot;
 namespace Bikepark.Game.Ways;
 
 /// <summary>
-/// Renaturalize (picked in the Build menu): point at a lift station, parking lot or gravel platform and click to tear it
+/// Renaturalize (picked in the Build menu): point at a lift station, parking lot or gravel spot and click to tear it
 /// down (lifts and parking lots cost a contractor's fee), or click where a section of a trail or gravel path starts, move
 /// along it (the section shows in red) and click where it ends. Validated every frame with the Sim's own checks
 /// (<see cref="WayEditing"/>, <see cref="StructureRemoval"/>); Esc drops the first click, or leaves the tool.
@@ -75,7 +75,7 @@ public partial class TrailEditTool : Node3D
         Mode = mode;
         _anchor = null;
         Problem = null;
-        Status = mode == ToolMode.Renaturalize ? "Renaturalize: point at a trail, gravel path, lift station, parking lot or platform" : "";
+        Status = mode == ToolMode.Renaturalize ? "Renaturalize: point at a trail, gravel path, lift station, parking lot or gravel spot" : "";
         if (mode == ToolMode.None && _preview is not null) _preview.Visible = false; // (the HUD may call this before _Ready)
     }
 
@@ -120,7 +120,7 @@ public partial class TrailEditTool : Node3D
                 Status = $"Renaturalize {way?.Label}: click where the section starts ({h.Cm / 100} m)";
                 Draw(h.WayId, Math.Max(0, h.Cm - 100), h.Cm + 100, Problem is null ? Remove : Blocked, 3f);
             }
-            else Status = "Renaturalize: point at a trail, gravel path, lift station, parking lot or platform";
+            else Status = "Renaturalize: point at a trail, gravel path, lift station, parking lot or gravel spot";
             return;
         }
         if (network.FindWay(anchor.WayId) is not { } trail)

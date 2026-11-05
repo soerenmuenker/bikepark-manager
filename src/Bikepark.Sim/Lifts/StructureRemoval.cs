@@ -15,7 +15,7 @@ public static class StructureRemoval
     public static (string Name, string What)? Describe(WorldState state, int id) =>
         state.Lifts.FirstOrDefault(l => l.Id == id) is { } lift ? (lift.Name, LiftNetwork.FindType(state, lift.TypeId)?.Name ?? "lift")
         : state.ParkingLots.FirstOrDefault(p => p.Id == id) is { } lot ? (lot.Name, "parking lot")
-        : state.Platforms.FirstOrDefault(p => p.Id == id) is { } platform ? (platform.Name, "gravel platform")
+        : state.Platforms.FirstOrDefault(p => p.Id == id) is { } platform ? (platform.Name, "gravel spot")
         : state.Facilities.FirstOrDefault(f => f.Id == id) is { } facility
             ? (facility.Name, Facilities.FacilityMath.FindType(state, facility.TypeId)?.Name.ToLowerInvariant() ?? "building")
         : null;
@@ -44,7 +44,7 @@ public static class StructureRemoval
     /// <summary>Why it can't be renaturalized now, or null.</summary>
     public static string? CannotRemove(WorldState state, int id)
     {
-        if (Describe(state, id) is not { } info) return "No such lift, parking lot, platform or building.";
+        if (Describe(state, id) is not { } info) return "No such lift, parking lot, gravel spot or building.";
         if (state.Lifts.FirstOrDefault(l => l.Id == id) is { } lift)
         {
             if (LiftNetwork.FindOperator(state, lift.OperatorId) is { } op) return $"{lift.Name} belongs to {op.Name}.";

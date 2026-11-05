@@ -163,7 +163,7 @@ public static class LiftMath
     public static int RideSeconds(LiftType type, long lengthCm) => (int)((lengthCm + type.SpeedCmPerS - 1) / type.SpeedCmPerS);
 }
 
-/// <summary>A small square gravel platform (a flattened pad) where paths and trails can start and end, to link them up.</summary>
+/// <summary>A gravel spot: a small square flattened pad where paths and trails can start and end, to link them up (shown as "Gravel spot").</summary>
 public sealed class Platform
 {
     public int Id { get; set; }

@@ -143,8 +143,8 @@ public partial class LiftView : Node3D
         foreach (var platform in state.Platforms)
         {
             if (LiftNetwork.Pad(state, platform.TerrainEditId) is not { } pad) continue;
-            AddMesh(Surface(pad, Gravel), platform.Name);
-            AddLabel(platform.Name, LiftShapes.Center(pad, 5f));
+            AddMesh(Spot(pad), platform.Name);
+            AddLabel(platform.Name, LiftShapes.Center(pad, 3.5f));
         }
 
         foreach (var facility in state.Facilities)
@@ -203,6 +203,55 @@ public partial class LiftView : Node3D
         return b.ToMesh();
     }
 
+    /// <summary>
+    /// A gravel spot: a round-cornered (octagonal) patch of light gravel with edge stones around it and a wooden
+    /// signpost with two arrow boards in one corner, so it reads as a junction, not as a parking lot.
+    /// </summary>
+    private static ArrayMesh Spot(TerrainPad pad)
+    {
+        var b = new FlatMeshBuilder();
+        float l = pad.HalfLengthCm / 100f, w = pad.HalfWidthCm / 100f, cut = Math.Min(l, w) * 0.4f, y = 0.06f;
+        Vector2[] outline =
+        [
+            new(-l + cut, -w), new(l - cut, -w), new(l, -w + cut), new(l, w - cut),
+            new(l - cut, w), new(-l + cut, w), new(-l, w - cut), new(-l, -w + cut),
+        ];
+        var centre = new Vector3(0, y, 0);
+        var below = new Vector3(0, y - 1, 0);
+        for (int i = 0; i < outline.Length; i++)
+        {
+            var p = outline[i];
+            var q = outline[(i + 1) % outline.Length];
+            b.Triangle(centre, new Vector3(p.X, y, p.Y), new Vector3(q.X, y, q.Y), SpotGravel, below);
+        }
+
+        // Edge stones every ~1.2 m along the outline, a little irregular in size.
+        var stone = new Color(0.46f, 0.45f, 0.43f).SrgbToLinear();
+        int n = 0;
+        for (int i = 0; i < outline.Length; i++)
+        {
+            var p = outline[i];
+            var q = outline[(i + 1) % outline.Length];
+            int count = Math.Max(1, (int)((q - p).Length() / 1.2f));
+            for (int k = 0; k < count; k++)
+            {
+                var at = p.Lerp(q, (k + 0.5f) / count);
+                float r = 0.18f + (n++ * 7 % 5) * 0.03f;
+                b.Box(new Vector3(at.X - r, 0, at.Y - r), new Vector3(at.X + r, r * 0.7f, at.Y + r), stone);
+            }
+        }
+
+        // Signpost in the back corner: a post with two boards pointing different ways.
+        var post = new Color(0.40f, 0.27f, 0.16f).SrgbToLinear();
+        var board = new Color(0.78f, 0.62f, 0.38f).SrgbToLinear();
+        float sx = -l + cut * 0.9f, sz = -w + cut * 0.9f;
+        b.Box(new Vector3(sx - 0.07f, 0, sz - 0.07f), new Vector3(sx + 0.07f, 2.2f, sz + 0.07f), post);
+        b.Box(new Vector3(sx - 0.05f, 1.75f, sz - 0.09f), new Vector3(sx + 0.95f, 2.0f, sz + 0.09f), board);
+        b.Box(new Vector3(sx - 0.09f, 1.40f, sz - 0.05f), new Vector3(sx + 0.09f, 1.65f, sz + 0.85f), board);
+        return Placed(b.ToMesh(), pad);
+    }
+
+    private static readonly Color SpotGravel = new Color(0.58f, 0.50f, 0.38f).SrgbToLinear();
     private static readonly Color Rust = new(0.55f, 0.30f, 0.15f);
     private static readonly Color Scaffold = new(0.95f, 0.60f, 0.15f);
     private static readonly Color Gravel = new(0.55f, 0.50f, 0.42f);
