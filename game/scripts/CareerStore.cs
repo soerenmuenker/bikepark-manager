@@ -16,12 +16,15 @@ public sealed record CareerInfo(string Id, string ParkName, long Day, long Money
 /// The saved careers: one save per career in <c>user://careers/&lt;id&gt;.json</c> (the whole world, written atomically)
 /// plus <c>&lt;id&gt;.meta.json</c> (<see cref="CareerInfo"/>). Ids come from the creation time and the park name. The
 /// wall clock is only used here, in the view, never in the sim.
+/// Saves never ship with the game: they live in the user data folder, not in the project or data/. Exported builds
+/// (the release zips) keep theirs in <c>user://release-careers</c>, so a release starts with no careers even on the
+/// developer's own machine (the editor and exports share the same app_userdata folder), and the editor's careers stay put.
 /// </summary>
 public static class CareerStore
 {
     private static readonly JsonSerializerOptions MetaJson = new() { WriteIndented = true };
 
-    public static string Directory => ProjectSettings.GlobalizePath("user://careers");
+    public static string Directory => ProjectSettings.GlobalizePath(OS.HasFeature("editor") ? "user://careers" : "user://release-careers");
 
     private static string WorldPath(string id) => Path.Combine(Directory, $"{id}.json");
 

@@ -442,7 +442,7 @@ Start screen (when run without world-setting debug args): start a new career (pa
 career, or play the Demo (sandbox, demo trails built, never saved, Zen mode on: nothing costs money, `FinanceState.ZenMode` via `SetZenModeCommand`, sandboxes only, queued game-side by `SimHost.LoadDemoNetwork` so the scenario and tests keep real costs; ☰ menu toggles it; started from the menu it opens with a welcome: Zen mode, the three trails, Instant build in the ☰ menu). A new career opens with the scenario's welcome
 (pauses; "Show me Easy Peasy" points the camera at the trail's loose end). Careers are saved automatically, one file each
 (`game/scripts/CareerStore.cs`: `user://careers/<id>.json` + `<id>.meta.json`, on macOS in
-`~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`), when the window closes / the game quits
+`~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`; exported builds use `user://release-careers` instead, so a release starts empty and never touches the editor's careers; saves are never in the repo, and `tools/release/export.sh` ships only the git-tracked files of `data/`), when the window closes / the game quits
 (`SimHost._ExitTree`, WM close) and on System menu → Save & back to menu; there is no manual save. Saves are written
 atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · H park (entrance fee, lift pass, parking fee and lots, beer hours, staff
 summary, opening hours) · C crew (tabs Workers: each worker's grade, speed, wage and job, applicants to hire · Park staff:
