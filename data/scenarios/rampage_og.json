@@ -1,8 +1,8 @@
 {
   "id": "rampage_og",
   "name": "Rampage OG",
-  "description": "Career on a real place: Rampage OG.",
-  "menu": {"title": "Rampage OG", "blurb": "A real place: Rampage OG. Only what really stands there is built: the roads and gravel tracks, houses and water, no lifts. 75,000 € to start, enough for a first T-bar, and the first trails are yours to draw.", "defaultParkName": "Rampage OG Bikepark", "credits": "Elevation: Mapzen/AWS Terrain Tiles; land cover (c) OpenStreetMap contributors (ODbL)"},
+  "description": "Career on a real place: the red ridges where the big-mountain freeride contest began, now a commercial bike park in the making.",
+  "menu": {"title": "Rampage OG", "blurb": "This is where the legend began: riders hucking themselves off red desert ridges for glory. The glory moved on, the ridges stayed, and nobody uses them. You see a business opportunity. 75,000 €, the real roads and tracks, no lifts: build a full commercial bike park, with T-bars, beer and a gift shop. F*ck freeride, let's go capitalized MTB business!", "defaultParkName": "Rampage OG Bikepark", "credits": "Elevation: Mapzen/AWS Terrain Tiles; land cover (c) OpenStreetMap contributors (ODbL)"},
   "seed": 1337,
   "parkName": "Rampage OG Bikepark",
   "startingMoneyCents": 7500000,
@@ -400,10 +400,12 @@
   "welcome": {
     "title": "Welcome to {park}!",
     "paragraphs": [
-      "This is a real place: Rampage OG. Nothing has been made up here: what you see standing is what really stands there, and the gravel tracks are the real ones.",
-      "There is no lift, so your guests pedal up the tracks and tire quickly. A T-bar (Build menu) is the first thing to save for: you have just enough money to order one on your own land. Link its valley station to a track with a gravel path (P), or nobody can reach it. Guests arrive on the track at the edge of your land.",
+      "Once upon a time, a handful of lunatics with bikes rode off these red ridges, cliffs and knife-edge spines, and called it Rampage. This is where it all began: the original spot, the OG. People still talk about it in hushed voices at the trailhead.",
+      "Then time passed. The circus moved on to other ridges, the dust settled, and the hill has been sitting here doing nothing ever since. No lifts, no bars, no ticket booth. Just rocks, wind and the odd lizard.",
+      "But you had a brilliant idea: why should anyone ride this for free? Let's turn the birthplace of freeride into a full-blown commercial bike park. Entry fees, lift passes, overpriced beer, a bike shop full of park merch. F*ck freeride, let's go capitalized MTB business!",
+      "Step one, the boring part: there is no lift, so your guests pedal up the real tracks and get tired fast. Get a T-bar (Build menu): you have just enough money to order one on your own land. Link its valley station to a track with a gravel path (P), or nobody can reach it. Guests arrive on the track at the edge of your land.",
       "1. Hire a worker or two in the Crew menu (C). Your crew builds everything you plan.\n2. Press T to draw your first trail: start on a road or gravel track, wind across the slope and end on a road, track or lift further down. Press Enter and the crew gets to work.",
-      "Steep real slopes rate trails harder, so use switchbacks. Trails and paths may cross brooks and rivers: the crew builds a little bridge, which takes wood. Lakes and houses are in the way. Every trail and feature earns XP. New park levels unlock harder features, more land and bigger lifts. Good luck!"
+      "Steep real slopes rate trails harder, so use switchbacks (the paying customers aren't all lunatics). Trails may cross dry washes and creeks: the crew builds a little bridge, which takes wood. Every trail and feature earns XP, and new park levels unlock harder features, more land and bigger lifts. Now go make some money!"
     ]
   },
   "commands": [
