@@ -21,7 +21,7 @@ public partial class ReputationPanel : HudPanel
 
     // Overview
     private StarsView _stars = null!;
-    private Label _rating = null!, _ratingHint = null!, _trend = null!, _reviews = null!, _level = null!, _demand = null!, _demandParts = null!;
+    private Label _rating = null!, _ratingHint = null!, _trend = null!, _reviews = null!, _demand = null!, _demandParts = null!;
     private TabStrip _groupStrip = null!;
     private VBoxContainer _aspects = null!, _complaints = null!;
     private Label _groupNote = null!;
@@ -31,9 +31,8 @@ public partial class ReputationPanel : HudPanel
     // Reviews
     private ReviewBrowser? _browser;
 
-    // Level & social
-    private Label _xpText = null!, _xpParts = null!, _post = null!;
-    private ProgressBar _xpBar = null!;
+    // Social
+    private Label _post = null!;
 
     public override string Title => "Rating";
 
@@ -42,7 +41,7 @@ public partial class ReputationPanel : HudPanel
         _tabs = new TabStrip();
         _tabs.Add("Overview", "The rating, its sub-ratings and the biggest complaints");
         _tabs.Add("Reviews", "Read the reviews: sort and filter them");
-        _tabs.Add("Level & social", "Park level, XP and FakeSocial");
+        _tabs.Add("Social", "FakeSocial: influencer posts (the park level is in the Park menu)");
         _tabs.Selected += ShowTab;
         Body.AddChild(_tabs);
 
@@ -95,7 +94,6 @@ public partial class ReputationPanel : HudPanel
         overall.AddChild(_ratingHint);
         top.AddChild(overall);
         top.AddChild(UiTheme.StatTile("Reviews", out _reviews));
-        top.AddChild(UiTheme.StatTile("Park level", out _level));
         top.AddChild(UiTheme.StatTile("Visitor demand", out _demand));
         _overview.AddChild(top);
         _demandParts = UiTheme.Label("", 12, UiTheme.TextDim);
@@ -138,14 +136,6 @@ public partial class ReputationPanel : HudPanel
 
     private void BuildSocial()
     {
-        _social.AddChild(UiTheme.Label("PARK LEVEL — trails, diversity, visitors", 11, UiTheme.TextDim, bold: true));
-        _xpText = UiTheme.Label("", 14, bold: true);
-        _social.AddChild(_xpText);
-        _xpBar = new ProgressBar { ShowPercentage = false, CustomMinimumSize = new Vector2(500, 10), MaxValue = 1000 };
-        _social.AddChild(_xpBar);
-        _xpParts = UiTheme.Label("", 12, UiTheme.TextDim);
-        _social.AddChild(_xpParts);
-        _social.AddChild(UiTheme.Separator());
         _social.AddChild(UiTheme.Label("FAKESOCIAL", 11, UiTheme.TextDim, bold: true));
         _post = UiTheme.Label("", 13);
         _post.AutowrapMode = TextServer.AutowrapMode.WordSmart;
@@ -153,7 +143,7 @@ public partial class ReputationPanel : HudPanel
         _social.AddChild(_post);
     }
 
-    /// <summary>Key: a tab ("overview", "reviews", "level & social").</summary>
+    /// <summary>Key: a tab ("overview", "reviews", "social").</summary>
     public override void Focus(string key)
     {
         int index = _tabs.IndexOf(key);
@@ -192,8 +182,6 @@ public partial class ReputationPanel : HudPanel
         _trend.TooltipText = "This week's reviews against the week before";
         _reviews.Text = $"{rep.TotalReviews}";
 
-        var xp = ParkProgress.Xp(state, Ctx.Sim.Network);
-        _level.Text = $"{ParkProgress.Level(rules, xp.Total)} / {ReputationRules.MaxLevel}";
         var demand = ReputationMath.Demand(state);
         _demand.Text = $"{demand.Total / 10} %";
         _demand.AddThemeColorOverride("font_color", demand.Total >= 1000 ? UiTheme.Good : demand.Total >= 700 ? UiTheme.Warn : UiTheme.Bad);
@@ -307,30 +295,7 @@ public partial class ReputationPanel : HudPanel
     private void RefreshSocial()
     {
         var state = Ctx.Sim.State;
-        var rules = state.ReputationRules;
         var rep = state.Reputation;
-        var xp = ParkProgress.Xp(state, Ctx.Sim.Network);
-        int level = ParkProgress.Level(rules, xp.Total);
-        int floor = level == 0 ? 0 : rules.LevelXp[level - 1];
-        if (ParkProgress.NextLevelXp(rules, level) is { } next)
-        {
-            _xpBar.Value = (xp.Total - floor) * 1000.0 / Math.Max(1, next - floor);
-            _xpText.Text = $"Level {level} · {xp.Total} XP · {next - xp.Total} XP to level {level + 1}";
-        }
-        else
-        {
-            _xpBar.Value = 1000;
-            _xpText.Text = rules.LevelXp.Count == 0 ? $"{xp.Total} XP" : $"Level {level} (top level) · {xp.Total} XP";
-        }
-        _xpParts.Text = $"Trails {PerColour(r => $"{xp.TrailMeters[r] / 1000.0:0.0} km")}  +{xp.TrailXp} XP\n" +
-                        $"Features {PerColour(r => $"{xp.Features[r]}")}  +{xp.FeatureXp} XP\n" +
-                        $"Buildings {xp.Buildings}, upgrades {xp.Upgrades}  +{xp.BuildingXp} XP\n" +
-                        $"Lifts running {xp.Lifts}  +{xp.LiftXp} XP\n" +
-                        $"Visitors {xp.AverageVisitors}/day  +{xp.VisitorXp} XP\n" +
-                        $"XP per km: {PerColour(r => $"{rules.XpPerKmByRating.For((TrailRating)r)}")} · per feature: " +
-                        PerColour(r => $"{rules.XpPerFeatureByRating.For((TrailRating)r)}") +
-                        $" · per building {rules.XpPerBuilding}, upgrade {rules.XpPerUpgrade}, own lift {rules.XpPerLift}";
-
         long day = GameTime.Day(state.Tick);
         _post.Text = ReputationMath.ActivePost(state, day) is { } post
             ? $"{post.Name}: {StarsText(post.StarsTenths)} stars — {PostLine(post)}. Visitors {ReputationMath.InfluencerEffect(state, day) / 10:+0;-0;0} % today, fading until day {post.EndsDay + 1}."
@@ -352,9 +317,6 @@ public partial class ReputationPanel : HudPanel
     };
 
     /// <summary>"blue a · red b · black c" for the three ratings.</summary>
-    private static string PerColour(Func<int, string> value) =>
-        $"blue {value(0)} · red {value(1)} · black {value(2)}";
-
     /// <summary>"3.4" for tenths, "–" without a rating.</summary>
     internal static string StarsText(int? tenths) => tenths is { } t ? $"{t / 10}.{t % 10}" : "–";
 }

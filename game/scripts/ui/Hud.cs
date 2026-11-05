@@ -62,6 +62,7 @@ public partial class Hud : CanvasLayer
     private Label _saveText = null!;
     private Control _saveBox = null!;
     private Label _parkName = null!, _clock = null!, _openState = null!, _weather = null!;
+    private Label _parkLevel = null!;
     private Label _moneyValue = null!, _guestsValue = null!, _moodValue = null!, _queueValue = null!, _crewValue = null!, _woodValue = null!;
     private IconView _moodIcon = null!, _ratingIcon = null!;
     private Label _ratingValue = null!;
@@ -218,13 +219,13 @@ public partial class Hud : CanvasLayer
                  {
                      (Menu.Build, UiIcon.Build, "Build", "Plan paths, trails, features; fell trees; lifts, parking  [B]"),
                      (Menu.Trails, UiIcon.Trails, "Trails", "Your trails  [V]"),
-                     (Menu.Park, UiIcon.Gate, "Park", "Entrance fee, lift pass, parking, drinks, staff overview  [H]"),
-                     (Menu.Crew, UiIcon.Crew, "Crew", "Workers and applicants, park staff, jobs and wood  [C]"),
-                     (Menu.Tools, UiIcon.Toolbox, "Tools", "Buy tools; every tool, its condition and who uses it  [I]"),
+                     (Menu.Park, UiIcon.Gate, "Park", "Park level and XP, entrance fee, lift pass, parking, drinks, staff overview  [H]"),
+                     (Menu.Crew, UiIcon.Crew, "Crew", "Workers and applicants, park staff, jobs  [C]"),
+                     (Menu.Tools, UiIcon.Toolbox, "Tools", "Tools and wood: buy them; every tool, its condition and who uses it  [I]"),
                      (Menu.Riders, UiIcon.Riders, "Riders", "Guests, mood and fun  [R]"),
                      (Menu.Lifts, UiIcon.Lift, "Lifts", "Queues and bike access  [G]"),
                      (Menu.Finance, UiIcon.Finance, "Finances", "Money, fees, daily results  [M]"),
-                     (Menu.Reputation, UiIcon.Star, "Rating", "Reviews, rating, influencers, park level  [U]"),
+                     (Menu.Reputation, UiIcon.Star, "Rating", "Reviews, rating, influencers  [U]"),
                      (Menu.Land, UiIcon.Land, "Land", "Buy land to build on  [N]"),
                      (Menu.Map, UiIcon.Map, "Map", "Terrain overlays  [O]"),
                  })
@@ -351,6 +352,16 @@ public partial class Hud : CanvasLayer
             if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true }) ShowMenu(Menu.Park, null);
         };
         park.AddChild(_parkName);
+        // The park level sits with the park (it has its own section in the Park menu), apart from the rating.
+        _parkLevel = UiTheme.Label("", 11, UiTheme.Accent, bold: true);
+        _parkLevel.MouseFilter = Control.MouseFilterEnum.Stop;
+        _parkLevel.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
+        _parkLevel.TooltipText = "Park level\nXP come from trails, features, buildings, own lifts and visitors; new levels unlock content.\n\nClick: the Park menu shows where the XP come from and what the next level brings.  [H]";
+        _parkLevel.GuiInput += e =>
+        {
+            if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true }) ShowMenu(Menu.Park, null);
+        };
+        park.AddChild(_parkLevel);
         var time = new HBoxContainer();
         _clock = UiTheme.Label("", 20, bold: true);
         time.AddChild(_clock);
@@ -463,6 +474,17 @@ public partial class Hud : CanvasLayer
             _ctx.Features.SetType(null);
             if (_open != Menu.Crew) _ctx.Clearing.SetActive(false); // the crew menu can start felling too
         }
+    }
+
+    /// <summary>The level-up pop-up: what is new, by kind (merged over several levels reached at once), and the next goal.</summary>
+    internal static string LevelUpText(Bikepark.Sim.State.WorldState state, int level, List<ParkProgress.UnlockGroup> groups)
+    {
+        var lines = new List<string> { "Now available:" };
+        foreach (var kind in groups.Select(g => g.Kind).Distinct())
+            lines.Add($"• {kind}: {string.Join(", ", groups.Where(g => g.Kind == kind).SelectMany(g => g.Names))}");
+        if (ParkProgress.NextLevelXp(state.ReputationRules, level) is { } next)
+            lines.Add($"\nLevel {level + 1} at {next} XP: more trails, features, buildings, lifts and visitors bring XP (Park menu).");
+        return string.Join("\n", lines);
     }
 
     private void Layout()
@@ -681,7 +703,10 @@ public partial class Hud : CanvasLayer
         _moodValue.Text = mood == 0 ? "–" : $"{mood / 10}%";
         _moodIcon.Set(UiIcon.Mood, mood == 0 ? UiTheme.TextDim : UiTheme.MoodColor(mood), mood == 0 ? 500 : mood);
 
-        _ratingValue.Text = $"{ReputationPanel.StarsText(k.RatingTenths)} · L{k.Level}";
+        _ratingValue.Text = ReputationPanel.StarsText(k.RatingTenths);
+        var levelRules = _ctx.Sim.State.ReputationRules;
+        _parkLevel.Text = levelRules.LevelXp.Count == 0 ? "" : ParkProgress.NextLevelXp(levelRules, k.Level) is { } nextXp
+            ? $"LEVEL {k.Level} · {k.Xp} / {nextXp} XP" : $"LEVEL {k.Level} · TOP";
         _ratingIcon.Set(UiIcon.Star, k.RatingTenths is { } stars ? UiTheme.MoodColor((stars - 10) * 25) : UiTheme.TextDim);
 
         _crewValue.Text = $"{state.Crew.Count} · {state.Jobs.Count}";
@@ -811,7 +836,7 @@ public partial class Hud : CanvasLayer
                 lines.AddRange(lp.Issues.Take(2).Select(i => $"✗ {i.Message}"));
                 if (lp.IsValid && structures.Locked() is null && lp.Type is { } type)
                     lines.Add(_ctx.Host.InstantBuild ? "✓ Enter to build (debug: free, at once)"
-                        : $"✓ Enter to order it: {UiTheme.Money(type.BuildCostCents)}, ready in {type.BuildDays} days, then {UiTheme.Money(type.UpkeepPerDayCents)}/day");
+                        : $"✓ Enter to order it: {UiTheme.Money(Bikepark.Sim.Commands.LiftWorks.BuildCost(_ctx.Sim.State, type))}, ready in {type.BuildDays} days, then {UiTheme.Money(type.UpkeepPerDayCents)}/day");
             }
             if (structures.ParkingPlan is { } pp)
             {
@@ -1011,11 +1036,14 @@ public partial class Hud : CanvasLayer
                 Toast($"The park dropped to level {e.NewLevel}", UiTheme.Warn);
                 return;
             }
-            var unlocks = new List<string>();
+            var state = _ctx.Sim.State;
+            var groups = new List<ParkProgress.UnlockGroup>();
             for (int level = e.OldLevel + 1; level <= e.NewLevel; level++)
-                unlocks.AddRange(ParkProgress.UnlocksAt(_ctx.Sim.State, level));
-            Toast(unlocks.Count == 0 || _ctx.Sim.State.Rules.UnlockAll ? $"Park level {e.NewLevel} reached!"
-                : $"Park level {e.NewLevel} reached! Unlocked: {string.Join(", ", unlocks)}", UiTheme.Good);
+                groups.AddRange(ParkProgress.UnlockGroupsAt(state, level));
+            Toast($"Park level {e.NewLevel} reached!", UiTheme.Good);
+            // In a sandbox everything is open anyway; a level that brings nothing new needs no pop-up.
+            if (state.Rules.UnlockAll || groups.Count == 0) return;
+            _notice.Request(new NoticeDialog.Notice($"Park level {e.NewLevel}!", LevelUpText(state, e.NewLevel, groups), Good: true));
         }));
         _subscriptions.Add(events.Subscribe<TrailSplit>(e =>
             Toast($"The gravel path divides the trail into {TrailName(e.WayId)} and {TrailName(e.NewWayId)}", UiTheme.Accent)));

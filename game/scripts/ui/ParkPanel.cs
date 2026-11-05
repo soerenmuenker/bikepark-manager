@@ -5,12 +5,13 @@ using Bikepark.Sim.Lifts;
 using Bikepark.Sim.Reputation;
 using Bikepark.Sim.Staff;
 using Bikepark.Sim.State;
+using Bikepark.Sim.Trails;
 using Godot;
 
 namespace Bikepark.Game.Ui;
 
 /// <summary>
-/// Park menu: the park as a whole. Arrivals (entrance fee, lift pass, parking fee and lots, demand), drinks for riders
+/// Park menu: the park as a whole. Its level (XP, where it comes from, what the next level unlocks), arrivals (entrance fee, lift pass, parking fee and lots, demand), drinks for riders
 /// (beer hours), a summary of the park staff (managed in Crew → Park staff) and the opening hours. Opened from the bar,
 /// by clicking the park name or a parking lot.
 /// </summary>
@@ -22,6 +23,8 @@ public partial class ParkPanel : HudPanel
     private VBoxContainer _parking = null!, _drinks = null!, _staff = null!;
     private Label _lots = null!, _facts = null!, _staffLines = null!;
     private Button _beer = null!;
+    private Label _xpText = null!, _xpParts = null!, _nextUnlocks = null!;
+    private ProgressBar _xpBar = null!;
 
     public override string Title => "Park";
 
@@ -36,6 +39,14 @@ public partial class ParkPanel : HudPanel
             ("Turned away today", () => $"{State.Stats.TurnedAwayToday}"),
             ("In the park", () => $"{Ctx.Kpi.GuestsInPark}"),
             ("Demand", () => $"{ReputationMath.DemandPermille(State) * StaffMath.MarketingPermille(State) / 10_000} %"));
+
+        Heading(page, "Park level");
+        _xpText = UiTheme.Label("", 14, bold: true);
+        page.AddChild(_xpText);
+        _xpBar = new ProgressBar { ShowPercentage = false, CustomMinimumSize = new Vector2(ContentWidth, 10), MaxValue = 1000 };
+        page.AddChild(_xpBar);
+        _xpParts = Text(page, "");
+        _nextUnlocks = Text(page, "", 12, UiTheme.Text);
 
         Heading(page, "Entrance");
         Lever(page, "Entrance fee", () => UiTheme.MoneyExact(State.Park.EntryFeeCents),
@@ -93,6 +104,7 @@ public partial class ParkPanel : HudPanel
     public override void Refresh()
     {
         var state = State;
+        RefreshLevel(state);
         _parking.Visible = state.Rules.MaxParkingFeeCents > 0;
         int? capacity = LiftMath.ParkingCapacity(state);
         _lots.Text = state.ParkingLots.Count == 0 ? "" :
@@ -115,6 +127,39 @@ public partial class ParkPanel : HudPanel
         _facts.Text = string.Join("\n", facts);
 
         foreach (var update in _updates) update();
+    }
+
+    /// <summary>XP towards the next level, where it comes from and what the next level brings.</summary>
+    private void RefreshLevel(WorldState state)
+    {
+        var rules = state.ReputationRules;
+        var xp = ParkProgress.Xp(state, Ctx.Sim.Network);
+        int level = ParkProgress.Level(rules, xp.Total);
+        int floor = level == 0 ? 0 : rules.LevelXp[level - 1];
+        int? next = ParkProgress.NextLevelXp(rules, level);
+        _xpBar.Value = next is { } n ? (xp.Total - floor) * 1000.0 / Math.Max(1, n - floor) : 1000;
+        _xpText.Text = rules.LevelXp.Count == 0 ? $"{xp.Total} XP"
+            : next is { } to ? $"Level {level} of {ReputationRules.MaxLevel} · {xp.Total} XP · {to - xp.Total} XP to level {level + 1}"
+            : $"Level {level} (top level) · {xp.Total} XP";
+        static string PerColour(Func<int, string> value) => $"blue {value(0)} · red {value(1)} · black {value(2)}";
+        _xpParts.Text = $"Trails {PerColour(r => $"{xp.TrailMeters[r] / 1000.0:0.0} km")}  +{xp.TrailXp} XP\n" +
+                        $"Features {PerColour(r => $"{xp.Features[r]}")}  +{xp.FeatureXp} XP\n" +
+                        $"Buildings {xp.Buildings}, upgrades {xp.Upgrades}  +{xp.BuildingXp} XP\n" +
+                        $"Own lifts running {xp.Lifts}  +{xp.LiftXp} XP\n" +
+                        $"Visitors {xp.AverageVisitors}/day (last {rules.VisitorDays} days)  +{xp.VisitorXp} XP\n" +
+                        $"XP per km: {PerColour(r => $"{rules.XpPerKmByRating.For((TrailRating)r)}")} · per feature: " +
+                        PerColour(r => $"{rules.XpPerFeatureByRating.For((TrailRating)r)}") +
+                        $" · per building {rules.XpPerBuilding}, upgrade {rules.XpPerUpgrade}, own lift {rules.XpPerLift}, visitor {rules.XpPerVisitor}";
+        if (state.Rules.UnlockAll)
+            _nextUnlocks.Text = "Sandbox: everything is unlocked.";
+        else if (next is null)
+            _nextUnlocks.Text = "";
+        else
+        {
+            var groups = ParkProgress.UnlockGroupsAt(state, level + 1);
+            _nextUnlocks.Text = groups.Count == 0 ? $"Level {level + 1} brings nothing new, but later levels do."
+                : $"Level {level + 1} unlocks: " + string.Join(" · ", groups.Select(g => $"{g.Kind.ToLowerInvariant()}: {string.Join(", ", g.Names)}"));
+        }
     }
 
     /// <summary>Key: a section ("arrivals", "parking", "drinks", "staff"): all are on one page, so nothing to do.</summary>

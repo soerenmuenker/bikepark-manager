@@ -76,8 +76,8 @@ internal sealed partial class LiftInspector : InspectorWindow
         {
             Text(body, "Rusty and out of service. Riders pedal up instead.", 13, UiTheme.Warn);
             string? why = !LiftWorks.StationsOwned(State, lift) ? "It stands on land you don't own."
-                : !State.Finance.CanAfford(type.RestoreCostCents) ? "Not enough money." : null;
-            var restore = UiTheme.Button($"Restore ({UiTheme.Money(type.RestoreCostCents)}, {type.RestoreDays} days)",
+                : !State.Finance.CanAfford(LiftWorks.RestoreCost(State, type)) ? "Not enough money." : null;
+            var restore = UiTheme.Button($"Restore ({UiTheme.Money(LiftWorks.RestoreCost(State, type))}, {type.RestoreDays} days)",
                 () => Ctx.Host.Enqueue(new RestoreLiftCommand(liftId)),
                 why ?? $"A contractor fixes it for half the price of a new {type.Name}; it runs from the next opening after the work");
             restore.Disabled = why is not null;
@@ -201,7 +201,7 @@ internal sealed partial class LiftInspector : InspectorWindow
             ("Carriers", $"{type.BikesPerCarrier} bike{(type.BikesPerCarrier == 1 ? "" : "s")} every {type.IntervalSeconds} s ({LiftMath.BikeRidersPerHour(type, 1000)} riders/h with every carrier for bikes)"),
             ("Speed", $"{type.SpeedCmPerS / 100.0:0.#} m/s"),
             ("Weather", type.Sheltered ? "Closed cabins: riders stay dry" : "Open: riders get wet in the rain"),
-            ("Build price", $"{UiTheme.Money(type.BuildCostCents)} ({type.BuildDays} days)"),
+            ("Build price", $"{UiTheme.Money(LiftWorks.BuildCost(State, type))} ({type.BuildDays} days)"),
         ]);
         Text(body, "Riders take a lift when walking to it, queuing and riding up is cheaper for them than pedalling up the gravel paths.", 11);
     }

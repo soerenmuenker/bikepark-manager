@@ -168,4 +168,31 @@ public class FacilityTests
         loaded.RunTicks(300);
         Assert.Equal(StateHash.Compute(sim.State), StateHash.Compute(loaded.State));
     }
+
+    [Fact]
+    public void Beer_CheersTheSober_TheMoreTheyHadTheLess_NothingWhenTooDrunk()
+    {
+        var sim = Demo();
+        var state = sim.State;
+        var beer = FacilityMath.FindProduct(state, "beer")!;
+        var rules = state.FacilityRules;
+        Assert.Equal(beer.Happiness, FacilityMath.DrinkMood(rules, beer, 0, beer.Happiness));
+        int tipsy = FacilityMath.DrinkMood(rules, beer, rules.TooDrunkAlcohol / 2, beer.Happiness);
+        Assert.InRange(tipsy, 1, beer.Happiness - 1);
+        Assert.Equal(0, FacilityMath.DrinkMood(rules, beer, rules.TooDrunkAlcohol, beer.Happiness));
+        var coffee = FacilityMath.FindProduct(state, "coffee")!;
+        Assert.Equal(coffee.Happiness, FacilityMath.DrinkMood(rules, coffee, rules.TooDrunkAlcohol, coffee.Happiness)); // no alcohol: always
+
+        // Four beers in a row: each one cheers less than the one before.
+        var guest = new Guest { Id = 9999, CashCents = 100_000, Happiness = 300 };
+        var gains = new List<int>();
+        for (int n = 0; n < 4; n++)
+        {
+            int before = guest.Happiness;
+            FacilityMath.Sell(state, state.Tick, null, guest, beer);
+            gains.Add(guest.Happiness - before);
+        }
+        Assert.Equal(beer.Happiness, gains[0]);
+        Assert.True(gains[1] < gains[0] && gains[2] < gains[1] && gains[3] < gains[2], string.Join(",", gains));
+    }
 }

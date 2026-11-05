@@ -4,11 +4,12 @@ namespace Bikepark.Game.Ui;
 
 /// <summary>
 /// A pausing pop-up for money trouble: a missed loan installment, a warning that the park is in the red, and the
-/// bankruptcy itself (final: it only leads back to the start screen). Later notices wait their turn. Reads the sim only.
+/// bankruptcy itself (final: it only leads back to the start screen); and for good news (<see cref="Notice.Good"/>: a
+/// new park level and what it unlocks, with a button to the Park menu). Later notices wait their turn. Reads the sim only.
 /// </summary>
 internal sealed partial class NoticeDialog : PanelContainer
 {
-    public readonly record struct Notice(string Title, string Text, bool Final = false);
+    public readonly record struct Notice(string Title, string Text, bool Final = false, bool Good = false);
 
     private readonly HudContext _ctx;
     private readonly List<Notice> _waiting = [];
@@ -65,6 +66,9 @@ internal sealed partial class NoticeDialog : PanelContainer
     private void Open(Notice notice)
     {
         _final = notice.Final;
+        var accent = notice.Good ? UiTheme.Good : UiTheme.Bad;
+        AddThemeStyleboxOverride("panel", UiTheme.Box(new Color(UiTheme.Panel, 1f), 12, 16, 12, accent, 2));
+        _title.AddThemeColorOverride("font_color", accent);
         _title.Text = notice.Title;
         _text.Text = notice.Text;
         _close.Visible = !notice.Final;
@@ -74,6 +78,16 @@ internal sealed partial class NoticeDialog : PanelContainer
         {
             _buttons.AddChild(UiTheme.Button("Back to the menu", () => _ctx.Host.BackToMenu(), "The career is over: start a new one"));
             _ctx.Host.SetSpeedIndex(0);
+        }
+        else if (notice.Good)
+        {
+            _buttons.AddChild(UiTheme.Button("Park menu", () =>
+            {
+                Close();
+                _ctx.OpenMenu(Hud.Menu.Park);
+            }, "The park level, its XP and what the next level brings"));
+            _buttons.AddChild(UiTheme.Button("OK", Close));
+            _ctx.PauseForWarning(this);
         }
         else
         {

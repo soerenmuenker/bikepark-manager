@@ -375,7 +375,7 @@ internal sealed partial class FacilityInspector : InspectorWindow
                 row.AddChild(buy);
             }
             else
-                row.AddChild(UiTheme.Label($"{UiTheme.Money(upgrade.CostCents)} · after the one above", 11, UiTheme.TextDim));
+                row.AddChild(UiTheme.Label($"{UiTheme.Money(FacilityMath.UpgradeCost(State, type, upgrade))} · after the one above", 11, UiTheme.TextDim));
             body.AddChild(card);
         }
     }

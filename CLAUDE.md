@@ -268,7 +268,7 @@ tools/release/export.sh 0.1.0
     a lift counts the day passes bought there (`LiftStats.PassesSold`, `PassRevenueCents`, `NoPassToday`) — for the windows. The Demo's buildings come from `data/scripts/demo_facilities.json`.
 14d. **Coffee and beer:** `CaffeineMinutes` halve the climbing energy cost (`Guest.CaffeineUntilTick`). `Guest.Alcohol` (0..1000)
     decays per minute (`GuestSystem`), multiplies crash chances (`CrashMath.AlcoholFactor`, `CrashRules.AlcoholFactorPermille`),
-    makes riders pick trails with a higher skill (`RiderSystem.PickingSkill`, `BoldnessPermille`; crashes roll the real skill) and
+    makes riders pick trails with a higher skill; a drink's mood shrinks with the alcohol already had (`FacilityMath.DrinkMood`, none at `TooDrunkAlcohol`); (`RiderSystem.PickingSkill`, `BoldnessPermille`; crashes roll the real skill) and
     sends them home at `TooDrunkAlcohol` (`GuestLeaveReason.Drunk`); crashes at `TipsyAlcohol` count in
     `SafetyState.CrashesUnderInfluence`. `Park.BeerFromMinute` (`SetBeerHoursCommand`) keeps alcohol from riders before that minute.
     **Après-bike** (`FacilityRules.ApresEndMinute`, 0 = off; both scenarios 19:30): a guest going home (stay over, tired, closing)
@@ -365,7 +365,7 @@ tools/release/export.sh 0.1.0
 17a. **Unlocks:** content has a `RequiredLevel` (feature types, lift types, parcels); checks compare against
     `ParkRules.UnlockLevel(level)` (`UnlockAll` = sandbox, the Demo: everything open). Features: `TrailFeatures.CannotPlace`,
     checked in `PlaceTrailFeatureCommand` (not for debug `Instant`) and `FeatureTool`; lifts: `LiftWorks.CannotBuild`.
-    `ParkProgress.UnlocksAt` lists a level's unlocks for the level-up toast. Feature levels: blue 0, red 3–5, black 7+.
+    `ParkProgress.UnlockGroupsAt` lists a level's unlocks by kind (features, lifts, buildings, upgrades, tools, staff, sponsors, loans, land) for the level-up pop-up (`NoticeDialog`, `Good`) and the Park menu's next-level line; `UnlocksAt` flattens it. Feature levels: blue 0, red 3–5, black 7+.
 18. **Crashes** (`CrashRules.Enabled`, off by default; Starter Valley turns it on): rolled only in `RiderSystem`, only
     on a rider's run leg and only while uninjured: per built feature passed and per finished 10 m segment (terrain).
     Collisions are no roll: every uninjured rider passing a crossing (any way, run or not, and towed riders on a T-bar
@@ -455,11 +455,11 @@ career, or play the Demo (sandbox, demo trails built, never saved, Zen mode on: 
 (`game/scripts/CareerStore.cs`: `user://careers/<id>.json` + `<id>.meta.json`, on macOS in
 `~/Library/Application Support/Godot/app_userdata/Bikepark Manager/careers`; exported builds use `user://release-careers` instead, so a release starts empty and never touches the editor's careers; saves are never in the repo, and `tools/release/export.sh` ships only the git-tracked files of `data/`), when the window closes / the game quits
 (`SimHost._ExitTree`, WM close) and on System menu → Save & back to menu; there is no manual save. Saves are written
-atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · H park (entrance fee, lift pass, parking fee and lots, beer hours, staff
+atomically (`SaveGame.SaveAtomic`); `WorldState.DayHistory` (last 60 day reports) keeps the charts across loads. HUD: bottom bar with clock/speed, category menus (B build · V trails · H park (park level: XP, its sources and the next level's unlocks; also shown under the park name in the bar · entrance fee, lift pass, parking fee and lots, beer hours, staff
 summary, opening hours) · C crew (tabs Workers: each worker's grade, speed, wage and job, applicants to hire · Park staff:
-roles with −/+, need, coverage and what a shortage does · Jobs: the queue with −/+ workers per job, wood) · I tools (buy;
+roles with −/+, need, coverage and what a shortage does · Jobs: the queue with −/+ workers per job, wood) · I tools & resources (wood: stock, buy, fell trees; buy tools;
 every tool with condition, days left and who uses it) · R riders · G lifts · M finances · U rating
-(reputation: stars per skill group and what they value, demand, park level, FakeSocial posts) · N land (parcels: buy,
+(reputation: stars per skill group and what they value, demand, FakeSocial posts) · N land (parcels: buy,
 level and price; borders on the map: yours teal, for sale yellow, locked grey; names while the menu is open) · O map; Esc closes) and headline stats (display only: hover for a breakdown) · click on things in the world (no build tool active;
 `scripts/ui/WorldPicker.cs`, hover: hand cursor + a tip naming it): a rider → follow, a worker → Crew menu at their job,
 a building, lift station / line or trail (a feature: its Features tab) → its **window**, a parking lot → the Park menu, a planned way → Crew menu at its job, land for sale → Land menu at the parcel; menus scroll to and highlight
@@ -475,7 +475,7 @@ panel shows trees to fell and crew-hours; ends snap onto plateaus, a trail's end
 [ / ] book lower/higher bike access tier (from next opening; also in the Lifts menu) · trail features: pick one in
 Build, point at a trail, click to plan it, Delete removes the one under the cursor (also ✕ in the Trails menu) · Trails menu (trails only, gravel paths aren't listed) per trail: worst feature, click the trail (or Open…) for its window, Rename, Close/Open ·
 warning pop-up when a feature is below 20 % (pauses the game; ✕/Later closes it and goes on at 1x): pick workers and repair · Build →
-Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire applicants / dismiss, park staff, buy wood, job queue (−/+ workers, ↑ first,
+Fell trees: click the centre, move to size, click to mark · while a build tool is active the menu folds into a chip above the bar (✕ or Esc stops the tool and brings the menu back) · Crew menu: hire applicants / dismiss, park staff, job queue (−/+ workers, ↑ first,
 ✕ cancel) · System menu: Instant build (debug) · F follow next rider, or click a rider to follow it (a card at the top left shows
 their stats; ✕ or panning stops following; influencers wear pink; injured riders: red and lying (serious: they
 block the trail until the rescue helicopter has flown them out) or orange (minor, riding down slowly); the Trails menu lists crashes per trail, the feature overview per feature) ·

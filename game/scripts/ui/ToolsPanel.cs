@@ -6,7 +6,7 @@ using Godot;
 namespace Bikepark.Game.Ui;
 
 /// <summary>
-/// Tools menu: the tools for sale (each worker on a job uses one tool of the job's kind of work, the best first, and is
+/// Tools menu (tools and resources): wood in stock and for sale, the tools for sale (each worker on a job uses one tool of the job's kind of work, the best first, and is
 /// faster with it), and every tool the park owns on its own row: condition, work days left and who is using it now
 /// (<see cref="WorkCosts.ToolAssignments"/>, the same hand-out the crew works with).
 /// </summary>
@@ -21,7 +21,10 @@ public partial class ToolsPanel : HudPanel
     private string? _shopSignature, _ownedSignature;
     private readonly List<(int ToolId, ProgressBar Bar, Label Condition, Label Status)> _rows = [];
 
-    public override string Title => "Tools";
+    private Label _woodStock = null!;
+    private Button _buy10 = null!, _buy50 = null!;
+
+    public override string Title => "Tools & resources";
 
     protected override void Build()
     {
@@ -31,7 +34,22 @@ public partial class ToolsPanel : HudPanel
         intro.CustomMinimumSize = new Vector2(ContentWidth, 0);
         Body.AddChild(intro);
 
-        Body.AddChild(UiTheme.Label("BUY", 11, UiTheme.TextDim, bold: true));
+        Body.AddChild(UiTheme.Label("WOOD — for bridges, wood features, signs and repairs", 11, UiTheme.TextDim, bold: true));
+        var wood = new HBoxContainer();
+        wood.AddThemeConstantOverride("separation", 8);
+        _woodStock = UiTheme.Label("", 13);
+        _woodStock.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _woodStock.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        wood.AddChild(_woodStock);
+        _buy10 = UiTheme.Button("", () => Ctx.Host.Enqueue(new BuyWoodCommand(10)), "Buying is expensive; felling trees is cheaper");
+        _buy50 = UiTheme.Button("", () => Ctx.Host.Enqueue(new BuyWoodCommand(50)), "Buying is expensive; felling trees is cheaper");
+        wood.AddChild(_buy10);
+        wood.AddChild(_buy50);
+        wood.AddChild(UiTheme.Button("Fell trees…", () => Ctx.Clearing.SetActive(true), "Mark an area of forest for the crew to cut (each tree gives wood)"));
+        Body.AddChild(wood);
+        Body.AddChild(UiTheme.Separator());
+
+        Body.AddChild(UiTheme.Label("BUY TOOLS", 11, UiTheme.TextDim, bold: true));
         _shop = new HFlowContainer { CustomMinimumSize = new Vector2(ContentWidth, 0) };
         _shop.AddThemeConstantOverride("h_separation", 8);
         _shop.AddThemeConstantOverride("v_separation", 8);
@@ -51,6 +69,12 @@ public partial class ToolsPanel : HudPanel
     public override void Refresh()
     {
         var state = Ctx.Sim.State;
+        long woodPrice = state.CrewRules.WoodPriceCents;
+        int needed = state.Jobs.Where(j => !j.WoodTaken).Sum(j => j.Wood);
+        _woodStock.Text = $"{state.WoodStock} in stock" + (needed > 0 ? $" · planned jobs need {needed}" : "");
+        _woodStock.AddThemeColorOverride("font_color", needed > state.WoodStock ? UiTheme.Warn : UiTheme.Text);
+        _buy10.Text = $"Buy 10 ({UiTheme.Money(10 * woodPrice)})";
+        _buy50.Text = $"Buy 50 ({UiTheme.Money(50 * woodPrice)})";
         string shopSignature = $"{Ctx.Kpi.Level}|{state.Finance.MoneyCents / 50_000}|{string.Join(',', state.Tools.Select(t => t.TypeId))}";
         if (shopSignature != _shopSignature) RebuildShop(state, shopSignature);
 

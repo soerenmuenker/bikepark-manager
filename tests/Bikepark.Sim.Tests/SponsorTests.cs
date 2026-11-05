@@ -255,6 +255,26 @@ public class SponsorTests
         Assert.True(state.Finance.TotalSponsorCents >= state.Finance.TotalParkingCents / 2 - 100);
     }
 
+    [Fact]
+    public void Benefits_DiscountUpgradesAndRentalBikes_AndBoostTheMoodOfTheirProducts()
+    {
+        var sim = Demo();
+        var state = sim.State;
+        var shop = FacilityMath.FindType(state, "bike_shop")!;
+        Running(sim, "summit", 0); // campground and bike shop −30 %, upgrades too
+        Assert.Equal(shop.Upgrades[0].CostCents * 700 / 1000, FacilityMath.UpgradeCost(state, shop, shop.Upgrades[0]));
+        Assert.Equal(shop.BikeCostCents, FacilityMath.BikeCost(state, shop)); // not a bike brand
+
+        var snack = FacilityMath.FindProduct(state, "snack")!;
+        var plain = new Guest { Id = 9998, CashCents = 10_000, Happiness = 500 };
+        FacilityMath.Sell(state, state.Tick, null, plain, snack);
+        Running(sim, "bolt", 0); // coffee and snacks: +50 % mood
+        var boosted = new Guest { Id = 9999, CashCents = 10_000, Happiness = 500 };
+        FacilityMath.Sell(state, state.Tick, null, boosted, snack);
+        Assert.Equal(snack.Happiness, plain.Happiness - 500);
+        Assert.Equal(snack.Happiness + snack.Happiness * 500 / 1000, boosted.Happiness - 500);
+    }
+
     // ---------------------------------------------------------------- photo spots
 
     [Fact]

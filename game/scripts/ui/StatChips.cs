@@ -76,7 +76,6 @@ internal static class StatTips
         string text = k.RatingTenths is { } r
             ? $"Rating: {r / 10.0:0.0} stars from {k.TotalReviews} reviews\n"
             : $"No rating yet ({k.TotalReviews} reviews so far)\n";
-        text += $"Park level {k.Level}\n";
         var lines = new List<string>();
         foreach (var (group, name) in new[] { (SkillGroup.Beginner, "Beginners"), (SkillGroup.Intermediate, "Intermediates"), (SkillGroup.Expert, "Experts") })
             if (ReputationMath.RatingTenths(state, group) is { } g) lines.Add($"{name} {g / 10.0:0.0} ★");
@@ -135,7 +134,7 @@ internal static class StatTips
         int needed = state.Jobs.Where(j => !j.WoodTaken).Sum(j => j.Wood);
         return $"Wood: {state.WoodStock} in stock\n" +
                (needed > 0 ? $"Planned jobs need {needed}." : "No planned job needs wood.") +
-               "\n\nFell trees or buy wood in the Crew menu.";
+               "\n\nFell trees (Crew menu) or buy wood (Tools menu).";
     }
 
     private static string Signed(long cents) => cents >= 0 ? "+" + UiTheme.Money(cents) : "−" + UiTheme.Money(-cents);

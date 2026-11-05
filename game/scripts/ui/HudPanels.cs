@@ -480,14 +480,18 @@ public partial class BuildPanel : HudPanel
         Ctx.Structures.SetMode(same ? StructureTool.ToolMode.None : StructureTool.ToolMode.Lift);
     }
 
-    private static string LiftTooltip(LiftType type) =>
+    private string LiftTooltip(LiftType type) =>
         $"{type.Name}\n{type.BikesPerCarrier} bike{(type.BikesPerCarrier == 1 ? "" : "s")} every {type.IntervalSeconds} s: " +
         $"{LiftMath.BikeRidersPerHour(type, 1000)} riders an hour\n\n" +
         $"• {type.SpeedCmPerS / 100.0:0.#} m/s, {type.MinLengthMeters}–{type.MaxLengthMeters} m long\n" +
         $"• {(type.Sheltered ? "Closed cabins" : "Open: riders get wet in the rain")}\n" +
-        $"• Build {UiTheme.Money(type.BuildCostCents)}, running after {type.BuildDays} days\n" +
+        $"• Build {UiTheme.Money(LiftWorks.BuildCost(Ctx.Sim.State, type))}{SponsorNote(type.BuildCostCents, LiftWorks.BuildCost(Ctx.Sim.State, type))}, running after {type.BuildDays} days\n" +
         $"• Upkeep {UiTheme.Money(type.UpkeepPerDayCents)} a day\n" +
         $"• From park level {type.RequiredLevel}";
+
+    /// <summary>" (sponsor −30 %)" when a sponsor's discount makes a price cheaper, else nothing.</summary>
+    internal static string SponsorNote(long full, long discounted) =>
+        discounted < full && full > 0 ? $" (sponsor −{(full - discounted) * 100 / full} %)" : "";
 
     private void ToggleFacility(string typeId)
     {
@@ -520,11 +524,11 @@ public partial class BuildPanel : HudPanel
         };
         var lines = new List<string>(facts)
         {
-            $"Build {UiTheme.Money(type.BuildCostCents)}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)} a day",
+            $"Build {UiTheme.Money(Bikepark.Sim.Facilities.FacilityMath.BuildCost(state, type))}{SponsorNote(type.BuildCostCents, Bikepark.Sim.Facilities.FacilityMath.BuildCost(state, type))}, upkeep {UiTheme.Money(type.UpkeepPerDayCents)} a day",
             $"{type.LengthMeters} × {type.WidthMeters} m, within {state.FacilityRules.AccessReachMeters} m of a gravel path, gravel spot, station or parking lot",
         };
         if (type.Upgrades.Count > 0)
-            lines.Add("Upgrades: " + string.Join(" → ", type.Upgrades.Select(u => $"{u.Name} ({UiTheme.Money(u.CostCents)})")));
+            lines.Add("Upgrades: " + string.Join(" → ", type.Upgrades.Select(u => $"{u.Name} ({UiTheme.Money(Bikepark.Sim.Facilities.FacilityMath.UpgradeCost(state, type, u))})")));
         if (type.RequiredLevel > 0) lines.Add($"From park level {type.RequiredLevel}");
         lines.Add("Prices and upgrades: click the building once it stands");
         return $"{type.Name}\n{what}\n\n" + string.Join("\n", lines.Select(l => "• " + l));
@@ -542,16 +546,18 @@ public partial class BuildPanel : HudPanel
         {
             card.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Lift && Ctx.Structures.LiftTypeId == type.Id;
             string? locked = Ctx.Host.InstantBuild ? null : LiftWorks.CannotBuild(Ctx.Sim.State, level, type);
-            card.SetHint(locked is null ? $"{UiTheme.Money(type.BuildCostCents)} · {LiftMath.BikeRidersPerHour(type, 1000)}/h"
-                : Ctx.Sim.State.Rules.UnlockLevel(level) < type.RequiredLevel ? $"locked: level {type.RequiredLevel}" : $"{UiTheme.Money(type.BuildCostCents)} (can't afford)");
+            long liftCost = LiftWorks.BuildCost(Ctx.Sim.State, type);
+            card.SetHint(locked is null ? $"{UiTheme.Money(liftCost)} · {LiftMath.BikeRidersPerHour(type, 1000)}/h"
+                : Ctx.Sim.State.Rules.UnlockLevel(level) < type.RequiredLevel ? $"locked: level {type.RequiredLevel}" : $"{UiTheme.Money(liftCost)} (can't afford)");
             card.Modulate = locked is null ? Colors.White : new Color(1, 1, 1, 0.55f);
         }
         foreach (var (type, card) in _facilities)
         {
             card.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Facility && Ctx.Structures.FacilityTypeId == type.Id;
             string? locked = Ctx.Host.InstantBuild ? null : Bikepark.Sim.Facilities.FacilityMath.CannotBuild(Ctx.Sim.State, level, type);
-            card.SetHint(locked is null ? $"{UiTheme.Money(type.BuildCostCents)} · {UiTheme.Money(type.UpkeepPerDayCents)}/day"
-                : Ctx.Sim.State.Rules.UnlockLevel(level) < type.RequiredLevel ? $"locked: level {type.RequiredLevel}" : $"{UiTheme.Money(type.BuildCostCents)} (can't afford)");
+            long buildCost = Bikepark.Sim.Facilities.FacilityMath.BuildCost(Ctx.Sim.State, type);
+            card.SetHint(locked is null ? $"{UiTheme.Money(buildCost)} · {UiTheme.Money(type.UpkeepPerDayCents)}/day"
+                : Ctx.Sim.State.Rules.UnlockLevel(level) < type.RequiredLevel ? $"locked: level {type.RequiredLevel}" : $"{UiTheme.Money(buildCost)} (can't afford)");
             card.Modulate = locked is null ? Colors.White : new Color(1, 1, 1, 0.55f);
         }
         _parking.Active = Ctx.Structures.Mode == StructureTool.ToolMode.Parking;
@@ -977,8 +983,8 @@ public partial class LiftsPanel : HudPanel
                 var rusty = Row(10);
                 rusty.AddChild(UiTheme.Label("Rusty and out of service. Riders pedal up instead.", 13, UiTheme.Warn, bold: true));
                 string? why = !LiftWorks.StationsOwned(state, lift) ? "It stands on land you don't own."
-                    : !state.Finance.CanAfford(type.RestoreCostCents) ? "Not enough money." : null;
-                var restore = UiTheme.Button($"Restore ({UiTheme.Money(type.RestoreCostCents)}, {type.RestoreDays} days)",
+                    : !state.Finance.CanAfford(LiftWorks.RestoreCost(state, type)) ? "Not enough money." : null;
+                var restore = UiTheme.Button($"Restore ({UiTheme.Money(LiftWorks.RestoreCost(state, type))}, {type.RestoreDays} days)",
                     () => Ctx.Host.Enqueue(new RestoreLiftCommand(liftId)),
                     why ?? $"A contractor fixes it for half the price of a new {type.Name}; it runs from the next opening after the work");
                 restore.Disabled = why is not null;

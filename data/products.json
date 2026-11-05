@@ -6,7 +6,8 @@
 // lunch: sat down for minMinutes..maxMinutes once per visit (bar seats).
 // Others are impulse buys: impulsePermille per minute between laps at a bar (scaled up for a stop on the way to a trail,
 // facilityRules.stopScalePermille), only by guests with less energy than whenEnergyBelow. Effects: energy and happiness
-// (0..1000), alcohol (bolder trail choices and more crashes, wears off by the minute), caffeineMinutes (climbing costs
+// (0..1000; a drink with alcohol cheers less the more the guest has had, nothing once too drunk), alcohol (bolder trail
+// choices and more crashes, wears off by the minute), caffeineMinutes (climbing costs
 // half the energy meanwhile). overnight: a night at a campground (campers pay their nights on arrival; the price decides
 // how many arriving guests camp). rental: a rental bike for the day (bike shop with a rental counter; the price decides
 // how many guests without a bike come). clip: a video clip from a photo spot (a camera at a jump), bought after a filmed run.
@@ -25,9 +26,9 @@
   { "id": "coffee", "name": "Coffee", "referencePriceCents": 350, "maxPriceCents": 1200, "goodsCostPermille": 100,
     "elasticityPermille": 900, "energy": 150, "happiness": 10, "caffeineMinutes": 60, "impulsePermille": 20, "whenEnergyBelow": 800 },
   { "id": "beer", "name": "Beer", "referencePriceCents": 500, "maxPriceCents": 1500, "goodsCostPermille": 250,
-    "elasticityPermille": 600, "happiness": 30, "alcohol": 250, "impulsePermille": 6 },
+    "elasticityPermille": 600, "happiness": 20, "alcohol": 250, "impulsePermille": 6 },
   { "id": "radler", "name": "Radler", "referencePriceCents": 450, "maxPriceCents": 1500, "goodsCostPermille": 250,
-    "elasticityPermille": 700, "energy": 30, "happiness": 20, "alcohol": 100, "impulsePermille": 4 },
+    "elasticityPermille": 700, "energy": 30, "happiness": 15, "alcohol": 100, "impulsePermille": 4 },
   { "id": "snack", "name": "Snack", "referencePriceCents": 400, "maxPriceCents": 1500, "goodsCostPermille": 200,
     "elasticityPermille": 1000, "energy": 50, "happiness": 15, "impulsePermille": 8 },
   { "id": "merch", "name": "Park merch", "referencePriceCents": 2500, "maxPriceCents": 10000, "goodsCostPermille": 450,

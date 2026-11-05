@@ -146,6 +146,14 @@ public class ProgressionTests
         Assert.Contains("land: South slope", ParkProgress.UnlocksAt(sim.State, 3));
         Assert.Contains("Chairlift", ParkProgress.UnlocksAt(sim.State, 5));
         Assert.DoesNotContain(ParkProgress.UnlocksAt(sim.State, 0), u => u.StartsWith("land: Old ski hill"));
+
+        // Grouped for the level-up pop-up: buildings, their upgrades, sponsors, ... come with their level too.
+        var state = sim.State;
+        foreach (var type in state.FacilityTypes.Where(t => t.RequiredLevel > 0))
+            Assert.Contains(ParkProgress.UnlockGroupsAt(state, type.RequiredLevel), g => g.Kind == "Buildings" && g.Names.Contains(type.Name));
+        foreach (var brand in state.SponsorTypes.Where(b => b.RequiredLevel > 0))
+            Assert.Contains(ParkProgress.UnlockGroupsAt(state, brand.RequiredLevel), g => g.Kind == "Sponsors" && g.Names.Contains(brand.Name));
+        Assert.All(Enumerable.Range(0, 21).SelectMany(l => ParkProgress.UnlockGroupsAt(state, l)), g => Assert.NotEmpty(g.Names));
     }
 
     [Fact]

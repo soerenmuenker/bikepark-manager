@@ -327,15 +327,43 @@ public static class ParkProgress
         return level;
     }
 
-    /// <summary>What reaching <paramref name="level"/> unlocks (features, lift types, land), for the level-up message.</summary>
-    public static List<string> UnlocksAt(WorldState state, int level)
+    /// <summary>One kind of content a level unlocks ("Trail features", "Lifts", ...) and its names, in catalog order.</summary>
+    public sealed record UnlockGroup(string Kind, List<string> Names);
+
+    /// <summary>
+    /// What reaching <paramref name="level"/> unlocks, by kind: trail features, lifts, buildings, building upgrades, tools,
+    /// park staff, sponsors, loans and land (empty kinds left out). For the level-up pop-up and the Park menu.
+    /// </summary>
+    public static List<UnlockGroup> UnlockGroupsAt(WorldState state, int level)
     {
-        var unlocks = new List<string>();
-        unlocks.AddRange(state.TrailFeatureTypes.Where(t => t.RequiredLevel == level && !TrailFeatures.ComesFromStoneField(t)).Select(t => $"{t.Name} ({t.Rating.ToString().ToLowerInvariant()})"));
-        unlocks.AddRange(state.LiftTypes.Where(t => t.RequiredLevel == level).Select(t => t.Name));
-        unlocks.AddRange(state.Parcels.Where(p => p.RequiredLevel == level && !state.OwnedParcelIds.Contains(p.Id)).Select(p => $"land: {p.Name}"));
-        return unlocks;
+        var groups = new List<UnlockGroup>();
+        void Add(string kind, IEnumerable<string> names)
+        {
+            var list = names.ToList();
+            if (list.Count > 0) groups.Add(new UnlockGroup(kind, list));
+        }
+        Add("Trail features", state.TrailFeatureTypes.Where(t => t.RequiredLevel == level && !TrailFeatures.ComesFromStoneField(t))
+            .Select(t => $"{t.Name} ({t.Rating.ToString().ToLowerInvariant()})"));
+        Add("Lifts", state.LiftTypes.Where(t => t.RequiredLevel == level).Select(t => t.Name));
+        Add("Buildings", state.FacilityTypes.Where(t => t.RequiredLevel == level).Select(t => t.Name));
+        Add("Upgrades", state.FacilityTypes.SelectMany(t => t.Upgrades.Where(u => u.RequiredLevel == level && u.RequiredLevel > t.RequiredLevel)
+            .Select(u => $"{t.Name}: {u.Name}")));
+        Add("Tools", state.ToolTypes.Where(t => t.RequiredLevel == level).Select(t => t.Name));
+        if (state.StaffRules.Enabled) Add("Park staff", state.StaffRoles.Where(r => r.RequiredLevel == level).Select(r => r.Name));
+        Add("Sponsors", state.SponsorTypes.Where(b => b.RequiredLevel == level).Select(b => b.Name));
+        Add("Loans", state.LoanRules.Offers.Where(o => o.RequiredLevel == level).Select(o => o.Name));
+        Add("Land", state.Parcels.Where(p => p.RequiredLevel == level && !state.OwnedParcelIds.Contains(p.Id)).Select(p => p.Name));
+        return groups;
     }
+
+    /// <summary>What reaching <paramref name="level"/> unlocks, in one list ("Wooden kicker (red)", "Chairlift", "land: South slope", ...).</summary>
+    public static List<string> UnlocksAt(WorldState state, int level) =>
+        UnlockGroupsAt(state, level).SelectMany(g => g.Kind switch
+        {
+            "Trail features" or "Lifts" => g.Names,
+            "Land" => g.Names.Select(n => $"land: {n}"),
+            _ => g.Names.Select(n => $"{g.Kind.ToLowerInvariant()}: {n}"),
+        }).ToList();
 
     /// <summary>XP needed for the next level, or null at the top.</summary>
     public static int? NextLevelXp(ReputationRules rules, int level) => level < rules.LevelXp.Count ? rules.LevelXp[level] : null;

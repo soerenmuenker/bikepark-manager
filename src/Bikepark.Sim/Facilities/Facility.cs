@@ -474,6 +474,17 @@ public static class FacilityMath
         return (int)Math.Clamp(factor, 0, 1500);
     }
 
+    /// <summary>
+    /// The mood a purchase gives: in full, except for drinks with alcohol, whose mood shrinks with the alcohol the guest
+    /// already had (full when sober, nothing from <see cref="FacilityRules.TooDrunkAlcohol"/> on): the first beer cheers,
+    /// the fourth doesn't.
+    /// </summary>
+    public static int DrinkMood(FacilityRules rules, ProductType product, int alcoholBefore, int mood)
+    {
+        if (product.Alcohol <= 0 || mood <= 0 || rules.TooDrunkAlcohol <= 0) return mood;
+        return (int)((long)mood * Math.Max(0, rules.TooDrunkAlcohol - alcoholBefore) / rules.TooDrunkAlcohol);
+    }
+
     /// <summary>Mood a guest loses paying <paramref name="priceCents"/>: <see cref="FacilityRules.RipOffMood"/> per reference price above it.</summary>
     public static int RipOffMood(FacilityRules rules, ProductType product, long priceCents) =>
         RipOffMood(rules, priceCents, product.ReferencePriceCents);
@@ -671,7 +682,8 @@ public static class FacilityMath
 
         guest.Energy = Math.Min(1000, guest.Energy + product.Energy);
         int boost = product.Happiness * Sponsors.SponsorMath.Benefit(state, Sponsors.SponsorBenefitKind.MoodBoost, product.Id) / 1000;
-        guest.Happiness = Math.Clamp(guest.Happiness + product.Happiness + boost - RipOffMood(state.FacilityRules, price, reference), 0, 1000);
+        guest.Happiness = Math.Clamp(guest.Happiness + DrinkMood(state.FacilityRules, product, guest.Alcohol, product.Happiness + boost)
+                                     - RipOffMood(state.FacilityRules, price, reference), 0, 1000);
         guest.Alcohol = Math.Min(1000, guest.Alcohol + product.Alcohol);
         if (product.Protection) guest.Protected = true;
         if (product.Department && !guest.ShopItems.Contains(product.Id)) guest.ShopItems.Add(product.Id);

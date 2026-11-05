@@ -42,7 +42,6 @@ public partial class CrewPanel : HudPanel
 
     // Jobs
     private VBoxContainer _jobList = null!;
-    private Button _buy10 = null!, _buy50 = null!;
     private string? _jobSignature;
     private readonly List<(int JobId, Label Title, Label State, ProgressBar Bar, Label Workers)> _jobRows = [];
     private readonly Dictionary<int, PanelContainer> _jobCards = [];
@@ -423,11 +422,8 @@ public partial class CrewPanel : HudPanel
     {
         var wood = Row(8);
         wood.AddChild(UiTheme.Label("WOOD", 11, UiTheme.TextDim, bold: true));
-        _buy10 = UiTheme.Button("", () => Ctx.Host.Enqueue(new BuyWoodCommand(10)), "Buying is expensive; felling trees is cheaper");
-        _buy50 = UiTheme.Button("", () => Ctx.Host.Enqueue(new BuyWoodCommand(50)), "Buying is expensive; felling trees is cheaper");
-        wood.AddChild(_buy10);
-        wood.AddChild(_buy50);
         wood.AddChild(UiTheme.Button("Fell trees…", () => Ctx.Clearing.SetActive(true), "Mark an area of forest for the crew to cut (each tree gives wood)"));
+        wood.AddChild(UiTheme.Label("or buy wood in the Tools menu [I]", 11, UiTheme.TextDim));
         _jobsPage.AddChild(wood);
         _jobsPage.AddChild(UiTheme.Separator());
 
@@ -441,9 +437,6 @@ public partial class CrewPanel : HudPanel
 
     private void RefreshJobs(WorldState state)
     {
-        var rules = state.CrewRules;
-        _buy10.Text = $"Buy 10 ({UiTheme.Money(10 * rules.WoodPriceCents)})";
-        _buy50.Text = $"Buy 50 ({UiTheme.Money(50 * rules.WoodPriceCents)})";
         string jobSignature = string.Join(',', state.Jobs.Select(j => j.Id));
         if (jobSignature != _jobSignature) RebuildJobs(state);
         foreach (var (jobId, title, stateLabel, bar, workers) in _jobRows)
@@ -451,7 +444,7 @@ public partial class CrewPanel : HudPanel
             if (Jobs.Find(state, jobId) is not { } job) continue;
             title.Text = Jobs.Title(state, job);
             stateLabel.Text = JobState(state, job);
-            bar.Value = WorkCosts.ProgressPermille(rules, job);
+            bar.Value = WorkCosts.ProgressPermille(state.CrewRules, job);
             int on = state.Crew.Count(m => m.JobId == job.Id);
             int auto = JobSystem.AutoLimit(state, job);
             workers.Text = job.Workers == 0 ? $"{on} · auto (≤{auto})" : $"{on} · max {Math.Min(job.Workers, auto)}";
@@ -470,7 +463,7 @@ public partial class CrewPanel : HudPanel
             if (job.Kind == JobKind.BuildFeature && state.Ways.FirstOrDefault(w => w.Id == job.WayId)?.Built != true)
                 return "Waiting for the trail to be built";
             if (job.Wood > 0 && !job.WoodTaken)
-                return $"Waiting for wood: needs {job.Wood}, {state.WoodStock} in stock (fell trees or buy)";
+                return $"Waiting for wood: needs {job.Wood}, {state.WoodStock} in stock (fell trees, or buy in the Tools menu)";
         }
         if (workers > 0 && Jobs.IsWaitingForRiders(state, job))
             return $"Trail closed · waiting for the last riders to leave{who}";
